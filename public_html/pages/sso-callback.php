@@ -40,7 +40,7 @@ $pk = htmlspecialchars(getClerkPublishableKey(), ENT_QUOTES);
     async
     crossorigin="anonymous"
     data-clerk-publishable-key="<?= $pk ?>"
-    src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@4/dist/clerk.browser.js"
+    src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
     type="text/javascript"
 ></script>
 <style>
