@@ -372,14 +372,16 @@ require_once __DIR__ . '/../includes/header.php';
         try {
             if (mode === 'signup') {
                 window.Clerk.mountSignUp(el, {
-                    routing:  'virtual',
-                    signInUrl: origin + '/login',
+                    afterSignUpUrl:  origin + '/sso-callback',
+                    afterSignInUrl:  origin + '/sso-callback',
+                    signInUrl:       origin + '/login',
                     appearance,
                 });
             } else {
                 window.Clerk.mountSignIn(el, {
-                    routing:   'virtual',
-                    signUpUrl:  origin + '/login?mode=signup',
+                    afterSignInUrl:  origin + '/sso-callback',
+                    afterSignUpUrl:  origin + '/sso-callback',
+                    signUpUrl:       origin + '/login?mode=signup',
                     appearance,
                 });
             }
@@ -425,20 +427,27 @@ require_once __DIR__ . '/../includes/header.php';
 
         try {
             /*
-             * Clerk v5: Clerk.load() initialises the SDK manually.
-             * - publishableKey: passed here (no data-clerk-publishable-key on
-             *   the <script> tag, which would trigger auto-init and conflict).
-             * - routerPush/routerReplace: required in v5 for embedded (non-SPA)
-             *   widgets so Clerk doesn't try to use a client-side router.
-             * - afterSignInUrl/afterSignUpUrl are REMOVED in v5 — redirect is
-             *   handled by the poll/listener that calls syncAndRedirect().
-             * - routing:'virtual' on mountSignIn/mountSignUp tells Clerk not
-             *   to try to navigate the page itself after auth completes.
+             * Pass the publishable key and sign-in/sign-up URLs directly here.
+             *
+             * WHY: The script tag no longer has data-clerk-publishable-key.
+             * That attribute caused Clerk to auto-initialize when the script
+             * loaded, potentially processing #/sso-callback before our code
+             * ran — corrupting the PKCE state → "failed security validations".
+             *
+             * By initializing manually with Clerk.load({ publishableKey }),
+             * we control the exact moment Clerk starts, ensuring the widget
+             * is mounted first before any OAuth callback is processed.
+             *
+             * signInUrl/signUpUrl: Tell Clerk where to redirect if it ever
+             * needs to send the user to sign-in/sign-up (e.g. from /account).
+             *
+             * afterSignInUrl/afterSignUpUrl are set on mountSignIn (not here)
+             * so Clerk returns to /login after OAuth, where the widget finalizes.
              */
             await window.Clerk.load({
                 publishableKey: <?= json_encode(CLERK_PUBLISHABLE_KEY) ?>,
-                routerPush:     (to) => { window.location.href = to; },
-                routerReplace:  (to) => { window.location.replace(to); },
+                signInUrl:  '<?= rtrim(SITE_URL, '/') ?>/login',
+                signUpUrl:  '<?= rtrim(SITE_URL, '/') ?>/login',
             });
         } catch (e) {
             console.error('[Clerk] load():', e);

@@ -119,7 +119,6 @@ require_once __DIR__ . '/../includes/header.php';
 
         try {
             window.Clerk.mountSignUp(el, {
-                routing:  'virtual',
                 signInUrl: SITE_BASE + '/login',
                 appearance: {
                     variables: {
@@ -171,9 +170,8 @@ require_once __DIR__ . '/../includes/header.php';
             // routerPush/routerReplace: prevents page reload during SSO (Google) callback
             // which would destroy the PKCE nonce and cause "failed security validations"
             await window.Clerk.load({
-                publishableKey: '<?= CLERK_PUBLISHABLE_KEY ?>',
-                routerPush:     (to) => { window.location.href = to; },
-                routerReplace:  (to) => { window.location.replace(to); },
+                routerPush:    (to) => history.pushState({}, '', to),
+                routerReplace: (to) => history.replaceState({}, '', to),
             });
         } catch (e) {
             console.error('[Clerk] load() error:', e);
