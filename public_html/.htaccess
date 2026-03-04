@@ -1,0 +1,161 @@
+# ══════════════════════════════════════════════════════
+#  khatibangla.com — Security Hardening .htaccess
+#  Blocks bots BEFORE PHP runs (most efficient layer)
+# ══════════════════════════════════════════════════════
+
+Options -Indexes
+ServerSignature Off
+
+# ── PHP Performance ──
+php_flag display_errors Off
+php_flag log_errors On
+php_value upload_max_filesize 10M
+php_value post_max_size 12M
+php_value max_execution_time 60
+
+# ══════════════════════════════════════════════════════
+# BLOCK SENSITIVE FILES — Return 403 before PHP loads
+# ══════════════════════════════════════════════════════
+<FilesMatch "(\.env|\.git|\.DS_Store|composer\.(json|lock)|package\.json|\.bak|\.sql|\.log|\.ini|phpinfo\.php|info\.php|test\.php|debug\.php|install\.php|setup\.php|config\.php\.bak|wp-config\.php)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# ── Block Hidden Files (.htaccess, .htpasswd, etc.) ──
+<FilesMatch "^\.">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# ── Block PHP execution in uploads directory ──
+<IfModule mod_alias.c>
+    <Directory "uploads">
+        <FilesMatch "\.(php|phtml|php3|php4|php5|php7|phar|cgi|pl|py|sh|shtml)$">
+            Order allow,deny
+            Deny from all
+        </FilesMatch>
+    </Directory>
+</IfModule>
+
+# ══════════════════════════════════════════════════════
+# SECURITY HEADERS
+# ══════════════════════════════════════════════════════
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    # Remove fingerprinting headers
+    Header unset X-Powered-By
+    Header unset Server
+    Header always unset X-AspNet-Version
+    Header always unset X-AspNetMvc-Version
+</IfModule>
+
+# ══════════════════════════════════════════════════════
+# URL REWRITING & BOT BLOCKING
+# ══════════════════════════════════════════════════════
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # ── Force HTTPS ──
+    RewriteCond %{HTTPS} off
+    RewriteCond %{HTTP_HOST} ^(www\.)?khatibangla\.com [NC]
+    RewriteRule ^ https://khatibangla.com%{REQUEST_URI} [R=301,L]
+
+    # ── www → non-www redirect ──
+    RewriteCond %{HTTP_HOST} ^www\.khatibangla\.com [NC]
+    RewriteRule ^ https://khatibangla.com%{REQUEST_URI} [R=301,L]
+
+    # ══════════════════════════════════════════════════
+    # BLOCK WORDPRESS PROBES (These are 100% attacks)
+    # wp-login.php had 829 hits — all bots
+    # ══════════════════════════════════════════════════
+    RewriteCond %{REQUEST_URI} (wp-login\.php|wp-admin|wp-content|wp-includes|xmlrpc\.php|wlwmanifest\.xml|wp-cron\.php|wp-trackback\.php|wp-links-opml\.php) [NC]
+    RewriteRule .* - [F,L]
+
+    # ── Block WordPress feed / WooCommerce URL probes ──
+    RewriteCond %{QUERY_STRING} (feed=rss2|product_cat=|shop_view=|post_type=product|stock_status=) [NC]
+    RewriteRule .* - [F,L]
+
+    # ── Block /.env, /info.php, /phpinfo.php probes ──
+    RewriteCond %{REQUEST_URI} (/\.env|/info\.php|/phpinfo\.php|/test\.php|/debug\.php|/shell\.php|/c99\.php|/r57\.php|/backdoor|/webshell) [NC]
+    RewriteRule .* - [F,L]
+
+    # ── Block common vulnerability scanner paths ──
+    RewriteCond %{REQUEST_URI} (/admin\.php|/phpmyadmin|/pma|/adminer|/db/|/mysql|/backup|/\.git/|/\.svn/|/\.hg/|/CVS/) [NC]
+    RewriteRule .* - [F,L]
+
+    # ── Block null byte attacks ──
+    RewriteCond %{QUERY_STRING} (\%00|\%0a|\%0d|%00) [NC]
+    RewriteRule .* - [F,L]
+
+    # ══════════════════════════════════════════════════
+    # BLOCK ATTACK BOT USER AGENTS
+    # ══════════════════════════════════════════════════
+    RewriteCond %{HTTP_USER_AGENT} (sqlmap|nikto|nmap|masscan|zgrab|nuclei|dirbuster|gobuster|wfuzz|hydra|burpsuite|nessus|acunetix|havij|w3af|skipfish|openvas|qualys|whatweb|grabber|httprint|jorgee|python-requests|go-http-client|libwww-perl|lwp-trivial|wget|curl|java/|jakarta|htmlparser|webzip|webcapture|teleport|winhttp|offline-explorer|httrack|websitecopier|pavuk|websuck|webstripper|larbin|sitesucker|turnit|bidorbuy|semrushbot|ahrefsbot|dotbot|mj12bot|petalbot|blexbot|seznambot|yandexbot|baiduspider|sistrix|dataforseo|majestic|seokicks|rogerbot|exabot|gigabot|ia_archiver|archive\.org_bot|ccbot|scrapy|phantomjs|headlesschrome|selenium|webdriver|crawler|spider) [NC]
+    RewriteRule .* - [F,L]
+
+    # ── Block empty User-Agent (most scanners omit it) ──
+    RewriteCond %{HTTP_USER_AGENT} ^-?$
+    RewriteRule .* - [F,L]
+
+    # ══════════════════════════════════════════════════
+    # BLOCK SQL INJECTION IN QUERY STRINGS
+    # ══════════════════════════════════════════════════
+    RewriteCond %{QUERY_STRING} (\bunion\b.*\bselect\b|\binsert\b.*\binto\b|\bdelete\b.*\bfrom\b|\bdrop\b.*\btable\b|\bexec\b|\bexecute\b|information_schema|mysql\.user) [NC]
+    RewriteRule .* - [F,L]
+
+    # ── Block XSS in query strings ──
+    RewriteCond %{QUERY_STRING} (<script|%3cscript|javascript:|document\.cookie|\.\./) [NC]
+    RewriteRule .* - [F,L]
+
+    # ── Block path traversal ──
+    RewriteCond %{REQUEST_URI} (\.\./|\.\.\\|%2e%2e|%252e%252e) [NC]
+    RewriteRule .* - [F,L]
+
+    # ── Block TRACE and TRACK methods ──
+    RewriteCond %{REQUEST_METHOD} ^(TRACE|TRACK)
+    RewriteRule .* - [F,L]
+
+    # ══════════════════════════════════════════════════
+    # MAIN APP ROUTING (keep at bottom)
+    # ══════════════════════════════════════════════════
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ index.php?route=$1 [QSA,L]
+</IfModule>
+
+# ══════════════════════════════════════════════════════
+# BLOCK HOTLINKING OF IMAGES
+# ══════════════════════════════════════════════════════
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{HTTP_REFERER} !^$
+    RewriteCond %{HTTP_REFERER} !^https?://(www\.)?khatibangla\.com [NC]
+    RewriteCond %{HTTP_REFERER} !^https?://google\.(com|bd) [NC]
+    RewriteCond %{HTTP_REFERER} !^https?://facebook\.com [NC]
+    RewriteRule \.(jpg|jpeg|png|gif|webp|svg)$ - [F,NC,L]
+</IfModule>
+
+# ══════════════════════════════════════════════════════
+# DISABLE TRACE / TRACK METHODS
+# ══════════════════════════════════════════════════════
+<IfModule mod_rewrite.c>
+    RewriteCond %{REQUEST_METHOD} ^(TRACE|TRACK|DELETE|PATCH)$
+    RewriteCond %{REQUEST_URI} !^/api/
+    RewriteRule .* - [F]
+</IfModule>
+
+# ── Request body size limit (prevent large payload attacks) ──
+<IfModule mod_reqtimeout.c>
+    RequestReadTimeout header=20-40,MinRate=500 body=20,MinRate=500
+</IfModule>
+LimitRequestBody 10485760
+
+# ── Prevent clickjacking ──
+<IfModule mod_headers.c>
+    Header always append X-Frame-Options SAMEORIGIN
+</IfModule>

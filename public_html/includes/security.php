@@ -244,10 +244,31 @@ class SecurityGuard {
         }
         
         // ── WordPress probe blocking (all pages — these are always attacks) ──
-        $wpProbes = ['wp-admin', 'wp-login', 'wp-content', 'wp-includes', 'xmlrpc.php'];
+        $wpProbes = [
+            'wp-admin', 'wp-login', 'wp-content', 'wp-includes', 'xmlrpc.php',
+            'wp-cron.php', 'wp-trackback.php', 'wp-links-opml.php', 'wlwmanifest.xml',
+            '?feed=rss', 'post_type=product', 'product_cat=', 'stock_status=instock',
+        ];
         foreach ($wpProbes as $probe) {
             if (stripos($this->uri, $probe) !== false) {
                 $this->logEvent('wp_probe', 'medium', "WordPress probe: {$this->uri}", true);
+                $this->autoBlockIp("WordPress probe: {$probe}");
+                http_response_code(404);
+                exit;
+            }
+        }
+
+        // ── Sensitive file probes (always attacks) ──
+        $sensitivePaths = [
+            '/.env', '/info.php', '/phpinfo.php', '/test.php', '/debug.php',
+            '/shell.php', '/c99.php', '/r57.php', '/backdoor', '/webshell',
+            '/adminer', '/phpmyadmin', '/pma', '/.git/', '/.svn/',
+            '/composer.json', '/composer.lock', '/package.json',
+        ];
+        foreach ($sensitivePaths as $path) {
+            if (stripos($this->uri, $path) !== false) {
+                $this->logEvent('sensitive_probe', 'high', "Sensitive path probe: {$this->uri}", true);
+                $this->autoBlockIp("Sensitive file probe: {$path}");
                 http_response_code(404);
                 exit;
             }
@@ -295,13 +316,34 @@ class SecurityGuard {
         if ($this->s('block_bad_bots', '1') !== '1') return;
         
         $ua = strtolower($_SERVER['HTTP_USER_AGENT'] ?? '');
-        if (empty($ua)) return; // Empty UA is fine — some privacy browsers / older devices
+
+        // Block completely empty User-Agent (scanners often send none)
+        // Allow partial empty (some privacy proxies send minimal UA)
+        if ($ua === '' || $ua === '-') {
+            $this->logEvent('bad_bot', 'medium', 'Empty User-Agent blocked');
+            http_response_code(403);
+            exit;
+        }
         
         $badBots = [
+            // Security scanners / attack tools
             'sqlmap', 'nikto', 'nmap', 'masscan', 'zgrab', 'nuclei',
             'dirbuster', 'gobuster', 'wfuzz', 'hydra', 'burpsuite',
             'nessus', 'acunetix', 'havij', 'w3af', 'skipfish',
             'openvas', 'qualys', 'whatweb', 'grabber', 'httprint',
+            'metasploit', 'commix', 'zap', 'appscan', 'webinspect',
+            'paros', 'vega', 'arachni', 'jaeles', 'ffuf',
+            // Scrapers / bad crawlers
+            'scrapy', 'python-requests', 'go-http-client', 'libwww-perl',
+            'lwp-trivial', 'lwp-request', 'urllib', 'pycurl', 'mechanize',
+            'httrack', 'webcopy', 'teleport', 'offline-explorer',
+            'websitecopier', 'webstripper', 'webzip', 'pavuk', 'webwhacker',
+            // SEO spam bots (bandwidth thieves)
+            'semrushbot', 'ahrefsbot', 'dotbot', 'mj12bot', 'petalbot',
+            'blexbot', 'seokicks', 'rogerbot', 'majestic',
+            // Headless browsers used in attacks
+            'phantomjs', 'headlesschrome', 'selenium', 'webdriver', 'puppeteer',
+            'playwright', 'casperjs', 'slimerjs',
         ];
         foreach ($badBots as $bot) {
             if (strpos($ua, $bot) !== false) {
