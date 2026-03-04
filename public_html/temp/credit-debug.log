@@ -1,0 +1,8 @@
+17:18:16 ORDER START: store_credit_used=0, phone=01767676566
+17:18:16 CREDIT: requestedTk=0, creditCustId=9, loggedIn=0, phoneCust=9
+17:18:16 CREDIT: enabled_setting='1', checkout_setting='1'
+17:18:16 ORDER COMPLETE: #k0002, total=1179, creditUsed=0, creditsDeducted=0, merged=no
+18:16:43 ORDER START: store_credit_used=0, phone=01565453425
+18:16:43 CREDIT: requestedTk=0, creditCustId=11, loggedIn=0, phoneCust=0
+18:16:43 CREDIT: enabled_setting='1', checkout_setting='1'
+18:16:43 ORDER COMPLETE: #k0003, total=130, creditUsed=0, creditsDeducted=0, merged=no
