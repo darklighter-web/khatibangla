@@ -372,16 +372,14 @@ require_once __DIR__ . '/../includes/header.php';
         try {
             if (mode === 'signup') {
                 window.Clerk.mountSignUp(el, {
-                    afterSignUpUrl:  origin + '/sso-callback',
-                    afterSignInUrl:  origin + '/sso-callback',
-                    signInUrl:       origin + '/login',
+                    routing:   'virtual',
+                    signInUrl: origin + '/login',
                     appearance,
                 });
             } else {
                 window.Clerk.mountSignIn(el, {
-                    afterSignInUrl:  origin + '/sso-callback',
-                    afterSignUpUrl:  origin + '/sso-callback',
-                    signUpUrl:       origin + '/login?mode=signup',
+                    routing:   'virtual',
+                    signUpUrl: origin + '/login?mode=signup',
                     appearance,
                 });
             }
@@ -446,8 +444,10 @@ require_once __DIR__ . '/../includes/header.php';
              */
             await window.Clerk.load({
                 publishableKey: <?= json_encode(CLERK_PUBLISHABLE_KEY) ?>,
-                signInUrl:  '<?= rtrim(SITE_URL, '/') ?>/login',
-                signUpUrl:  '<?= rtrim(SITE_URL, '/') ?>/login',
+                signInUrl:      '<?= rtrim(SITE_URL, '/') ?>/login',
+                signUpUrl:      '<?= rtrim(SITE_URL, '/') ?>/login',
+                routerPush:    (to) => { window.location.href = to; },
+                routerReplace: (to) => { window.location.replace(to); },
             });
         } catch (e) {
             console.error('[Clerk] load():', e);

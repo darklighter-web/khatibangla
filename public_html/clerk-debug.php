@@ -83,7 +83,7 @@ pre { white-space: pre-wrap; word-break: break-all; font-size: 12px; color: #d1d
     async
     crossorigin="anonymous"
     data-clerk-publishable-key="<?= htmlspecialchars($pk, ENT_QUOTES) ?>"
-    src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
+    src="https://clerk.khatibangla.com/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
     type="text/javascript"
 ></script>
 

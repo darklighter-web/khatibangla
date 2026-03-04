@@ -599,7 +599,7 @@ function renderClerkHead(): string {
         async
         crossorigin="anonymous"
         data-clerk-publishable-key="{$pk}"
-        src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
+        src="https://clerk.khatibangla.com/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
         type="text/javascript"
     ></script>
 HTML;
