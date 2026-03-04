@@ -7,7 +7,9 @@ refreshAdminPermissions(); // Refresh permissions (may already be done by auth.p
 // NOTE: enforcePagePermission() already runs in auth.php when included by admin pages
 $stats = getDashboardStats();
 $currentPage = basename($_SERVER['PHP_SELF'], '.php');
-$siteName = getSetting('site_name', 'E-Commerce');
+$siteName    = getSetting('site_name', 'E-Commerce');
+$siteLogo    = getSetting('site_logo', '');
+$siteFavicon = getSetting('site_favicon', '');
 $db = Database::getInstance();
 
 // ── Theme System (light / dark / ui) ──
@@ -217,6 +219,12 @@ $icons = [
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= $pageTitle ?? 'Dashboard' ?> - Admin Panel</title>
+    <?php if ($siteFavicon): ?>
+    <link rel="icon" href="<?= uploadUrl($siteFavicon) ?>" type="image/png">
+    <link rel="shortcut icon" href="<?= uploadUrl($siteFavicon) ?>" type="image/png">
+    <?php else: ?>
+    <link rel="icon" href="<?= SITE_URL ?>/favicon.ico" type="image/x-icon">
+    <?php endif; ?>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -238,8 +246,12 @@ $icons = [
 <div id="quickBar" class="fixed top-0 left-0 right-0 z-[55] <?= $tc['quickbar'] ?> border-b shadow-sm" style="height:44px">
     <div class="flex items-center h-[44px] px-2 lg:px-4 gap-1">
         <a href="<?= adminUrl('pages/dashboard.php') ?>" class="flex items-center gap-1.5 px-2 py-1 rounded-lg <?= $tc['qbBrandHover'] ?> mr-1 shrink-0">
+            <?php if ($siteLogo): ?>
+            <img src="<?= uploadUrl($siteLogo) ?>" alt="<?= e($siteName) ?>" class="h-6 w-auto object-contain max-w-[120px]">
+            <?php else: ?>
             <div class="w-6 h-6 <?= $tc['qbBrandIcon'] ?> rounded-md flex items-center justify-center"><span class="text-white text-xs font-bold"><?= strtoupper(substr($siteName,0,1)) ?></span></div>
             <span class="hidden md:inline text-sm font-bold <?= $tc['qbBrandText'] ?>"><?= e($siteName) ?></span>
+            <?php endif; ?>
         </a>
         <div class="flex items-center gap-0.5 shrink-0">
             <a href="<?= adminUrl('pages/search.php') ?>" class="px-2.5 py-1.5 rounded-md text-xs font-semibold <?= $currentPage==='search' ? $tc['qbLinkActive'] : $tc['qbLinkNorm'] ?> transition">Search</a>
@@ -610,6 +622,9 @@ document.addEventListener('click',e=>{
 <div class="flex min-h-screen" style="padding-top:44px">
     <aside id="sidebar" class="fixed inset-y-0 left-0 z-50 w-64 <?= $tc['sidebar'] ?> transform -translate-x-full lg:translate-x-0 transition-transform duration-200 ease-in-out" style="top:44px">
         <div class="flex items-center gap-3 px-5 py-4 border-b <?= $tc['sidebarBorder'] ?>">
+            <?php if ($siteLogo): ?>
+            <img src="<?= uploadUrl($siteLogo) ?>" alt="<?= e($siteName) ?>" class="h-8 w-auto object-contain max-w-[130px]">
+            <?php else: ?>
             <div class="w-9 h-9 <?= $tc['sidebarIcon'] ?> rounded-lg flex items-center justify-center">
                 <svg class="w-5 h-5 <?= $tc['sidebarIconTxt'] ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
             </div>
@@ -617,6 +632,7 @@ document.addEventListener('click',e=>{
                 <h1 class="<?= $tc['sidebarBrand'] ?> font-bold text-sm"><?= e($siteName) ?></h1>
                 <p class="<?= $tc['sidebarSub'] ?> text-xs">Admin Panel</p>
             </div>
+            <?php endif; ?>
         </div>
         <nav class="sidebar-scroll overflow-y-auto h-[calc(100vh-174px)] py-3 px-3 space-y-0.5">
             <?= navLink('dashboard', 'Dashboard', $icons['dashboard']) ?>
