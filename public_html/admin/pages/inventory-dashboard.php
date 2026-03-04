@@ -32,7 +32,9 @@ $topMovers = $db->fetchAll("SELECT p.id, p.name, p.stock_quantity, p.featured_im
     FROM stock_movements sm
     JOIN products p ON sm.product_id=p.id
     WHERE sm.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-    GROUP BY p.id ORDER BY (total_in + total_out) DESC LIMIT 10");
+    GROUP BY p.id, p.name, p.stock_quantity, p.featured_image
+    ORDER BY (SUM(CASE WHEN sm.movement_type='in' THEN sm.quantity ELSE 0 END) +
+              SUM(CASE WHEN sm.movement_type='out' THEN sm.quantity ELSE 0 END)) DESC LIMIT 10");
 
 // Stock by category
 $stockByCategory = $db->fetchAll("SELECT c.name, COUNT(p.id) as products, COALESCE(SUM(p.stock_quantity),0) as total_stock,
