@@ -1,0 +1,5 @@
+Contact: mailto:security@khatibangla.com
+Expires: 2027-02-12T00:00:00.000Z
+Preferred-Languages: en, bn
+Canonical: https://khatibangla.com/.well-known/security.txt
+Policy: https://khatibangla.com/security-policy
