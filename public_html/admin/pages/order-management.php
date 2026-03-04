@@ -1,0 +1,1240 @@
+<?php
+require_once __DIR__ . '/../../includes/session.php';
+$pageTitle = 'Order Management';
+require_once __DIR__ . '/../includes/auth.php';
+
+if (!function_exists('timeAgo')) {
+    function timeAgo($datetime) {
+        if (empty($datetime)) return '';
+        $diff = time() - strtotime($datetime);
+        if ($diff < 60) return 'just now';
+        if ($diff < 3600) return floor($diff/60).'m ago';
+        if ($diff < 86400) return floor($diff/3600).'h ago';
+        if ($diff < 604800) return floor($diff/86400).'d ago';
+        return date('d M', strtotime($datetime));
+    }
+}
+
+$db = Database::getInstance();
+
+// ── POST Actions ──
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    $action = $_POST['action'];
+    
+    if ($action === 'update_status') {
+        $orderId = intval($_POST['order_id']);
+        $newStatus = sanitize($_POST['status']);
+        $db->update('orders', ['order_status' => $newStatus, 'updated_at' => date('Y-m-d H:i:s')], 'id = ?', [$orderId]);
+        try { $db->insert('order_status_history', ['order_id' => $orderId, 'status' => $newStatus, 'changed_by' => getAdminId(), 'note' => sanitize($_POST['notes'] ?? '')]); } catch (Exception $e) {}
+        if ($newStatus === 'delivered') { try { awardOrderCredits($orderId); } catch (\Throwable $e) {} }
+        if (in_array($newStatus, ['cancelled', 'returned'])) { try { refundOrderCreditsOnCancel($orderId); } catch (\Throwable $e) {} }
+        if ($newStatus === 'delivered') { try { $db->update('orders', ['delivered_at' => date('Y-m-d H:i:s')], 'id = ? AND delivered_at IS NULL', [$orderId]); } catch (\Throwable $e) {} }
+        try { $db->query("DELETE FROM order_locks WHERE order_id = ?", [$orderId]); } catch (\Throwable $e) {}
+        redirect(adminUrl('pages/order-management.php?' . http_build_query(array_diff_key($_GET, ['msg'=>''])) . '&msg=updated'));
+    }
+    
+    if ($action === 'bulk_status') {
+        $ids = $_POST['order_ids'] ?? []; $status = sanitize($_POST['bulk_status']);
+        foreach ($ids as $id) {
+            $db->update('orders', ['order_status' => $status, 'updated_at' => date('Y-m-d H:i:s')], 'id = ?', [intval($id)]);
+            try { $db->insert('order_status_history', ['order_id' => intval($id), 'status' => $status, 'changed_by' => getAdminId()]); } catch (Exception $e) {}
+            if ($status === 'delivered') { try { awardOrderCredits(intval($id)); } catch (\Throwable $e) {} try { $db->update('orders', ['delivered_at' => date('Y-m-d H:i:s')], 'id = ? AND delivered_at IS NULL', [intval($id)]); } catch (\Throwable $e) {} }
+            if (in_array($status, ['cancelled', 'returned'])) { try { refundOrderCreditsOnCancel(intval($id)); } catch (\Throwable $e) {} }
+            try { $db->query("DELETE FROM order_locks WHERE order_id = ?", [intval($id)]); } catch (\Throwable $e) {}
+        }
+        redirect(adminUrl('pages/order-management.php?msg=bulk_updated'));
+    }
+    
+    if ($action === 'bulk_courier') {
+        @ob_clean(); header('Content-Type: application/json');
+        $ids = $_POST['order_ids'] ?? []; $courierName = sanitize($_POST['courier_name'] ?? '');
+        $results = ['success'=>0,'failed'=>0,'errors'=>[]];
+        foreach ($ids as $oid) {
+            $oid = intval($oid); $o = $db->fetch("SELECT * FROM orders WHERE id = ?", [$oid]);
+            if (!$o) { $results['failed']++; continue; }
+            if (strtolower($courierName) === 'pathao') {
+                $pathaoFile = __DIR__ . '/../../api/pathao.php';
+                if (!file_exists($pathaoFile)) { $results['failed']++; $results['errors'][] = "#{$o['order_number']}: Pathao API not configured"; continue; }
+                try {
+                    require_once $pathaoFile; $pathao = new PathaoAPI();
+                    $resp = $pathao->createOrder(['store_id'=>$pathao->setting('store_id'),'merchant_order_id'=>$o['order_number'],'recipient_name'=>$o['customer_name'],'recipient_phone'=>$o['customer_phone'],'recipient_address'=>$o['customer_address'],'recipient_city'=>intval($o['pathao_city_id']??0),'recipient_zone'=>intval($o['pathao_zone_id']??0),'recipient_area'=>intval($o['pathao_area_id']??0),'delivery_type'=>48,'item_type'=>2,'item_quantity'=>1,'item_weight'=>0.5,'amount_to_collect'=>($o['payment_method']==='cod')?$o['total']:0,'item_description'=>'Order #'.$o['order_number'],'special_instruction'=>$o['notes']??'']);
+                    if (!empty($resp['data']['consignment_id'])) {
+                        $db->update('orders', ['courier_consignment_id'=>$resp['data']['consignment_id'],'courier_name'=>'Pathao','courier_tracking_id'=>$resp['data']['consignment_id'],'order_status'=>'shipped','updated_at'=>date('Y-m-d H:i:s')], 'id = ?', [$oid]);
+                        try { $db->insert('courier_uploads', ['order_id'=>$oid,'courier_provider'=>'pathao','consignment_id'=>$resp['data']['consignment_id'],'status'=>'uploaded','response_data'=>json_encode($resp),'created_by'=>getAdminId()]); } catch(Exception $e){}
+                        $results['success']++;
+                    } else { $results['failed']++; $results['errors'][]="#{$o['order_number']}: ".($resp['message']??'Failed'); }
+                } catch(\Throwable $e) { $results['failed']++; $results['errors'][]="#{$o['order_number']}: ".$e->getMessage(); }
+            } elseif (strtolower($courierName) === 'steadfast') {
+                $sfFile = __DIR__ . '/../../api/steadfast.php';
+                if (file_exists($sfFile)) {
+                    try {
+                        require_once $sfFile; $sf = new SteadfastAPI();
+                        $result = $sf->uploadOrder($oid);
+                        if ($result['success']) {
+                            $results['success']++;
+                        } else { $results['failed']++; $results['errors'][]="#{$o['order_number']}: ".($result['message']??'Failed'); }
+                    } catch(\Throwable $e) { $results['failed']++; $results['errors'][]="#{$o['order_number']}: ".$e->getMessage(); }
+                } else { $results['failed']++; $results['errors'][]="#{$o['order_number']}: Steadfast API not configured"; }
+            } elseif (strtolower($courierName) === 'carrybee') {
+                // CarryBee - manual upload (no API yet) - just mark shipped with courier name
+                $db->update('orders', ['courier_name'=>'CarryBee','order_status'=>'shipped','updated_at'=>date('Y-m-d H:i:s')], 'id = ?', [$oid]);
+                $results['success']++;
+            } else {
+                $db->update('orders', ['courier_name'=>$courierName,'order_status'=>'shipped','updated_at'=>date('Y-m-d H:i:s')], 'id = ?', [$oid]);
+                $results['success']++;
+            }
+        }
+        echo json_encode($results); exit;
+    }
+    
+    if ($action === 'add_tag') {
+        header('Content-Type: application/json');
+        $orderId = intval($_POST['order_id']); $tag = trim(sanitize($_POST['tag']));
+        if ($tag && $orderId) { try { $db->query("INSERT IGNORE INTO order_tags (order_id, tag_name, created_by) VALUES (?, ?, ?)", [$orderId, $tag, getAdminId()]); } catch(Exception $e) {} }
+        echo json_encode(['success'=>true]); exit;
+    }
+    if ($action === 'remove_tag') {
+        header('Content-Type: application/json');
+        try { $db->delete('order_tags', 'order_id = ? AND tag_name = ?', [intval($_POST['order_id']), trim(sanitize($_POST['tag']))]); } catch(Exception $e) {}
+        echo json_encode(['success'=>true]); exit;
+    }
+}
+
+// ── Auto-migrate: convert any remaining 'pending' orders to 'processing' ──
+try { $db->query("UPDATE orders SET order_status = 'processing' WHERE order_status = 'pending'"); } catch(\Throwable $e) {}
+// Expand ENUM to include all courier-driven statuses
+try { $db->query("ALTER TABLE orders MODIFY COLUMN order_status ENUM('pending','processing','confirmed','shipped','delivered','cancelled','returned','on_hold','no_response','good_but_no_response','advance_payment','incomplete','pending_return','pending_cancel','partial_delivered','lost') DEFAULT 'processing'"); } catch(\Throwable $e) {}
+// Add courier_status column for raw courier API status
+try { $db->query("ALTER TABLE orders ADD COLUMN courier_status VARCHAR(100) DEFAULT NULL AFTER courier_tracking_id"); } catch(\Throwable $e) {}
+try { $db->query("ALTER TABLE orders ADD COLUMN courier_tracking_message TEXT DEFAULT NULL AFTER courier_status"); } catch(\Throwable $e) {}
+try { $db->query("ALTER TABLE orders ADD COLUMN courier_delivery_charge DECIMAL(10,2) DEFAULT NULL AFTER courier_tracking_message"); } catch(\Throwable $e) {}
+try { $db->query("ALTER TABLE orders ADD COLUMN courier_cod_amount DECIMAL(10,2) DEFAULT NULL AFTER courier_delivery_charge"); } catch(\Throwable $e) {}
+try { $db->query("ALTER TABLE orders ADD COLUMN courier_uploaded_at DATETIME DEFAULT NULL AFTER courier_cod_amount"); } catch(\Throwable $e) {}
+try { $db->query("CREATE TABLE IF NOT EXISTS courier_webhook_log (id INT AUTO_INCREMENT PRIMARY KEY, courier VARCHAR(50), payload TEXT, result VARCHAR(255), ip_address VARCHAR(45), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, INDEX(courier), INDEX(created_at)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"); } catch(\Throwable $e) {}
+try { $db->query("ALTER TABLE orders ADD COLUMN pathao_consignment_id VARCHAR(100) DEFAULT NULL AFTER courier_consignment_id"); } catch(\Throwable $e) {}
+try { $db->query("ALTER TABLE orders ADD INDEX idx_pathao_cid (pathao_consignment_id)"); } catch(\Throwable $e) {}
+try { $db->query("ALTER TABLE orders ADD COLUMN is_preorder TINYINT(1) DEFAULT 0 AFTER is_fake"); } catch(\Throwable $e) {}
+try { $db->query("ALTER TABLE orders ADD COLUMN order_note TEXT DEFAULT NULL AFTER notes"); } catch(\Throwable $e) {}
+try { $db->query("ALTER TABLE orders ADD COLUMN preorder_date DATE DEFAULT NULL AFTER is_preorder"); } catch(\Throwable $e) {}
+try { $db->query("ALTER TABLE orders ADD COLUMN panel_notes TEXT DEFAULT NULL AFTER admin_notes"); } catch(\Throwable $e) {}
+try { $db->query("ALTER TABLE orders ADD COLUMN advance_amount DECIMAL(12,2) DEFAULT 0 AFTER discount_amount"); } catch(\Throwable $e) {}
+try { $db->query("ALTER TABLE orders ADD COLUMN advance_amount DECIMAL(12,2) DEFAULT 0 AFTER discount_amount"); } catch(\Throwable $e) {}
+
+// ── Order Flow Definition ──
+// Main flow: Processing → Confirmed → Shipped → Delivered
+// Courier-driven (auto-updated by webhooks): pending_return, pending_cancel, partial_delivered, lost
+// Manual side statuses: cancelled, returned, on_hold, no_response, good_but_no_response, advance_payment
+$mainFlow = ['processing', 'confirmed', 'shipped', 'delivered'];
+$courierStatuses = ['pending_return', 'pending_cancel', 'partial_delivered', 'lost'];
+$sideStatuses = ['cancelled', 'returned', 'on_hold', 'no_response', 'good_but_no_response', 'advance_payment'];
+$allStatuses = array_merge($mainFlow, $courierStatuses, $sideStatuses);
+
+// Next logical action for each status
+$nextAction = [
+    'processing' => ['status' => 'confirmed', 'label' => 'Confirm', 'icon' => '✅', 'color' => 'blue'],
+    'confirmed'  => ['status' => 'shipped',   'label' => 'Ship',    'icon' => '🚚', 'color' => 'purple'],
+    'shipped'    => ['status' => 'delivered',  'label' => 'Deliver', 'icon' => '📦', 'color' => 'green'],
+    'pending_return' => ['status' => 'returned', 'label' => 'Confirm Return', 'icon' => '↩', 'color' => 'orange'],
+    'pending_cancel' => ['status' => 'cancelled', 'label' => 'Confirm Cancel', 'icon' => '✗', 'color' => 'red'],
+    'partial_delivered' => ['status' => 'delivered', 'label' => 'Mark Delivered', 'icon' => '📦', 'color' => 'green'],
+];
+
+// Status counts
+$statusCounts = [];
+foreach ($allStatuses as $s) { try { $statusCounts[$s] = $db->count('orders', 'order_status = ?', [$s]); } catch(Exception $e) { $statusCounts[$s] = 0; } }
+// Include legacy pending in processing count
+try { $pendingCount = $db->count('orders', "order_status = 'pending'"); $statusCounts['processing'] += $pendingCount; } catch(\Throwable $e) {}
+$totalOrders = array_sum($statusCounts);
+
+// ── Filters ──
+$status=$_GET['status']??''; $search=$_GET['search']??''; $dateFrom=$_GET['date_from']??''; $dateTo=$_GET['date_to']??'';
+$channel=$_GET['channel']??''; $courier=$_GET['courier']??''; $assignedTo=$_GET['assigned']??''; $preorderFilter=$_GET['preorder']??'';
+$page = max(1, intval($_GET['page'] ?? 1));
+
+$where = '1=1'; $params = [];
+if ($status) {
+    if ($status === 'processing') {
+        $where .= " AND o.order_status IN ('processing','pending')"; // Catch legacy pending too
+    } else {
+        $where .= " AND o.order_status = ?"; $params[] = $status;
+    }
+}
+if ($search) { $where .= " AND (o.order_number LIKE ? OR o.customer_name LIKE ? OR o.customer_phone LIKE ? OR CAST(o.id AS CHAR) = ?)"; $params = array_merge($params, ["%$search%","%$search%","%$search%",$search]); }
+if ($dateFrom) { $where .= " AND DATE(o.created_at) >= ?"; $params[] = $dateFrom; }
+if ($dateTo) { $where .= " AND DATE(o.created_at) <= ?"; $params[] = $dateTo; }
+if ($channel) { $where .= " AND o.channel = ?"; $params[] = $channel; }
+if ($courier) {
+    if ($courier === 'Unassigned') {
+        $where .= " AND (o.courier_name IS NULL OR o.courier_name = '' OR o.courier_name = 'Personal Delivery' OR o.courier_name = 'Unassigned')";
+    } else {
+        $where .= " AND o.courier_name LIKE ?"; $params[] = '%' . $courier . '%';
+    }
+}
+if ($assignedTo) { $where .= " AND o.assigned_to = ?"; $params[] = intval($assignedTo); }
+if ($preorderFilter === '1') { $where .= " AND o.is_preorder = 1"; }
+elseif ($preorderFilter === '0') { $where .= " AND (o.is_preorder = 0 OR o.is_preorder IS NULL)"; }
+
+$total = $db->fetch("SELECT COUNT(*) as cnt FROM orders o WHERE {$where}", $params)['cnt'];
+$limit = ADMIN_ITEMS_PER_PAGE; $offset = ($page-1)*$limit; $totalPages = ceil($total/$limit);
+
+// Column sorting
+$sortCol = $_GET['sort'] ?? 'created_at';
+$sortDir = strtoupper($_GET['dir'] ?? 'DESC') === 'ASC' ? 'ASC' : 'DESC';
+$allowedSorts = ['created_at'=>'o.created_at','order_number'=>'o.order_number','total'=>'o.total','customer_name'=>'o.customer_name','channel'=>'o.channel','updated_at'=>'o.updated_at'];
+$orderBy = ($allowedSorts[$sortCol] ?? 'o.created_at') . ' ' . $sortDir;
+
+$orders = $db->fetchAll("SELECT o.*, au.full_name as assigned_name FROM orders o LEFT JOIN admin_users au ON au.id = o.assigned_to WHERE {$where} ORDER BY {$orderBy} LIMIT {$limit} OFFSET {$offset}", $params);
+
+// Pre-fetch customer success rates
+$successRates=[]; $previousOrders=[];
+$phones = array_unique(array_filter(array_column($orders, 'customer_phone')));
+foreach ($phones as $phone) {
+    $pl = '%'.substr(preg_replace('/[^0-9]/','',$phone),-10).'%';
+    try {
+        $sr = $db->fetch("SELECT COUNT(*) as total, SUM(CASE WHEN order_status='delivered' THEN 1 ELSE 0 END) as delivered, SUM(CASE WHEN order_status='cancelled' THEN 1 ELSE 0 END) as cancelled, SUM(total) as total_spent FROM orders WHERE customer_phone LIKE ?", [$pl]);
+        $t=intval($sr['total']); $d=intval($sr['delivered']); $c=intval($sr['cancelled']);
+        $rate=$t>0?round(($d/$t)*100):0;
+        $successRates[$phone]=['total'=>$t,'delivered'=>$d,'cancelled'=>$c,'rate'=>$rate,'total_spent'=>$sr['total_spent']??0];
+        $previousOrders[$phone] = $db->fetchAll("SELECT id, order_number, order_status, total, created_at FROM orders WHERE customer_phone LIKE ? ORDER BY created_at DESC LIMIT 5", [$pl]);
+    } catch(Exception $e) { $successRates[$phone]=['total'=>0,'delivered'=>0,'cancelled'=>0,'rate'=>0,'total_spent'=>0]; $previousOrders[$phone]=[]; }
+}
+
+// Pre-fetch items + tags
+$orderIds = array_column($orders, 'id'); $orderItems=[]; $orderTags=[];
+if (!empty($orderIds)) {
+    $ph = implode(',', array_fill(0, count($orderIds), '?'));
+    $items = $db->fetchAll("SELECT oi.order_id, oi.product_name, oi.quantity, oi.price, oi.variant_name, p.featured_image FROM order_items oi LEFT JOIN products p ON p.id = oi.product_id WHERE oi.order_id IN ({$ph})", $orderIds);
+    foreach ($items as $item) { $orderItems[$item['order_id']][] = $item; }
+    try { $tags = $db->fetchAll("SELECT order_id, tag_name FROM order_tags WHERE order_id IN ({$ph})", $orderIds);
+        foreach ($tags as $t) { $orderTags[$t['order_id']][] = $t; }
+    } catch(Exception $e) {}
+}
+
+// ── Courier counts (for sub-tabs under each status) ──
+$courierList = ['Pathao', 'Steadfast', 'CarryBee', 'Unassigned'];
+$courierCounts = [];
+$_cwStatusWhere = '1=1';
+if ($status === 'processing') { $_cwStatusWhere = "o.order_status IN ('processing','pending')"; }
+elseif ($status) { $_cwStatusWhere = "o.order_status = '" . preg_replace('/[^a-z_]/','',$status) . "'"; }
+
+foreach ($courierList as $cn) {
+    if ($cn === 'Unassigned') {
+        try { $courierCounts[$cn] = (int)($db->fetch("SELECT COUNT(*) as cnt FROM orders o WHERE {$_cwStatusWhere} AND (o.courier_name IS NULL OR o.courier_name = '' OR o.courier_name = 'Personal Delivery' OR o.courier_name = 'Unassigned')")['cnt'] ?? 0); } catch(\Throwable $e) { $courierCounts[$cn] = 0; }
+    } else {
+        try { $courierCounts[$cn] = (int)($db->fetch("SELECT COUNT(*) as cnt FROM orders o WHERE {$_cwStatusWhere} AND o.courier_name LIKE ?", ['%'.$cn.'%'])['cnt'] ?? 0); } catch(\Throwable $e) { $courierCounts[$cn] = 0; }
+    }
+}
+
+$defaultCourier = getSetting('default_courier', 'pathao');
+$adminUsers = $db->fetchAll("SELECT id, full_name FROM admin_users WHERE is_active = 1 ORDER BY full_name");
+$incompleteCount = 0;
+try { $incompleteCount = $db->fetch("SELECT COUNT(*) as cnt FROM incomplete_orders WHERE recovered = 0 AND created_at > DATE_SUB(NOW(), INTERVAL 7 DAY)")['cnt']; } catch(Exception $e){}
+
+// Today's summary
+$todaySummary = $db->fetch("SELECT COUNT(*) as total, SUM(total) as revenue, SUM(CASE WHEN order_status IN ('processing','pending') THEN 1 ELSE 0 END) as processing, SUM(CASE WHEN order_status='confirmed' THEN 1 ELSE 0 END) as confirmed, SUM(CASE WHEN order_status='shipped' THEN 1 ELSE 0 END) as shipped, SUM(CASE WHEN order_status='delivered' THEN 1 ELSE 0 END) as delivered, SUM(CASE WHEN order_status='cancelled' THEN 1 ELSE 0 END) as cancelled, SUM(CASE WHEN order_status='pending_return' THEN 1 ELSE 0 END) as pending_return, SUM(CASE WHEN order_status='pending_cancel' THEN 1 ELSE 0 END) as pending_cancel FROM orders WHERE DATE(created_at) = CURDATE()");
+
+// Tab config
+$tabConfig = [
+    'processing' => ['icon'=>'⚙','color'=>'yellow','label'=>'PROCESSING'],
+    'confirmed'  => ['icon'=>'✅','color'=>'blue','label'=>'CONFIRMED'],
+    'shipped'    => ['icon'=>'🚚','color'=>'purple','label'=>'SHIPPED'],
+    'delivered'  => ['icon'=>'📦','color'=>'green','label'=>'DELIVERED'],
+    'pending_return'=>['icon'=>'🔄','color'=>'amber','label'=>'PENDING RETURN'],
+    'pending_cancel'=>['icon'=>'⏳','color'=>'pink','label'=>'PENDING CANCEL'],
+    'partial_delivered'=>['icon'=>'📦½','color'=>'cyan','label'=>'PARTIAL'],
+    'lost'       => ['icon'=>'❌','color'=>'stone','label'=>'LOST'],
+    'cancelled'  => ['icon'=>'✗','color'=>'red','label'=>'CANCELLED'],
+    'returned'   => ['icon'=>'↩','color'=>'orange','label'=>'RETURNED'],
+    'on_hold'    => ['icon'=>'⏸','color'=>'gray','label'=>'ON HOLD'],
+    'no_response'=> ['icon'=>'📵','color'=>'rose','label'=>'NO RESPONSE'],
+    'good_but_no_response'=>['icon'=>'📱','color'=>'teal','label'=>'GOOD NO RESP'],
+    'advance_payment'=>['icon'=>'💰','color'=>'emerald','label'=>'ADVANCE'],
+];
+
+
+// ── AJAX Fragment Mode ─────────────────────────────────────────────────────
+$_isFrag = !empty($_GET['_frag']) && $_SERVER['REQUEST_METHOD'] === 'GET';
+if ($_isFrag) {
+    // Render table rows
+    ob_start();
+    $__tplFile = __DIR__ . '/order-row-tpl.php';
+    foreach ($orders as $order) {
+        $sr        = $successRates[$order['customer_phone']] ?? ['total'=>0,'delivered'=>0,'rate'=>0,'cancelled'=>0,'total_spent'=>0];
+        $prevO     = $previousOrders[$order['customer_phone']] ?? [];
+        $oItems    = $orderItems[$order['id']] ?? [];
+        $tags      = $orderTags[$order['id']] ?? [];
+        $rC        = $sr['rate']>=80?'text-green-600':($sr['rate']>=50?'text-yellow-600':'text-red-500');
+        $ph        = preg_replace('/[^0-9]/','',$order['customer_phone']);
+        $oStatus   = $order['order_status'] === 'pending' ? 'processing' : $order['order_status'];
+        $nxt       = $nextAction[$oStatus] ?? null;
+        $creditUsed= floatval($order['store_credit_used'] ?? 0);
+        $statusColors=['processing'=>'bg-yellow-100 text-yellow-700','confirmed'=>'bg-blue-100 text-blue-700','ready_to_ship'=>'bg-violet-100 text-violet-700','shipped'=>'bg-purple-100 text-purple-700','delivered'=>'bg-green-100 text-green-700','cancelled'=>'bg-red-100 text-red-700','returned'=>'bg-orange-100 text-orange-700','pending_return'=>'bg-amber-100 text-amber-700','pending_cancel'=>'bg-pink-100 text-pink-700','partial_delivered'=>'bg-cyan-100 text-cyan-700','on_hold'=>'bg-gray-100 text-gray-700','no_response'=>'bg-rose-100 text-rose-700','good_but_no_response'=>'bg-teal-100 text-teal-700','advance_payment'=>'bg-emerald-100 text-emerald-700'];
+        $statusDots=['processing'=>'#eab308','confirmed'=>'#3b82f6','ready_to_ship'=>'#8b5cf6','shipped'=>'#9333ea','delivered'=>'#22c55e','cancelled'=>'#ef4444','returned'=>'#f97316','pending_return'=>'#f59e0b','on_hold'=>'#6b7280'];
+        $sDot   = $statusDots[$oStatus] ?? '#94a3b8';
+        $sBadge = $statusColors[$oStatus] ?? 'bg-gray-100 text-gray-600';
+        $__cn   = strtolower($order['courier_name'] ?? ($order['shipping_method'] ?? ''));
+        $__cid  = $order['courier_consignment_id'] ?? ($order['pathao_consignment_id'] ?? '');
+        $__tid  = $order['courier_tracking_id'] ?? $__cid;
+        $__link = '';
+        if ($__cid) {
+            if (strpos($__cn,'steadfast')!==false) $__link='https://steadfast.com.bd/user/consignment/'.urlencode($__cid);
+            elseif (strpos($__cn,'pathao')!==false) $__link='https://merchant.pathao.com/courier/orders/'.urlencode($__cid);
+            elseif (strpos($__cn,'redx')!==false)   $__link='https://redx.com.bd/track-parcel/?trackingId='.urlencode($__tid);
+        }
+        $channelMap=['website'=>'WEB','facebook'=>'FACEBOOK','phone'=>'PHONE','whatsapp'=>'WHATSAPP','instagram'=>'INSTAGRAM','landing_page'=>'LP'];
+        $srcLabel=$channelMap[$order['channel']??'']??strtoupper($order['channel']??'—');
+        include $__tplFile;
+    }
+    if (empty($orders)) {
+        echo '<tr><td colspan="13" style="text-align:center;padding:40px 20px;color:#94a3b8"><div style="font-size:28px;margin-bottom:8px">📦</div>No orders found</td></tr>';
+    }
+    $__rowsHtml = ob_get_clean();
+
+    // Render pagination
+    ob_start();
+    if ($totalPages > 1) {
+        echo '<div class="flex items-center justify-between mt-3 px-1">';
+        echo '<p class="text-xs text-gray-500">Page <strong>'.$page.'</strong> of '.$totalPages.' · '.number_format($total).' orders</p>';
+        echo '<div class="flex gap-1">';
+        if ($page > 1) echo '<button class="om-page-btn px-2.5 py-1 text-xs rounded bg-white border hover:bg-gray-50" onclick="OM.go({page:'.($page-1).'})">←</button>';
+        for ($i=max(1,$page-2);$i<=min($totalPages,$page+2);$i++) {
+            $cls=$i===$page?'bg-blue-600 text-white border-blue-600':'bg-white border hover:bg-gray-50';
+            echo '<button class="om-page-btn px-2.5 py-1 text-xs rounded '.$cls.'" onclick="OM.go({page:'.$i.'})">'.$i.'</button>';
+        }
+        if ($page < $totalPages) echo '<button class="om-page-btn px-2.5 py-1 text-xs rounded bg-white border hover:bg-gray-50" onclick="OM.go({page:'.($page+1).'})">→</button>';
+        echo '</div></div>';
+    }
+    $__paginHtml = ob_get_clean();
+
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'rows'         => $__rowsHtml,
+        'pagination'   => $__paginHtml,
+        'total'        => (int)$total,
+        'page'         => (int)$page,
+        'totalPages'   => (int)$totalPages,
+        'statusCounts' => $statusCounts,
+        'courierCounts'=> $courierCounts,
+    ]);
+    exit;
+}
+
+require_once __DIR__ . '/../includes/header.php';
+
+// Sort link helper
+function sortUrl($col) {
+    global $sortCol, $sortDir;
+    $p = $_GET;
+    $p['sort'] = $col;
+    $p['dir'] = ($sortCol === $col && $sortDir === 'ASC') ? 'desc' : 'asc';
+    return '?' . http_build_query($p);
+}
+function sortIcon($col) {
+    global $sortCol, $sortDir;
+    if ($sortCol !== $col) return '<span class="text-gray-300 ml-0.5">↕</span>';
+    return '<span class="text-blue-500 ml-0.5">' . ($sortDir === 'ASC' ? '↑' : '↓') . '</span>';
+}
+?>
+<style>
+.om-table th,.om-table td{padding:6px 10px;white-space:nowrap;vertical-align:top;border-bottom:1px solid #f0f0f0;font-size:12px}
+.om-table th{background:#f8f9fb;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.3px;font-size:10px;position:sticky;top:0;z-index:2;border-bottom:2px solid #e2e8f0;user-select:none}
+.om-table th a{color:inherit;text-decoration:none}
+.om-table tr:hover{background:#f8fafc}
+.om-table .cust-name{font-weight:600;color:#1e293b;font-size:12px}
+.om-table .cust-phone{font-size:11px;color:#64748b;font-family:monospace}
+.om-table .cust-addr{font-size:10px;color:#94a3b8}
+.om-wrap{overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px;background:#fff}
+.rate-badge{display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px}
+.tag-badge{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:12px;white-space:nowrap}
+.dot-menu{width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;border-radius:4px;cursor:pointer;color:#94a3b8;font-size:14px;line-height:1}
+.dot-menu:hover{background:#f1f5f9;color:#475569}
+.prod-thumb{width:28px;height:28px;border-radius:4px;object-fit:cover;border:1px solid #e5e7eb;flex-shrink:0}
+.status-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:3px}
+</style>
+
+<?php if (isset($_GET['msg'])): ?><div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4 text-sm">✓ <?= $_GET['msg'] === 'updated' ? 'Status updated.' : ($_GET['msg'] === 'bulk_updated' ? 'Bulk update completed.' : 'Action completed.') ?></div><?php endif; ?>
+
+<!-- Summary Cards -->
+<div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-2 mb-3">
+    <div class="bg-white rounded-lg border p-2.5 text-center">
+        <p class="text-xl font-bold text-gray-800"><?= intval($todaySummary['total'] ?? 0) ?></p>
+        <p class="text-[9px] text-gray-400 uppercase tracking-wider">Today</p>
+    </div>
+    <div class="bg-yellow-50 rounded-lg border border-yellow-200 p-2.5 text-center cursor-pointer hover:shadow-sm" onclick="location='?status=processing'">
+        <p class="text-xl font-bold text-yellow-600"><?= $statusCounts['processing'] ?></p>
+        <p class="text-[9px] text-yellow-600 uppercase tracking-wider">Processing</p>
+    </div>
+    <div class="bg-blue-50 rounded-lg border border-blue-200 p-2.5 text-center cursor-pointer hover:shadow-sm" onclick="location='?status=confirmed'">
+        <p class="text-xl font-bold text-blue-600"><?= $statusCounts['confirmed'] ?></p>
+        <p class="text-[9px] text-blue-600 uppercase tracking-wider">Confirmed</p>
+    </div>
+    <?php if (($statusCounts['ready_to_ship'] ?? 0) > 0): ?>
+    <div class="bg-violet-50 rounded-lg border border-violet-200 p-2.5 text-center cursor-pointer hover:shadow-sm" onclick="location='?status=ready_to_ship'">
+        <p class="text-xl font-bold text-violet-600"><?= $statusCounts['ready_to_ship'] ?? 0 ?></p>
+        <p class="text-[9px] text-violet-600 uppercase tracking-wider">RTS</p>
+    </div>
+    <?php endif; ?>
+    <div class="bg-purple-50 rounded-lg border border-purple-200 p-2.5 text-center cursor-pointer hover:shadow-sm" onclick="location='?status=shipped'">
+        <p class="text-xl font-bold text-purple-600"><?= $statusCounts['shipped'] ?></p>
+        <p class="text-[9px] text-purple-600 uppercase tracking-wider">Shipped</p>
+    </div>
+    <div class="bg-green-50 rounded-lg border border-green-200 p-2.5 text-center cursor-pointer hover:shadow-sm" onclick="location='?status=delivered'">
+        <p class="text-xl font-bold text-green-600"><?= $statusCounts['delivered'] ?></p>
+        <p class="text-[9px] text-green-600 uppercase tracking-wider">Delivered</p>
+    </div>
+    <div class="bg-white rounded-lg border p-2.5 text-center">
+        <p class="text-xl font-bold text-gray-800">৳<?= number_format($todaySummary['revenue'] ?? 0) ?></p>
+        <p class="text-[9px] text-gray-400 uppercase tracking-wider">Revenue</p>
+    </div>
+</div>
+
+<!-- Status Tabs -->
+<div class="bg-white rounded-lg border mb-3 overflow-hidden">
+    <div class="overflow-x-auto">
+        <div class="flex items-center min-w-max border-b">
+            <a href="<?= adminUrl('pages/order-management.php') ?>"
+               data-status-tab=""
+               onclick="event.preventDefault();OM.go({status:'',courier:'',page:1})"
+               class="px-4 py-2.5 text-xs font-medium border-b-2 transition om-status-tab <?= !$status ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700' ?>">
+                ALL <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] tab-count-all <?= !$status ? 'bg-blue-100 text-blue-700 font-bold' : 'bg-gray-100 text-gray-500' ?>"><?= number_format($totalOrders) ?></span>
+            </a>
+            <?php 
+            $allTabStatuses = ['processing', 'confirmed', 'ready_to_ship', 'shipped', 'delivered', 'pending_return', 'returned', 'partial_delivered', 'cancelled', 'pending_cancel', 'on_hold', 'no_response', 'good_but_no_response', 'advance_payment', 'lost'];
+            foreach ($allTabStatuses as $s):
+                $tc = $tabConfig[$s] ?? ['icon'=>'','color'=>'gray','label'=>ucwords(str_replace('_',' ',$s))];
+                $cnt = $statusCounts[$s] ?? 0;
+                if ($cnt === 0 && !in_array($s, ['processing','confirmed','ready_to_ship','shipped','delivered','cancelled','returned'])) continue;
+                $isActive = $status === $s;
+            ?>
+            <a href="?status=<?= $s ?>"
+               data-status-tab="<?= $s ?>"
+               onclick="event.preventDefault();OM.go({status:'<?= $s ?>',page:1})"
+               class="px-3 py-2.5 text-xs font-medium whitespace-nowrap border-b-2 transition om-status-tab <?= $isActive ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700' ?>">
+                <?= $tc['label'] ?> <span class="px-1.5 py-0.5 rounded text-[10px] tab-count <?= $isActive ? 'bg-blue-100 text-blue-700 font-bold' : 'bg-gray-100 text-gray-500' ?>"><?= number_format($cnt) ?></span>
+            </a>
+            <?php endforeach; ?>
+        </div>
+    </div>
+</div>
+
+<!-- Courier Sub-Tabs (hidden on processing/all tabs) -->
+<?php if ($status && $status !== 'processing'): ?>
+<div class="bg-white rounded-lg border mb-3 overflow-hidden om-courier-bar">
+    <div class="overflow-x-auto">
+        <div class="flex items-center min-w-max gap-1 px-3 py-2">
+            <?php
+            $courierIcons = [
+                'Pathao'           => ['icon' => 'fas fa-motorcycle', 'color' => 'teal',   'bg' => 'bg-teal-50',   'border' => 'border-teal-500',   'text' => 'text-teal-700'],
+                'Steadfast'        => ['icon' => 'fas fa-truck',       'color' => 'blue',   'bg' => 'bg-blue-50',   'border' => 'border-blue-500',   'text' => 'text-blue-700'],
+                'CarryBee'         => ['icon' => 'fas fa-box',         'color' => 'amber',  'bg' => 'bg-amber-50',  'border' => 'border-amber-500',  'text' => 'text-amber-700'],
+                'Unassigned'       => ['icon' => 'fas fa-question-circle','color'=>'gray',  'bg' => 'bg-gray-100',  'border' => 'border-gray-400',   'text' => 'text-gray-600'],
+            ];
+            foreach ($courierList as $cn):
+                $ci = $courierIcons[$cn];
+                $cnt = $courierCounts[$cn] ?? 0;
+                $courierParam = $cn === 'Personal Delivery' ? 'Personal Delivery' : $cn;
+                $isActiveCourier = ($courierParam === 'Unassigned')
+                    ? in_array($courier, ['Personal Delivery', ''])  && $courier === 'Personal Delivery'
+                    : $courier === $courierParam;
+                $baseParams = array_filter(['status' => $status, 'search' => $search]);
+                $activeParams = array_merge($baseParams, ['courier' => $courierParam]);
+                $clearParams  = $baseParams;
+            ?>
+            <button type="button"
+               data-courier-tab="<?= htmlspecialchars($courierParam) ?>"
+               onclick="OM.go({courier:'<?= addslashes($isActiveCourier ? '' : $courierParam) ?>',page:1})"
+               class="flex items-center gap-2 px-4 py-2 rounded-full border-2 text-sm font-semibold transition-all <?= $isActiveCourier ? $ci['bg'].' '.$ci['border'].' '.$ci['text'] : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:bg-gray-50' ?>">
+                <i class="<?= $ci['icon'] ?> text-xs"></i>
+                <?= $cn ?>
+                <span class="courier-count <?= $isActiveCourier ? 'bg-white/70' : 'bg-gray-100' ?> text-xs font-bold px-2 py-0.5 rounded-full"><?= number_format($cnt) ?></span>
+            </button>
+            <?php endforeach; ?>
+            <?php if ($courier): ?>
+            <button type="button" onclick="OM.go({courier:'',page:1})" class="ml-2 text-xs text-gray-400 hover:text-red-500 flex items-center gap-1 px-2 py-1 rounded border border-dashed border-gray-300 hover:border-red-300">
+                <i class="fas fa-times text-[10px]"></i> Clear
+            </button>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<!-- Search & Toolbar -->
+<div class="bg-white rounded-lg border p-2.5 mb-3 flex flex-wrap items-center gap-2">
+    <form method="GET" class="flex flex-wrap items-center gap-2 flex-1" onsubmit="event.preventDefault();OM.go({search:this.querySelector('[name=search]').value,page:1})">
+        <?php if ($status): ?><input type="hidden" name="status" value="<?= e($status) ?>"><?php endif; ?>
+        <div class="relative flex-1 min-w-[180px]">
+            <svg class="absolute left-2.5 top-2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <input type="text" name="search" value="<?= e($search) ?>" placeholder="Search order, name, phone..." class="w-full pl-8 pr-3 py-1.5 border rounded text-xs focus:ring-1 focus:ring-blue-500 focus:border-blue-500">
+        </div>
+        <button type="button" onclick="document.getElementById('advFilters').classList.toggle('hidden')" class="border text-gray-500 px-2.5 py-1.5 rounded text-xs hover:bg-gray-50">Filters</button>
+    </form>
+    <a href="<?= adminUrl('pages/order-add.php') ?>" class="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-medium hover:bg-blue-700">+ New Order</a>
+    <button type="button" onclick="fcCheck('')" class="border border-blue-200 text-blue-600 px-2.5 py-1.5 rounded text-xs hover:bg-blue-50 font-medium">🔍 Check</button>
+    <div class="relative" id="actionsWrap">
+        <button type="button" onclick="document.getElementById('actionsMenu').classList.toggle('hidden')" class="border text-gray-500 px-2.5 py-1.5 rounded text-xs hover:bg-gray-50">⋮ Actions</button>
+        <div id="actionsMenu" class="hidden absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-xl border z-50 py-1 max-h-[70vh] overflow-y-auto">
+            <div class="px-3 py-1.5 flex items-center justify-between"><span id="selC" class="text-[10px] text-gray-400">0 selected</span><button type="button" onclick="document.getElementById('selectAll').checked=true;toggleAll(document.getElementById('selectAll'))" class="text-[10px] text-blue-600">Select All</button></div><hr class="my-0.5">
+            <p class="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase">Print</p>
+            <button type="button" onclick="openPrintPopup()" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 font-medium">🖨 Print Selected...</button>
+            <hr class="my-0.5"><p class="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase">Status</p>
+            <button type="button" onclick="bStatus('confirmed')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">✅ Confirm</button>
+            <button type="button" onclick="bStatus('ready_to_ship')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">📦 Ready to Ship</button>
+            <button type="button" onclick="bStatus('shipped')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">🚚 Ship</button>
+            <button type="button" onclick="bStatus('delivered')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">📦 Deliver</button>
+            <button type="button" onclick="bStatus('returned')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-orange-600">↩ Return</button>
+            <button type="button" onclick="bStatus('cancelled')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-red-600">✗ Cancel</button>
+            <hr class="my-0.5"><p class="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase">Courier</p>
+            <button type="button" onclick="bCourier('Pathao')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50"><span class="inline-block w-3.5 h-3.5 bg-red-500 text-white rounded text-[9px] text-center mr-1 font-bold leading-[14px]">P</span>Pathao</button>
+            <button type="button" onclick="bCourier('Steadfast')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50"><span class="inline-block w-3.5 h-3.5 bg-blue-500 text-white rounded text-[9px] text-center mr-1 font-bold leading-[14px]">S</span>Steadfast</button>
+            <button type="button" onclick="bCourier('RedX')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50"><span class="inline-block w-3.5 h-3.5 bg-orange-500 text-white rounded text-[9px] text-center mr-1 font-bold leading-[14px]">R</span>RedX</button>
+            <hr class="my-0.5">
+            <button type="button" onclick="syncCourier()" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-indigo-600">🔄 Sync Courier</button>
+            <a href="<?= SITE_URL ?>/api/export.php?type=orders<?= $status?'&status='.$status:'' ?>" class="block px-3 py-1.5 text-xs hover:bg-gray-50">📊 Export Excel</a>
+        </div>
+    </div>
+</div>
+
+<!-- Advanced Filters (hidden) -->
+<div id="advFilters" class="<?= ($dateFrom||$dateTo||$channel||$assignedTo||$preorderFilter)?'':'hidden' ?> bg-white rounded-lg border p-3 mb-3">
+    <form method="GET" class="flex flex-wrap items-center gap-2" id="advFiltersForm" onsubmit="event.preventDefault();OM.goAdv(this)">
+        <?php if ($status): ?><input type="hidden" name="status" value="<?= e($status) ?>"><?php endif; ?>
+        <input type="hidden" name="date_from" value="<?= e($dateFrom) ?>">
+        <input type="hidden" name="date_to" value="<?= e($dateTo) ?>">
+        <div data-kb-datepicker data-from-param="date_from" data-to-param="date_to"></div>
+        <select name="channel" class="px-2.5 py-1.5 border rounded text-xs" onchange="OM.goAdv(document.getElementById('advFiltersForm'))"><option value="">All Channels</option><?php foreach(['website','facebook','phone','whatsapp','instagram','landing_page'] as $ch): ?><option value="<?= $ch ?>" <?= $channel===$ch?'selected':'' ?>><?= ucfirst(str_replace('_',' ',$ch)) ?></option><?php endforeach; ?></select>
+        <select name="assigned" class="px-2.5 py-1.5 border rounded text-xs" onchange="OM.goAdv(document.getElementById('advFiltersForm'))"><option value="">All Staff</option><?php foreach($adminUsers as $au): ?><option value="<?= $au['id'] ?>" <?= $assignedTo==$au['id']?'selected':'' ?>><?= e($au['full_name']) ?></option><?php endforeach; ?></select>
+        <select name="preorder" class="px-2.5 py-1.5 border rounded text-xs" onchange="OM.goAdv(document.getElementById('advFiltersForm'))"><option value="">All Orders</option><option value="1" <?= $preorderFilter==='1'?'selected':'' ?>>⏰ Preorders Only</option><option value="0" <?= $preorderFilter==='0'?'selected':'' ?>>Regular Only</option></select>
+        <button type="button" onclick="OM.go({status:'',search:'',courier:'',date_from:'',date_to:'',channel:'',assigned:'',preorder:'',page:1})" class="bg-gray-100 text-gray-500 px-3 py-1.5 rounded text-xs">✕ Reset</button>
+    </form>
+</div>
+
+<!-- Courier Upload Progress -->
+<div id="cProg" class="hidden mb-3 bg-white rounded-lg border p-3">
+    <div class="flex items-center justify-between mb-1.5"><span class="text-xs font-medium" id="cProgL">Uploading...</span><span id="cProgC" class="text-[10px] text-gray-400"></span></div>
+    <div class="w-full bg-gray-200 rounded-full h-1.5"><div id="cProgB" class="bg-blue-600 h-1.5 rounded-full transition-all" style="width:0%"></div></div>
+    <div id="cErr" class="mt-1.5 text-[10px] text-red-600 hidden"></div>
+</div>
+
+<!-- Orders Table -->
+<form method="POST" id="bulkForm"><input type="hidden" name="action" value="bulk_status">
+<div class="om-wrap relative" id="ordersTableWrap">
+    <div id="ordersLoading" class="hidden absolute inset-0 bg-white/70 z-10 flex items-center justify-center">
+        <div class="flex items-center gap-2 bg-white shadow-lg rounded-xl px-5 py-3 border">
+            <svg class="animate-spin w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+            <span class="text-sm font-medium text-gray-600">Loading orders...</span>
+        </div>
+    </div>
+    <table class="om-table w-full" id="ordersTable">
+        <thead>
+            <tr>
+                <th style="width:30px"><input type="checkbox" id="selectAll" onchange="toggleAll(this)"></th>
+                <th><a href="#" onclick="event.preventDefault();OM.goSort('created_at')" style="cursor:pointer">Date <?= sortIcon('created_at') ?></a></th>
+                <th><a href="#" onclick="event.preventDefault();OM.goSort('order_number')" style="cursor:pointer">Invoice <?= sortIcon('order_number') ?></a></th>
+                <th>Customer</th>
+                <th>Note</th>
+                <th>Products</th>
+                <th>Tags</th>
+                <th><a href="#" onclick="event.preventDefault();OM.goSort('total')" style="cursor:pointer">Total <?= sortIcon('total') ?></a></th>
+                <th>Upload</th>
+                <th>User</th>
+                <th><a href="#" onclick="event.preventDefault();OM.goSort('channel')" style="cursor:pointer">Source <?= sortIcon('channel') ?></a></th>
+                <th>Shipping Note</th>
+                <th style="width:40px">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+<?php foreach ($orders as $order):
+    $sr=$successRates[$order['customer_phone']]??['total'=>0,'delivered'=>0,'rate'=>0,'cancelled'=>0,'total_spent'=>0];
+    $prevO=$previousOrders[$order['customer_phone']]??[];
+    $oItems=$orderItems[$order['id']]??[]; $tags=$orderTags[$order['id']]??[];
+    $rC=$sr['rate']>=80?'text-green-600':($sr['rate']>=50?'text-yellow-600':'text-red-500');
+    $ph=preg_replace('/[^0-9]/','',$order['customer_phone']);
+    $oStatus = $order['order_status'] === 'pending' ? 'processing' : $order['order_status'];
+    $nxt = $nextAction[$oStatus] ?? null;
+    $creditUsed = floatval($order['store_credit_used'] ?? 0);
+    
+    // Status color mapping
+    $statusColors = [
+        'processing'=>'bg-yellow-100 text-yellow-700','confirmed'=>'bg-blue-100 text-blue-700',
+        'ready_to_ship'=>'bg-violet-100 text-violet-700','shipped'=>'bg-purple-100 text-purple-700',
+        'delivered'=>'bg-green-100 text-green-700','cancelled'=>'bg-red-100 text-red-700',
+        'returned'=>'bg-orange-100 text-orange-700','pending_return'=>'bg-amber-100 text-amber-700',
+        'pending_cancel'=>'bg-pink-100 text-pink-700','partial_delivered'=>'bg-cyan-100 text-cyan-700',
+        'on_hold'=>'bg-gray-100 text-gray-700','no_response'=>'bg-rose-100 text-rose-700',
+        'good_but_no_response'=>'bg-teal-100 text-teal-700','advance_payment'=>'bg-emerald-100 text-emerald-700',
+    ];
+    $statusDots = [
+        'processing'=>'#eab308','confirmed'=>'#3b82f6','ready_to_ship'=>'#8b5cf6',
+        'shipped'=>'#9333ea','delivered'=>'#22c55e','cancelled'=>'#ef4444',
+        'returned'=>'#f97316','pending_return'=>'#f59e0b','on_hold'=>'#6b7280',
+    ];
+    $sDot = $statusDots[$oStatus] ?? '#94a3b8';
+    $sBadge = $statusColors[$oStatus] ?? 'bg-gray-100 text-gray-600';
+    
+    // Courier tracking
+    $__cn = strtolower($order['courier_name'] ?? ($order['shipping_method'] ?? ''));
+    $__cid = $order['courier_consignment_id'] ?? ($order['pathao_consignment_id'] ?? '');
+    $__tid = $order['courier_tracking_id'] ?? $__cid;
+    $__link = '';
+    if ($__cid) {
+        if (strpos($__cn, 'steadfast') !== false) $__link = 'https://steadfast.com.bd/user/consignment/' . urlencode($__cid);
+        elseif (strpos($__cn, 'pathao') !== false) $__link = 'https://merchant.pathao.com/courier/orders/' . urlencode($__cid);
+        elseif (strpos($__cn, 'redx') !== false) $__link = 'https://redx.com.bd/track-parcel/?trackingId=' . urlencode($__tid);
+    }
+    
+    // Source/channel display
+    $channelMap = ['website'=>'WEB','facebook'=>'FACEBOOK','phone'=>'PHONE','whatsapp'=>'WHATSAPP','instagram'=>'INSTAGRAM','landing_page'=>'LP'];
+    $srcLabel = $channelMap[$order['channel'] ?? ''] ?? strtoupper($order['channel'] ?? '—');
+?>
+<tr data-order-id="<?= $order['id'] ?>">
+    <!-- Checkbox -->
+    <td><input type="checkbox" name="order_ids[]" value="<?= $order['id'] ?>" class="order-check" onchange="updateBulk()"></td>
+    
+    <!-- Date -->
+    <td>
+        <div style="font-size:11px;font-weight:500;color:#334155"><?= date('d/m/Y,', strtotime($order['created_at'])) ?></div>
+        <div style="font-size:10px;color:#64748b"><?= date('h:i a', strtotime($order['created_at'])) ?></div>
+        <div style="font-size:9px;color:#94a3b8">Updated <?= timeAgo($order['updated_at']?:$order['created_at']) ?></div>
+    </td>
+    
+    <!-- Invoice -->
+    <td>
+        <div style="display:flex;align-items:center;gap:4px">
+            <a href="<?= adminUrl('pages/order-view.php?id='.$order['id']) ?>" style="font-weight:700;color:#0f172a;font-size:12px;text-decoration:none" onmouseover="this.style.color='#2563eb'" onmouseout="this.style.color='#0f172a'"><?= e($order['order_number']) ?></a>
+            <span class="dot-menu" onclick="toggleRowMenu(this,<?= $order['id'] ?>)">⋮</span>
+        </div>
+        <?php if (!empty($order['is_preorder'])): ?>
+        <span style="font-size:8px;background:#f3e8ff;color:#7c3aed;padding:1px 5px;border-radius:3px;font-weight:600;display:inline-block;margin-top:1px">⏰ PREORDER<?php if(!empty($order['preorder_date'])): ?> · <?= date('d M', strtotime($order['preorder_date'])) ?><?php endif; ?></span>
+        <?php endif; ?>
+    </td>
+    
+    <!-- Customer -->
+    <td style="min-width:160px">
+        <div style="display:flex;align-items:center;gap:5px">
+            <span style="color:#94a3b8;font-size:13px">👤</span>
+            <span class="cust-name"><?= e($order['customer_name']) ?></span>
+        </div>
+        <div style="margin-top:1px;display:flex;align-items:center;gap:3px">
+            <span class="cust-phone"><?= e($order['customer_phone']) ?></span>
+            <span class="rate-badge" style="background:<?= $sr['rate']>=70?'#dcfce7':($sr['rate']>=40?'#fef9c3':'#fee2e2') ?>;color:<?= $sr['rate']>=70?'#166534':($sr['rate']>=40?'#854d0e':'#991b1b') ?>"><?= $sr['rate'] ?>%</span>
+        </div>
+        <div class="cust-addr">📍 <?= e(mb_strimwidth($order['customer_address'],0,40,'...')) ?></div>
+    </td>
+    
+    <!-- Notes -->
+    <td style="max-width:180px;white-space:normal">
+        <?php 
+        $hasShipNote = !empty($order['notes']);
+        $hasOrderNote = !empty($order['order_note']);
+        $hasPanelNote = !empty($order['panel_notes']) || !empty($order['admin_notes']);
+        if ($hasShipNote || $hasOrderNote || $hasPanelNote): ?>
+            <?php if($hasShipNote):?><div style="font-size:10px;color:#ea580c;line-height:1.3;margin-bottom:2px" title="Shipping Note: Sent to courier"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#f97316;margin-right:3px;vertical-align:middle"></span><?= e(mb_strimwidth($order['notes'],0,60,'...')) ?></div><?php endif;?>
+            <?php if($hasOrderNote):?><div style="font-size:10px;color:#2563eb;line-height:1.3;margin-bottom:2px" title="Order Note: Printed on invoice"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#3b82f6;margin-right:3px;vertical-align:middle"></span><?= e(mb_strimwidth($order['order_note'],0,60,'...')) ?></div><?php endif;?>
+            <?php if($hasPanelNote):?><div style="font-size:10px;color:#16a34a;line-height:1.3" title="Panel Note: Internal only"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#22c55e;margin-right:3px;vertical-align:middle"></span><?= e(mb_strimwidth($order['panel_notes'] ?? $order['admin_notes'] ?? '',0,60,'...')) ?></div><?php endif;?>
+        <?php else: ?>
+            <span style="color:#d1d5db">—</span>
+        <?php endif; ?>
+    </td>
+    
+    <!-- Products -->
+    <td style="min-width:160px">
+        <div style="display:inline-flex;align-items:center;gap:3px;margin-bottom:3px">
+            <span class="status-dot" style="background:<?= $sDot ?>"></span>
+            <span class="tag-badge" style="background:<?= $sDot ?>22;color:<?= $sDot ?>;font-size:9px;padding:1px 6px"><?= strtoupper(str_replace('_',' ',$oStatus)) ?></span>
+        </div>
+        <?php foreach(array_slice($oItems,0,2) as $item): ?>
+        <div style="display:flex;align-items:center;gap:5px;margin-top:2px">
+            <img src="<?= !empty($item['featured_image'])?imgSrc('products',$item['featured_image']):'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22><rect fill=%22%23f1f5f9%22 width=%2240%22 height=%2240%22/><text y=%22.75em%22 x=%22.15em%22 font-size=%2224%22>📦</text></svg>' ?>" class="prod-thumb" loading="lazy">
+            <div>
+                <div style="font-size:11px;color:#334155;font-weight:500;max-width:120px;overflow:hidden;text-overflow:ellipsis"><?= e($item['product_name']) ?></div>
+                <div style="font-size:9px;color:#94a3b8"><?php if(!empty($item['variant_name'])): ?><?= e($item['variant_name']) ?> · <?php endif; ?>Qty: <?= intval($item['quantity']) ?></div>
+            </div>
+        </div>
+        <?php endforeach; ?>
+        <?php if(count($oItems)>2): ?><div style="font-size:9px;color:#94a3b8;margin-top:2px">+<?= count($oItems)-2 ?> more</div><?php endif; ?>
+    </td>
+    
+    <!-- Tags -->
+    <td>
+        <?php
+        // Show order tags as colored badges
+        $tagColors = ['REPEAT'=>'bg-orange-100 text-orange-700','URGENT'=>'bg-red-100 text-red-700','VIP'=>'bg-purple-100 text-purple-700','GIFT'=>'bg-pink-100 text-pink-700','COD VERIFIED'=>'bg-green-100 text-green-700','ADVANCE PAID'=>'bg-emerald-100 text-emerald-700','FOLLOW UP'=>'bg-blue-100 text-blue-700'];
+        if ($sr['total'] > 1): ?>
+            <span class="tag-badge" style="background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;margin-bottom:2px">Repeat Customer</span><br>
+        <?php endif;
+        foreach(array_slice($tags,0,3) as $tag):
+            $tc2 = $tagColors[$tag['tag_name']] ?? 'bg-gray-100 text-gray-600';
+        ?>
+            <span class="tag-badge <?= $tc2 ?>" style="margin-bottom:2px"><?= e($tag['tag_name']) ?></span><br>
+        <?php endforeach; ?>
+        <button onclick="addTag(<?= $order['id'] ?>)" style="font-size:9px;color:#93c5fd;border:none;background:none;cursor:pointer;padding:0">+tag</button>
+    </td>
+    
+    <!-- Total -->
+    <td style="text-align:right">
+        <div style="font-weight:700;color:#0f172a;font-size:12px"><?= number_format($order['total'],2) ?></div>
+        <?php if ($creditUsed > 0): ?><div style="font-size:9px;color:#ca8a04">-৳<?= number_format($creditUsed) ?></div><?php endif; ?>
+    </td>
+    
+    <!-- Upload (Courier Tracking) -->
+    <td>
+        <?php if($__link && $__cid): ?>
+            <a href="<?= $__link ?>" target="_blank" style="font-size:11px;color:#2563eb;text-decoration:none;font-family:monospace;font-weight:500" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'"><?= e($__tid) ?></a>
+            <?php if(!empty($order['courier_status'])):
+                $__cs = $order['courier_status'];
+                $__csc = '#94a3b8';
+                if (in_array($__cs, ['delivered','delivered_approval_pending'])) $__csc = '#22c55e';
+                elseif (in_array($__cs, ['cancelled','cancelled_approval_pending'])) $__csc = '#ef4444';
+                elseif ($__cs === 'hold') $__csc = '#eab308';
+            ?>
+                <div style="font-size:9px;color:<?= $__csc ?>;margin-top:1px"><?= e($__cs) ?></div>
+            <?php endif; ?>
+        <?php elseif($__cid): ?>
+            <span style="font-size:11px;color:#64748b;font-family:monospace"><?= e($__cid) ?></span>
+        <?php else: ?>
+            <span style="color:#d1d5db">—</span>
+        <?php endif; ?>
+    </td>
+    
+    <!-- User -->
+    <td>
+        <span style="font-size:11px;color:#475569"><?= e($order['assigned_name'] ?? '—') ?></span>
+    </td>
+    
+    <!-- Source -->
+    <td>
+        <span style="font-size:10px;font-weight:600;color:#64748b"><?= $srcLabel ?></span>
+    </td>
+    
+    <!-- Courier / Shipping -->
+    <td style="max-width:160px;white-space:normal">
+        <?php if (!empty($order['courier_name'])): ?>
+            <div style="font-size:10px;font-weight:600;color:#475569"><?= e($order['courier_name']) ?></div>
+        <?php endif; ?>
+        <?php if (!empty($order['notes'])): ?>
+            <div style="font-size:9px;color:#ea580c;line-height:1.3;margin-top:1px"><?= e(mb_strimwidth($order['notes'],0,70,'...')) ?></div>
+        <?php elseif (empty($order['courier_name'])): ?>
+            <span style="color:#d1d5db">—</span>
+        <?php endif; ?>
+    </td>
+    
+    <!-- Actions -->
+    <td style="text-align:center;white-space:nowrap">
+        <a href="<?= adminUrl('pages/order-view.php?id='.$order['id']) ?>" 
+           class="order-open-link text-xs font-semibold text-green-600 hover:text-green-700"
+           data-oid="<?= $order['id'] ?>">Open <span style="font-size:10px">↗</span></a>
+        <span class="lock-indicator hidden text-[10px] text-pink-600 font-medium ml-0.5" data-lock-oid="<?= $order['id'] ?>"></span>
+    </td>
+</tr>
+<?php endforeach; ?>
+<?php if(empty($orders)): ?>
+<tr><td colspan="13" style="text-align:center;padding:40px 20px;color:#94a3b8"><div style="font-size:28px;margin-bottom:8px">📦</div>No orders found</td></tr>
+<?php endif; ?>
+        </tbody>
+    </table>
+</div>
+
+<!-- Pagination -->
+<div id="ordersPagination">
+<?php if ($totalPages > 1): ?>
+<div class="flex items-center justify-between mt-3 px-1">
+    <p class="text-xs text-gray-500">Page <strong><?= $page ?></strong> of <?= $totalPages ?> · <?= number_format($total) ?> orders</p>
+    <div class="flex gap-1">
+        <?php if($page>1): ?><button class="px-2.5 py-1 text-xs rounded bg-white border hover:bg-gray-50" onclick="OM.go({page:<?= $page-1 ?>})">←</button><?php endif; ?>
+        <?php for($i=max(1,$page-2);$i<=min($totalPages,$page+2);$i++): ?><button class="px-2.5 py-1 text-xs rounded <?= $i===$page?'bg-blue-600 text-white border-blue-600':'bg-white border hover:bg-gray-50' ?>" onclick="OM.go({page:<?= $i ?>})"><?= $i ?></button><?php endfor; ?>
+        <?php if($page<$totalPages): ?><button class="px-2.5 py-1 text-xs rounded bg-white border hover:bg-gray-50" onclick="OM.go({page:<?= $page+1 ?>})">→</button><?php endif; ?>
+    </div>
+</div>
+<?php endif; ?>
+</div>
+</form>
+
+<!-- Row Action Menu (reusable popup) -->
+<div id="rowMenu" class="hidden fixed z-50 w-44 bg-white rounded-lg shadow-xl border py-1" style="font-size:12px">
+    <a id="rmOpen" href="#" class="block px-3 py-1.5 hover:bg-gray-50">📋 Open Order</a>
+    <button id="rmPrint" type="button" class="w-full text-left block px-3 py-1.5 hover:bg-gray-50">🖨 Print</button>
+    <hr class="my-0.5">
+    <button id="rmConfirm" class="w-full text-left px-3 py-1.5 hover:bg-gray-50 text-blue-600" type="button">✅ Confirm</button>
+    <button id="rmShip" class="w-full text-left px-3 py-1.5 hover:bg-gray-50 text-purple-600" type="button">🚚 Ship</button>
+    <button id="rmDeliver" class="w-full text-left px-3 py-1.5 hover:bg-gray-50 text-green-600" type="button">📦 Deliver</button>
+    <hr class="my-0.5">
+    <button id="rmCancel" class="w-full text-left px-3 py-1.5 hover:bg-gray-50 text-red-600" type="button">✗ Cancel</button>
+</div>
+
+<!-- Tag Modal -->
+<div id="tagModal" class="fixed inset-0 z-50 hidden bg-black/40 flex items-center justify-center">
+    <div class="bg-white rounded-lg p-4 w-72 shadow-2xl">
+        <h3 class="font-bold text-gray-800 text-sm mb-2">Add Tag</h3><input type="hidden" id="tagOId">
+        <div class="flex flex-wrap gap-1.5 mb-2"><?php foreach(['REPEAT','URGENT','VIP','GIFT','FOLLOW UP','COD VERIFIED','ADVANCE PAID'] as $p): ?><button onclick="subTag('<?= $p ?>')" class="text-[10px] bg-gray-100 hover:bg-blue-100 px-2 py-1 rounded"><?= $p ?></button><?php endforeach; ?></div>
+        <div class="flex gap-1.5"><input type="text" id="tagIn" placeholder="Custom..." class="flex-1 px-2.5 py-1.5 border rounded text-xs" onkeydown="if(event.key==='Enter')subTag(this.value)"><button onclick="subTag(document.getElementById('tagIn').value)" class="bg-blue-600 text-white px-3 py-1.5 rounded text-xs">Add</button></div>
+        <button onclick="document.getElementById('tagModal').classList.add('hidden')" class="mt-1.5 text-[10px] text-gray-400 w-full text-center">Cancel</button>
+    </div>
+</div>
+
+<script>
+
+// ─── OM: AJAX Order Management Controller ─────────────────────────────────
+const OM = {
+  // Current filter state (populated from PHP on page load)
+  state: {
+    status:   '<?= e($status) ?>',
+    search:   '<?= e($search) ?>',
+    courier:  '<?= e($courier) ?>',
+    sort:     '<?= e($sortCol) ?>',
+    dir:      '<?= e($sortDir) ?>',
+    page:     <?= $page ?>,
+    date_from:'<?= e($dateFrom) ?>',
+    date_to:  '<?= e($dateTo) ?>',
+    channel:  '<?= e($channel) ?>',
+    assigned: '<?= e($assignedTo) ?>',
+    preorder: '<?= e($preorderFilter) ?>',
+  },
+  _loading: false,
+
+  // Navigate: merge params with current state, then fetch
+  go(params) {
+    const next = {...OM.state, ...params};
+    // If changing tab or courier (not page), reset to page 1
+    if ('status' in params || 'courier' in params) next.page = params.page || 1;
+    OM.state = next;
+    const qs = new URLSearchParams(Object.fromEntries(Object.entries(next).filter(([,v]) => v !== '' && v !== null)));
+    history.pushState(next, '', '?' + qs.toString());
+    OM._fetch(next);
+  },
+
+  // Sort toggle: same col flips dir, new col = desc
+  goSort(col) {
+    const dir = OM.state.sort === col ? (OM.state.dir === 'ASC' ? 'desc' : 'asc') : 'desc';
+    OM.go({sort: col, dir, page: 1});
+  },
+
+  // Advanced filters form submit
+  goAdv(form) {
+    const data = new FormData(form);
+    const params = {};
+    for (const [k, v] of data.entries()) {
+      if (!['action','_frag'].includes(k)) params[k] = v;
+    }
+    params.page = 1;
+    // Preserve status & courier from current state
+    params.status  = params.status  || OM.state.status  || '';
+    params.courier = params.courier || OM.state.courier  || '';
+    OM.go(params);
+  },
+
+  // Just re-fetch current state (after bulk actions etc)
+  refresh() { OM._fetch(OM.state); },
+
+  async _fetch(params) {
+    if (OM._loading) return;
+    OM._loading = true;
+    const loadEl = document.getElementById('ordersLoading');
+    if (loadEl) loadEl.classList.remove('hidden');
+
+    const qs = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([,v]) => v !== '' && v !== null)));
+    qs.set('_frag', '1');
+
+    try {
+      const r = await fetch('?' + qs.toString(), {headers: {'X-Requested-With': 'XMLHttpRequest'}});
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const data = await r.json();
+
+      // Swap rows
+      const tbody = document.querySelector('#ordersTable tbody');
+      if (tbody) tbody.innerHTML = data.rows;
+
+      // Swap pagination
+      const pag = document.getElementById('ordersPagination');
+      if (pag) pag.innerHTML = data.pagination;
+
+      // Update status tab counts + active states
+      OM._updateStatusTabs(data.statusCounts, params.status || '');
+
+      // Update courier counts + active states
+      OM._updateCourierTabs(data.courierCounts, params.courier || '');
+
+      // Show/hide courier sub-tab bar
+      const courierBar = document.querySelector('.om-courier-bar');
+      if (courierBar) {
+        courierBar.classList.toggle('hidden', !params.status || params.status === 'processing');
+      }
+
+      // Re-init polling for new rows
+      pollOrderLocks();
+
+    } catch(e) {
+      console.error('[OM] fetch error:', e);
+    } finally {
+      OM._loading = false;
+      if (loadEl) loadEl.classList.add('hidden');
+    }
+  },
+
+  _updateStatusTabs(counts, activeStatus) {
+    document.querySelectorAll('[data-status-tab]').forEach(el => {
+      const s = el.dataset.statusTab;
+      const isActive = s === activeStatus;
+      // Toggle active classes
+      el.classList.toggle('border-blue-600', isActive);
+      el.classList.toggle('text-blue-600', isActive);
+      el.classList.toggle('border-transparent', !isActive);
+      el.classList.toggle('text-gray-500', !isActive);
+      // Update count
+      const countEl = el.querySelector('.tab-count');
+      if (countEl && s && counts[s] !== undefined) {
+        countEl.textContent = Number(counts[s]).toLocaleString();
+        const activeClass = 'bg-blue-100 text-blue-700 font-bold';
+        const inactiveClass = 'bg-gray-100 text-gray-500';
+        countEl.className = 'px-1.5 py-0.5 rounded text-[10px] tab-count ' + (isActive ? activeClass : inactiveClass);
+      }
+    });
+  },
+
+  _updateCourierTabs(counts, activeCourier) {
+    document.querySelectorAll('[data-courier-tab]').forEach(el => {
+      const c = el.dataset.courierTab;
+      const isActive = c === activeCourier;
+      const countEl = el.querySelector('.courier-count');
+      if (countEl && counts[c] !== undefined) {
+        countEl.textContent = Number(counts[c]).toLocaleString();
+      }
+      // Re-apply active/inactive styling via data attr for PHP-rendered classes
+      // We toggle a data-active attr and let CSS handle it via attribute selector
+      el.dataset.active = isActive ? '1' : '0';
+    });
+  }
+};
+
+// Handle browser back/forward
+window.addEventListener('popstate', e => {
+  if (e.state) { OM.state = e.state; OM._fetch(e.state); }
+});
+
+// Set initial pushState so back button works from first load
+history.replaceState(OM.state, '', location.href);
+
+const defC='<?= e($defaultCourier) ?>';
+function toggleAll(el){document.querySelectorAll('.order-check').forEach(c=>c.checked=el.checked);updateBulk()}
+function updateBulk(){const n=document.querySelectorAll('.order-check:checked').length;document.getElementById('selC').textContent=n+' selected'}
+function getIds(){return Array.from(document.querySelectorAll('.order-check:checked')).map(c=>c.value)}
+
+function bPrint(t){const ids=getIds();if(!ids.length){alert('Select orders');return}openPrintPopup(ids,t)}
+function openPrintPopup(forceIds,defaultTpl){
+    const ids=forceIds||getIds();
+    if(!ids.length){alert('Select orders first');return}
+    document.getElementById('actionsMenu')?.classList.add('hidden');
+    document.getElementById('rowMenu')?.classList.add('hidden');
+    const m=document.getElementById('printModal');
+    m.classList.remove('hidden');
+    document.getElementById('printCount').textContent=ids.length;
+    document.getElementById('printLoading').style.display='flex';
+    m._ids=ids;
+    // Load default template
+    const tpl=defaultTpl||document.getElementById('printTplSelect').value;
+    document.getElementById('printTplSelect').value=tpl;
+    loadPrintPreview(ids,tpl);
+}
+function closePrintModal(){document.getElementById('printModal').classList.add('hidden');document.getElementById('printIframe').src='about:blank'}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!document.getElementById('printModal').classList.contains('hidden'))closePrintModal()});
+function loadPrintPreview(ids,tpl){
+    const iframe=document.getElementById('printIframe');
+    const layout=document.getElementById('printLayoutSelect')?.value||'a4_1';
+    iframe.src='<?= adminUrl('pages/order-print.php') ?>?ids='+ids.join(',')+'&template='+tpl+'&layout='+layout;
+}
+function changePrintTemplate(){
+    document.getElementById('printLoading').style.display='flex';
+    const tpl=document.getElementById('printTplSelect').value;
+    const ids=document.getElementById('printModal')._ids||[];
+    loadPrintPreview(ids,tpl);
+}
+function doPrint(){
+    const iframe=document.getElementById('printIframe');
+    iframe.contentWindow.print();
+}
+function openInNewTab(){
+    const tpl=document.getElementById('printTplSelect').value;
+    const ids=document.getElementById('printModal')._ids||[];
+    const layout=document.getElementById('printLayoutSelect')?.value||'a4_1';
+    window.open('<?= adminUrl('pages/order-print.php') ?>?ids='+ids.join(',')+'&template='+tpl+'&layout='+layout,'_blank');
+}
+function bStatus(s){
+  const ids=getIds();
+  if(!ids.length){alert('Select orders');return}
+  if(!confirm('Change '+ids.length+' orders to "'+s+'"?'))return;
+  const fd=new FormData();
+  fd.append('action','bulk_status');fd.append('bulk_status',s);
+  ids.forEach(i=>fd.append('order_ids[]',i));
+  const p=document.getElementById('cProg');p.classList.remove('hidden');
+  document.getElementById('cProgL').textContent='Updating '+ids.length+' orders...';
+  document.getElementById('cProgB').style.width='60%';
+  fetch(location.pathname,{method:'POST',body:fd})
+    .then(()=>{document.getElementById('cProgB').style.width='100%';document.getElementById('cProgL').textContent='✓ Updated';setTimeout(()=>{p.classList.add('hidden');OM.refresh();},1200)})
+    .catch(e=>{document.getElementById('cProgL').textContent='Error: '+e.message});
+}
+function bCourier(c){const ids=getIds();if(!ids.length){alert('Select orders');return}if(!confirm('Upload '+ids.length+' to '+c+'?'))return;document.getElementById('actionsMenu').classList.add('hidden');doCourier(ids,c)}
+
+function doCourier(ids,c){
+    const p=document.getElementById('cProg');p.classList.remove('hidden');
+    document.getElementById('cProgL').textContent='Uploading '+ids.length+' to '+c+'...';
+    document.getElementById('cProgB').style.width='30%';
+    const fd=new FormData();fd.append('action','bulk_courier');fd.append('courier_name',c);ids.forEach(i=>fd.append('order_ids[]',i));
+    fetch(location.pathname,{method:'POST',body:fd}).then(r=>r.text()).then(txt=>{
+        document.getElementById('cProgB').style.width='100%';
+        try{const d=JSON.parse(txt);document.getElementById('cProgL').textContent='✓ '+d.success+' uploaded, '+d.failed+' failed';
+            if(d.errors?.length){const e=document.getElementById('cErr');e.classList.remove('hidden');e.innerHTML=d.errors.join('<br>')}
+            setTimeout(()=>OM.refresh(),2000);
+        }catch(e){document.getElementById('cProgL').textContent='Error';document.getElementById('cErr').classList.remove('hidden');document.getElementById('cErr').textContent=txt.substring(0,200)}
+    }).catch(e=>{document.getElementById('cProgL').textContent='Error: '+e.message});
+}
+
+function addTag(id){document.getElementById('tagOId').value=id;document.getElementById('tagIn').value='';document.getElementById('tagModal').classList.remove('hidden');document.getElementById('tagIn').focus()}
+function subTag(t){t=t.trim();if(!t)return;const id=document.getElementById('tagOId').value;fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'action=add_tag&order_id='+id+'&tag='+encodeURIComponent(t)}).then(()=>{document.getElementById('tagModal').classList.add('hidden');OM.refresh()})}
+
+// Row context menu
+function toggleRowMenu(el, orderId) {
+    const rm = document.getElementById('rowMenu');
+    if (rm._open === orderId) { rm.classList.add('hidden'); rm._open = null; return; }
+    const r = el.getBoundingClientRect();
+    rm.style.top = (r.bottom + window.scrollY + 2) + 'px';
+    rm.style.left = Math.min(r.left, window.innerWidth - 190) + 'px';
+    rm.classList.remove('hidden');
+    rm._open = orderId;
+    document.getElementById('rmOpen').href = '<?= adminUrl('pages/order-view.php?id=') ?>' + orderId;
+    document.getElementById('rmPrint').onclick = () => { rm.classList.add('hidden'); openPrintPopup([orderId]); };
+    ['Confirm','Ship','Deliver','Cancel'].forEach(a => {
+        const btn = document.getElementById('rm'+a);
+        btn.onclick = () => { if(confirm(a+' this order?')){
+            const fd=new FormData();fd.append('action','update_status');fd.append('order_id',orderId);fd.append('status',{Confirm:'confirmed',Ship:'shipped',Deliver:'delivered',Cancel:'cancelled'}[a]);
+            fetch(location.pathname,{method:'POST',body:fd}).then(()=>OM.refresh());
+        }};
+    });
+}
+document.addEventListener('click', e => {
+    const rm = document.getElementById('rowMenu');
+    if (rm && !rm.contains(e.target) && !e.target.classList.contains('dot-menu')) { rm.classList.add('hidden'); rm._open = null; }
+    const w = document.getElementById('actionsWrap');
+    if (w && !w.contains(e.target)) document.getElementById('actionsMenu').classList.add('hidden');
+});
+
+function syncCourier(){
+    document.getElementById('actionsMenu').classList.add('hidden');
+    const p=document.getElementById('cProg');p.classList.remove('hidden');
+    document.getElementById('cProgL').textContent='🔄 Syncing courier statuses...';
+    document.getElementById('cProgB').style.width='30%';
+    fetch('<?= SITE_URL ?>/api/courier-sync.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({limit:50})})
+    .then(r=>r.json()).then(d=>{
+        document.getElementById('cProgB').style.width='100%';
+        document.getElementById('cProgL').textContent='✓ Synced '+d.total+' orders: '+d.updated+' updated, '+d.errors+' errors';
+        if(d.details?.length){const e=document.getElementById('cErr');e.classList.remove('hidden');e.innerHTML=d.details.slice(0,5).join('<br>')}
+        setTimeout(()=>OM.refresh(),2500);
+    }).catch(e=>{document.getElementById('cProgL').textContent='Sync error: '+e.message});
+}
+
+/* ─── Fraud Check Popup ─── */
+function fcCheck(phone) {
+    if (!phone) { phone = prompt('Enter phone number (01XXXXXXXXX):'); if (!phone) return; }
+    phone = phone.replace(/\D/g, '');
+    if (phone.length < 10) { alert('Invalid phone number'); return; }
+    let m = document.getElementById('fcModal');
+    if (!m) {
+        m = document.createElement('div'); m.id = 'fcModal';
+        m.innerHTML = `<div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9998;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)this.parentElement.style.display='none'">
+            <div style="background:#fff;border-radius:12px;max-width:700px;width:95%;max-height:85vh;overflow-y:auto;box-shadow:0 25px 50px rgba(0,0,0,.25)">
+                <div style="padding:12px 16px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center">
+                    <div style="display:flex;align-items:center;gap:6px"><span style="font-size:16px">🔍</span><b style="font-size:13px">Customer Fraud Check</b></div>
+                    <div style="display:flex;gap:6px;align-items:center">
+                        <input id="fcPhone" type="tel" placeholder="01XXXXXXXXX" style="border:2px solid #e5e7eb;border-radius:6px;padding:4px 10px;width:140px;font-family:monospace;font-size:12px">
+                        <button onclick="fcRun()" style="background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer;font-weight:600">Check</button>
+                        <button onclick="this.closest('#fcModal').style.display='none'" style="background:none;border:none;font-size:18px;cursor:pointer;color:#999">✕</button>
+                    </div>
+                </div>
+                <div id="fcBody" style="padding:12px 16px"></div>
+            </div></div>`;
+        document.body.appendChild(m);
+    }
+    m.style.display = 'block';
+    document.getElementById('fcPhone').value = phone;
+    fcRun();
+}
+function fcRun() {
+    const phone = document.getElementById('fcPhone').value.trim().replace(/\D/g, '');
+    if (!phone || phone.length < 10) return;
+    const body = document.getElementById('fcBody');
+    body.innerHTML = '<div style="text-align:center;padding:30px;color:#9ca3af"><div style="font-size:20px;margin-bottom:6px">⏳</div>Checking...</div>';
+    fetch('<?= SITE_URL ?>/api/fraud-checker.php?phone=' + encodeURIComponent(phone))
+    .then(r => r.json()).then(j => {
+        if (!j.success) { body.innerHTML = '<div style="padding:16px;color:#dc2626">❌ ' + (j.error||'Error') + '</div>'; return; }
+        const p=j.pathao||{}, s=j.steadfast||{}, r=j.redx||{}, l=j.local||{}, co=j.combined||{};
+        const risk=co.risk||'new';
+        const riskBg={low:'#dcfce7',medium:'#fef9c3',high:'#fee2e2',new:'#dbeafe',blocked:'#fee2e2'}[risk]||'#f3f4f6';
+        const riskTxt={low:'#166534',medium:'#854d0e',high:'#991b1b',new:'#1e40af',blocked:'#991b1b'}[risk]||'#374151';
+        function apiCard(name, data, color) {
+            if (data.error) return `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px;flex:1;min-width:120px"><div style="font-size:10px;font-weight:700;color:#374151;margin-bottom:2px">${name}</div><div style="font-size:10px;color:#ef4444">❌ ${data.error.substring(0,50)}</div></div>`;
+            if (data.show_count===false && data.customer_rating) {
+                const labels={excellent_customer:'⭐ Excellent',good_customer:'✅ Good',moderate_customer:'⚠️ Moderate',risky_customer:'🚫 Risky'};
+                return `<div style="background:${color}11;border:1px solid ${color}33;border-radius:8px;padding:8px;flex:1;min-width:120px"><div style="font-size:10px;font-weight:700;color:#374151;margin-bottom:2px">${name}</div><div style="font-size:13px;font-weight:700;color:${color}">${labels[data.customer_rating]||data.customer_rating}</div></div>`;
+            }
+            const total=data.total||0, success=data.success||0, rate=total>0?Math.round(success/total*100):0;
+            return `<div style="background:${color}11;border:1px solid ${color}33;border-radius:8px;padding:8px;flex:1;min-width:120px"><div style="font-size:10px;font-weight:700;color:#374151;margin-bottom:2px">${name}</div><div style="font-size:16px;font-weight:800;color:${color}">${rate}%</div><div style="font-size:10px;color:#6b7280">✅${success} ❌${(data.cancel||0)} (${total})</div></div>`;
+        }
+        body.innerHTML = `
+        <div style="background:${riskBg};border-radius:8px;padding:10px 14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+            <div><span style="font-size:14px;font-weight:800;color:#1f2937">📱 ${j.phone}</span>
+            ${l.total>0?`<span style="font-size:10px;color:#6b7280;margin-left:6px">${l.total} orders · ৳${Number(l.total_spent||0).toLocaleString()}</span>`:''}</div>
+            <span style="background:${riskBg};color:${riskTxt};padding:3px 12px;border-radius:20px;font-size:11px;font-weight:800;border:2px solid ${riskTxt}33">${co.risk_label||'Unknown'}</span>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+            ${apiCard('Pathao',p,'#3b82f6')} ${apiCard('Steadfast',s,'#8b5cf6')} ${apiCard('RedX',r,'#ef4444')}
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px;flex:1;min-width:120px">
+                <div style="font-size:10px;font-weight:700;color:#374151;margin-bottom:2px">Local DB</div>
+                <div style="font-size:10px;color:#6b7280">✅${l.delivered||0} ❌${l.cancelled||0} 🔄${l.returned||0}</div>
+            </div>
+        </div>`;
+    }).catch(e => { body.innerHTML = '<div style="padding:16px;color:#dc2626">❌ ' + e.message + '</div>'; });
+}
+
+// ── ORDER LOCK SYSTEM — poll for active locks and highlight rows ──
+const LOCK_API = '<?= SITE_URL ?>/api/order-lock.php';
+const CURRENT_ADMIN_ID = <?= intval(getAdminId()) ?>;
+
+function pollOrderLocks() {
+    const rows = document.querySelectorAll('tr[data-order-id]');
+    if (!rows.length) return;
+    const ids = Array.from(rows).map(r => r.dataset.orderId);
+    
+    fetch(LOCK_API, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'action=check_bulk&order_ids=' + ids.join(',')
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) return;
+        const locks = data.locks || {};
+        
+        rows.forEach(row => {
+            const oid = row.dataset.orderId;
+            const lockInfo = locks[oid];
+            const indicator = document.querySelector(`[data-lock-oid="${oid}"]`);
+            const openLink = row.querySelector('.order-open-link');
+            
+            if (lockInfo && !lockInfo.is_mine) {
+                // Locked by someone else — pink row + show name
+                row.style.background = '#fce7f3';
+                if (indicator) {
+                    indicator.textContent = '(' + lockInfo.locked_by + ')';
+                    indicator.classList.remove('hidden');
+                }
+                if (openLink) openLink.style.color = '#be185d';
+            } else {
+                // Not locked or locked by me — normal
+                row.style.background = '';
+                if (indicator) { indicator.textContent = ''; indicator.classList.add('hidden'); }
+                if (openLink) openLink.style.color = '';
+            }
+        });
+    })
+    .catch(() => {});
+}
+
+// Poll immediately and every 8 seconds
+pollOrderLocks();
+setInterval(pollOrderLocks, 8000);
+</script>
+
+<!-- ===== PRINT POPUP MODAL ===== -->
+<?php
+$selInv = getSetting('selected_invoice_template', 'inv_standard');
+$selStk = getSetting('selected_sticker_template', 'stk_standard');
+// Load custom presets for print modal dropdown
+$custInvTpls = []; $custStkTpls = [];
+try {
+    $custInvTpls = $db->fetchAll("SELECT template_key, name FROM print_templates WHERE template_type='invoice' AND is_builtin=0 AND template_key NOT LIKE '\\_preview\\_%' ORDER BY name") ?: [];
+    $custStkTpls = $db->fetchAll("SELECT template_key, name FROM print_templates WHERE template_type='sticker' AND is_builtin=0 AND template_key NOT LIKE '\\_preview\\_%' ORDER BY name") ?: [];
+} catch(\Throwable $e){}
+?>
+<div id="printModal" class="hidden fixed inset-0 z-[9999] flex items-center justify-center bg-black/60" onclick="if(event.target===this)closePrintModal()">
+    <div class="bg-white rounded-2xl shadow-2xl w-[95vw] max-w-5xl h-[90vh] flex flex-col overflow-hidden" onclick="event.stopPropagation()">
+        <!-- Modal Header -->
+        <div class="flex items-center justify-between px-5 py-3 border-b bg-gray-50 shrink-0">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center"><span class="text-lg">🖨</span></div>
+                <div>
+                    <h3 class="font-bold text-gray-800 text-sm">Print Preview</h3>
+                    <p class="text-[11px] text-gray-400"><span id="printCount">0</span> order(s) selected</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <!-- Template Selector -->
+                <select id="printTplSelect" onchange="changePrintTemplate()" class="border rounded-lg px-3 py-1.5 text-xs bg-white focus:ring-2 focus:ring-blue-300 min-w-[180px]">
+                    <optgroup label="📄 Invoice Templates">
+                        <option value="inv_standard" <?= $selInv==='inv_standard'?'selected':'' ?>>Standard Invoice</option>
+                        <option value="inv_compact" <?= $selInv==='inv_compact'?'selected':'' ?>>Compact / Thermal</option>
+                        <option value="inv_modern" <?= $selInv==='inv_modern'?'selected':'' ?>>Modern (Dark Header)</option>
+                        <option value="inv_branded" <?= $selInv==='inv_branded'?'selected':'' ?>>Branded (Gradient)</option>
+                        <option value="inv_detailed" <?= $selInv==='inv_detailed'?'selected':'' ?>>Detailed (With Images)</option>
+                        <option value="inv_minimal" <?= $selInv==='inv_minimal'?'selected':'' ?>>Minimal / Clean</option>
+                        <option value="inv_picking">Picking Sheet</option>
+                    </optgroup>
+                    <?php if (!empty($custInvTpls)): ?>
+                    <optgroup label="📄 Custom Invoices">
+                        <?php foreach ($custInvTpls as $ci): ?>
+                        <option value="<?= e($ci['template_key']) ?>" <?= $selInv===$ci['template_key']?'selected':'' ?>><?= e($ci['name']) ?></option>
+                        <?php endforeach; ?>
+                    </optgroup>
+                    <?php endif; ?>
+                    <optgroup label="🏷 Sticker Templates">
+                        <option value="stk_standard" <?= $selStk==='stk_standard'?'selected':'' ?>>Standard Sticker</option>
+                        <option value="stk_detailed" <?= $selStk==='stk_detailed'?'selected':'' ?>>Detailed (Product Table)</option>
+                        <option value="stk_courier" <?= $selStk==='stk_courier'?'selected':'' ?>>Courier Label</option>
+                        <option value="stk_pos" <?= $selStk==='stk_pos'?'selected':'' ?>>POS 80mm Receipt</option>
+                        <option value="stk_cod" <?= $selStk==='stk_cod'?'selected':'' ?>>COD Badge</option>
+                        <option value="stk_wide" <?= $selStk==='stk_wide'?'selected':'' ?>>Wide (3-inch)</option>
+                        <option value="stk_sku" <?= $selStk==='stk_sku'?'selected':'' ?>>SKU Rows</option>
+                        <option value="stk_note" <?= $selStk==='stk_note'?'selected':'' ?>>With Notes</option>
+                    </optgroup>
+                    <?php if (!empty($custStkTpls)): ?>
+                    <optgroup label="🏷 Custom Stickers">
+                        <?php foreach ($custStkTpls as $cs): ?>
+                        <option value="<?= e($cs['template_key']) ?>" <?= $selStk===$cs['template_key']?'selected':'' ?>><?= e($cs['name']) ?></option>
+                        <?php endforeach; ?>
+                    </optgroup>
+                    <?php endif; ?>
+                </select>
+                <!-- Quick Presets -->
+                <div class="flex bg-white border rounded-lg overflow-hidden text-xs">
+                    <button onclick="document.getElementById('printTplSelect').value='<?= $selInv ?>';changePrintTemplate()" class="px-2.5 py-1.5 hover:bg-blue-50 text-blue-600 font-medium border-r" title="Use saved invoice template">📄 Invoice</button>
+                    <button onclick="document.getElementById('printTplSelect').value='<?= $selStk ?>';changePrintTemplate()" class="px-2.5 py-1.5 hover:bg-teal-50 text-teal-600 font-medium" title="Use saved sticker template">🏷 Sticker</button>
+                </div>
+                <!-- Page Layout -->
+                <?php $defLayout = getSetting('print_default_layout', 'a4_1'); ?>
+                <select id="printLayoutSelect" onchange="changePrintTemplate()" class="border rounded-lg px-2 py-1.5 text-xs bg-white focus:ring-2 focus:ring-blue-300" title="Page layout">
+                    <option value="a4_1" <?= $defLayout==='a4_1'?'selected':'' ?>>A4 × 1</option>
+                    <option value="a3_2" <?= $defLayout==='a3_2'?'selected':'' ?>>A3 × 2</option>
+                    <option value="a4_3" <?= $defLayout==='a4_3'?'selected':'' ?>>A4 × 3</option>
+                </select>
+                <!-- Print / Open / Close -->
+                <button onclick="doPrint()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                    Print
+                </button>
+                <button onclick="openInNewTab()" class="border px-2.5 py-1.5 rounded-lg text-xs text-gray-500 hover:bg-gray-50" title="Open in new tab">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                </button>
+                <button onclick="closePrintModal()" class="text-gray-400 hover:text-gray-600 transition p-1">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+        </div>
+        <!-- Iframe Preview -->
+        <div class="flex-1 bg-gray-100 relative">
+            <div id="printLoading" class="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
+                <div class="text-center"><div class="text-2xl mb-2">⏳</div><p class="text-sm text-gray-500">Loading preview...</p></div>
+            </div>
+            <iframe id="printIframe" class="w-full h-full border-0" onload="document.getElementById('printLoading').style.display='none'" src="about:blank"></iframe>
+        </div>
+    </div>
+</div>
+
+<?php require_once __DIR__ . '/../includes/footer.php'; ?>
