@@ -600,7 +600,7 @@ function renderClerkHead(): string {
     <script
         async
         crossorigin="anonymous"
-        src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
+        src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@4/dist/clerk.browser.js"
         type="text/javascript"
     ></script>
 HTML;
