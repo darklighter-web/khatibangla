@@ -317,6 +317,19 @@ class SecurityGuard {
         
         $ua = strtolower($_SERVER['HTTP_USER_AGENT'] ?? '');
 
+        // ── Whitelist: Google & trusted crawlers — always allowed ──
+        $allowedCrawlers = [
+            'googlebot', 'google-inspectiontool', 'adsbot-google',
+            'mediapartners-google', 'google-read-aloud', 'storebot-google',
+            'googlebot-image', 'googlebot-video', 'googlebot-news',
+            'googleproducer', 'apis-google',
+            'bingbot', 'msnbot',
+            'facebookexternalhit', 'facebot', 'whatsapp',
+        ];
+        foreach ($allowedCrawlers as $allowed) {
+            if (strpos($ua, $allowed) !== false) return; // Pass through immediately
+        }
+
         // Block completely empty User-Agent (scanners often send none)
         // Allow partial empty (some privacy proxies send minimal UA)
         if ($ua === '' || $ua === '-') {

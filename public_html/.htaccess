@@ -95,6 +95,16 @@ php_value max_execution_time 60
     # ══════════════════════════════════════════════════
     # BLOCK ATTACK BOT USER AGENTS
     # ══════════════════════════════════════════════════
+    # ══ WHITELIST: Google & trusted crawlers (always pass through) ══
+    # Google Search, Search Console, Ads, Images, Video, News
+    RewriteCond %{HTTP_USER_AGENT} (Googlebot|Google-InspectionTool|AdsBot-Google|Mediapartners-Google|Google-Read-Aloud|Storebot-Google|GoogleProducer|APIs-Google|Googlebot-Image|Googlebot-Video|Googlebot-News) [NC]
+    RewriteRule .* - [L]
+
+    # Bing + Facebook/WhatsApp link previews (needed for sharing)
+    RewriteCond %{HTTP_USER_AGENT} (bingbot|msnbot|facebookexternalhit|facebot|whatsapp) [NC]
+    RewriteRule .* - [L]
+
+    # ── Block attack tools ──
     RewriteCond %{HTTP_USER_AGENT} (sqlmap|nikto|nmap|masscan|zgrab|nuclei|dirbuster|gobuster|wfuzz|hydra|burpsuite|nessus|acunetix|havij|w3af|skipfish|openvas|qualys|whatweb|grabber|httprint|jorgee|python-requests|go-http-client|libwww-perl|lwp-trivial|wget|curl|java/|jakarta|htmlparser|webzip|webcapture|teleport|winhttp|offline-explorer|httrack|websitecopier|pavuk|websuck|webstripper|larbin|sitesucker|turnit|bidorbuy|semrushbot|ahrefsbot|dotbot|mj12bot|petalbot|blexbot|seznambot|yandexbot|baiduspider|sistrix|dataforseo|majestic|seokicks|rogerbot|exabot|gigabot|ia_archiver|archive\.org_bot|ccbot|scrapy|phantomjs|headlesschrome|selenium|webdriver|crawler|spider) [NC]
     RewriteRule .* - [F,L]
 
