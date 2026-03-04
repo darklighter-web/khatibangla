@@ -594,11 +594,12 @@ function renderClerkHead(): string {
     $pk = htmlspecialchars(getClerkPublishableKey(), ENT_QUOTES);
     
     return <<<HTML
-    <!-- Clerk JS SDK -->
+    <!-- Clerk JS SDK — NO data-clerk-publishable-key intentionally.
+         That attribute triggers auto-init which conflicts with login.php's
+         manual Clerk.load({ publishableKey }) call → double-init → mountSignIn throws. -->
     <script
         async
         crossorigin="anonymous"
-        data-clerk-publishable-key="{$pk}"
         src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
         type="text/javascript"
     ></script>
