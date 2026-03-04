@@ -1,239 +1,400 @@
 <?php
 /**
- * Inventory Dashboard - Visual overview of stock levels, movements, and analytics
+ * Inventory Dashboard
  */
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../includes/auth.php';
+
 $pageTitle = 'Inventory Dashboard';
 $db = Database::getInstance();
 
-// Summary stats
-$totalProducts = $db->fetch("SELECT COUNT(*) as cnt FROM products WHERE is_active=1")['cnt'] ?? 0;
-$inStock = $db->fetch("SELECT COUNT(*) as cnt FROM products WHERE is_active=1 AND stock_quantity > low_stock_threshold")['cnt'] ?? 0;
-$lowStock = $db->fetch("SELECT COUNT(*) as cnt FROM products WHERE is_active=1 AND stock_quantity > 0 AND stock_quantity <= low_stock_threshold")['cnt'] ?? 0;
-$outOfStock = $db->fetch("SELECT COUNT(*) as cnt FROM products WHERE is_active=1 AND stock_quantity <= 0")['cnt'] ?? 0;
-$totalStockValue = $db->fetch("SELECT COALESCE(SUM(stock_quantity * cost_price),0) as val FROM products WHERE is_active=1 AND cost_price > 0")['val'] ?? 0;
-$totalRetailValue = $db->fetch("SELECT COALESCE(SUM(stock_quantity * COALESCE(sale_price, regular_price)),0) as val FROM products WHERE is_active=1")['val'] ?? 0;
-$totalUnits = $db->fetch("SELECT COALESCE(SUM(stock_quantity),0) as total FROM products WHERE is_active=1")['total'] ?? 0;
+// ── Date range filter ───────────────────────────────────────────────────────
+$range = intval($_GET['range'] ?? 7);
+if (!in_array($range, [7, 30, 90])) $range = 7;
+$rangeLabel = ['7'=>'Last 7 days','30'=>'Last 30 days','90'=>'Last 90 days'][$range];
 
-// Movement trends (last 30 days)
-$movements30d = $db->fetchAll("SELECT DATE(created_at) as date, movement_type, SUM(quantity) as qty
-    FROM stock_movements WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-    GROUP BY DATE(created_at), movement_type ORDER BY date");
-$movementData = [];
-foreach ($movements30d as $m) {
-    $movementData[$m['date']][$m['movement_type']] = (int)$m['qty'];
-}
+// ── Stock Health Overview ───────────────────────────────────────────────────
+$totalProducts  = intval($db->fetch("SELECT COUNT(*) as c FROM products WHERE is_active=1")['c'] ?? 0);
+$healthyStock   = intval($db->fetch("SELECT COUNT(*) as c FROM products WHERE is_active=1 AND stock_quantity > low_stock_threshold")['c'] ?? 0);
+$lowStock       = intval($db->fetch("SELECT COUNT(*) as c FROM products WHERE is_active=1 AND stock_quantity > 0 AND stock_quantity <= low_stock_threshold")['c'] ?? 0);
+$outOfStock     = intval($db->fetch("SELECT COUNT(*) as c FROM products WHERE is_active=1 AND stock_quantity = 0")['c'] ?? 0);
+$negativeStock  = intval($db->fetch("SELECT COUNT(*) as c FROM products WHERE is_active=1 AND stock_quantity < 0")['c'] ?? 0);
 
-// Top movers (most stock movements)
-$topMovers = $db->fetchAll("SELECT p.id, p.name, p.stock_quantity, p.featured_image,
-    SUM(CASE WHEN sm.movement_type='in' THEN sm.quantity ELSE 0 END) as total_in,
-    SUM(CASE WHEN sm.movement_type='out' THEN sm.quantity ELSE 0 END) as total_out
+// ── Stock Movement Summary ──────────────────────────────────────────────────
+// Units Sold: from order_items linked to delivered/shipped orders in range
+$unitsSoldRow = $db->fetch("
+    SELECT COALESCE(SUM(oi.quantity), 0) as qty
+    FROM order_items oi
+    JOIN orders o ON oi.order_id = o.id
+    WHERE o.order_status IN ('delivered','shipped','partial_delivered')
+      AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL {$range} DAY)
+") ?? [];
+$unitsSold = intval($unitsSoldRow['qty'] ?? 0);
+
+// Units Purchased: stock_movements type='in' in range
+$unitsPurchasedRow = $db->fetch("
+    SELECT COALESCE(SUM(quantity), 0) as qty
+    FROM stock_movements
+    WHERE movement_type = 'in'
+      AND created_at >= DATE_SUB(CURDATE(), INTERVAL {$range} DAY)
+") ?? [];
+$unitsPurchased = intval($unitsPurchasedRow['qty'] ?? 0);
+
+// Returns: stock_movements type='return' in range
+$returnsRow = $db->fetch("
+    SELECT COALESCE(SUM(quantity), 0) as qty
+    FROM stock_movements
+    WHERE movement_type = 'return'
+      AND created_at >= DATE_SUB(CURDATE(), INTERVAL {$range} DAY)
+") ?? [];
+$returns = intval($returnsRow['qty'] ?? 0);
+
+// Total movements in range
+$totalMovementsRow = $db->fetch("
+    SELECT COUNT(*) as c,
+           COALESCE(SUM(CASE WHEN movement_type IN ('in','return') THEN quantity ELSE 0 END), 0) as total_in,
+           COALESCE(SUM(CASE WHEN movement_type IN ('out','transfer') THEN quantity ELSE 0 END), 0) as total_out
+    FROM stock_movements
+    WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL {$range} DAY)
+") ?? [];
+$totalMovements = intval($totalMovementsRow['c'] ?? 0);
+$netChange = intval(($totalMovementsRow['total_in'] ?? 0) - ($totalMovementsRow['total_out'] ?? 0));
+
+// ── Negative Stock Products ─────────────────────────────────────────────────
+$negativeProducts = $db->fetchAll("
+    SELECT id, name, sku, stock_quantity
+    FROM products
+    WHERE is_active=1 AND stock_quantity < 0
+    ORDER BY stock_quantity ASC
+    LIMIT 20
+") ?: [];
+
+// ── Low Stock Products ──────────────────────────────────────────────────────
+$lowStockProducts = $db->fetchAll("
+    SELECT id, name, sku, stock_quantity, low_stock_threshold
+    FROM products
+    WHERE is_active=1 AND stock_quantity > 0 AND stock_quantity <= low_stock_threshold
+    ORDER BY stock_quantity ASC
+    LIMIT 20
+") ?: [];
+
+// ── Out of Stock Products ───────────────────────────────────────────────────
+$outOfStockProducts = $db->fetchAll("
+    SELECT id, name, sku, stock_quantity, sales_count
+    FROM products
+    WHERE is_active=1 AND stock_quantity = 0
+    ORDER BY sales_count DESC
+    LIMIT 20
+") ?: [];
+
+// ── Recent Stock Movements ──────────────────────────────────────────────────
+$recentMovements = $db->fetchAll("
+    SELECT sm.movement_type, sm.quantity, sm.note, sm.created_at,
+           p.name as product_name, p.sku,
+           au.full_name as user_name
     FROM stock_movements sm
-    JOIN products p ON sm.product_id=p.id
-    WHERE sm.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-    GROUP BY p.id, p.name, p.stock_quantity, p.featured_image
-    ORDER BY (SUM(CASE WHEN sm.movement_type='in' THEN sm.quantity ELSE 0 END) +
-              SUM(CASE WHEN sm.movement_type='out' THEN sm.quantity ELSE 0 END)) DESC LIMIT 10");
-
-// Stock by category
-$stockByCategory = $db->fetchAll("SELECT c.name, COUNT(p.id) as products, COALESCE(SUM(p.stock_quantity),0) as total_stock,
-    COALESCE(SUM(p.stock_quantity * p.cost_price),0) as stock_value
-    FROM products p LEFT JOIN categories c ON p.category_id=c.id
-    WHERE p.is_active=1 GROUP BY c.id ORDER BY stock_value DESC LIMIT 8");
-
-// Warehouse breakdown
-$warehouseStats = $db->fetchAll("SELECT w.name, w.code,
-    COUNT(DISTINCT ws.product_id) as products,
-    COALESCE(SUM(ws.quantity),0) as total_units,
-    COALESCE(SUM(ws.quantity * p.cost_price),0) as stock_value
-    FROM warehouses w
-    LEFT JOIN warehouse_stock ws ON w.id=ws.warehouse_id
-    LEFT JOIN products p ON ws.product_id=p.id
-    WHERE w.is_active=1 GROUP BY w.id ORDER BY stock_value DESC");
-
-// Recent movements
-$recentMovements = $db->fetchAll("SELECT sm.*, p.name as product_name, w.name as warehouse_name, au.full_name as user_name
-    FROM stock_movements sm
-    LEFT JOIN products p ON sm.product_id=p.id
-    LEFT JOIN warehouses w ON sm.warehouse_id=w.id
-    LEFT JOIN admin_users au ON sm.created_by=au.id
-    ORDER BY sm.created_at DESC LIMIT 15");
-
-// Pending transfers
-$pendingTransfers = $db->fetch("SELECT COUNT(*) as cnt FROM stock_transfers WHERE status IN ('pending','approved')")['cnt'] ?? 0;
+    LEFT JOIN products p ON sm.product_id = p.id
+    LEFT JOIN admin_users au ON sm.created_by = au.id
+    ORDER BY sm.created_at DESC
+    LIMIT 10
+") ?: [];
 
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
-<!-- Summary Cards -->
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-    <div class="bg-white rounded-xl border p-4">
-        <div class="flex items-center justify-between mb-2">
-            <span class="text-xs text-gray-500 uppercase tracking-wide">Total Products</span>
-            <span class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center"><svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg></span>
+<style>
+.inv-dark { background:#111; color:#e5e5e5; }
+.inv-card { background:#1a1a1a; border:1px solid #2a2a2a; border-radius:12px; padding:20px; }
+.inv-card-red    { border-color:#3b1212; background:#1a0d0d; }
+.inv-card-purple { border-color:#2a1a3b; background:#150d1f; }
+.inv-stat-blue   { color:#3b82f6; }
+.inv-stat-green  { color:#22c55e; }
+.inv-stat-orange { color:#f97316; }
+.inv-stat-red    { color:#ef4444; }
+.inv-stat-purple { color:#a855f7; }
+.inv-stat-yellow { color:#eab308; }
+.inv-label { font-size:13px; color:#9ca3af; margin-bottom:4px; }
+.inv-num { font-size:2.4rem; font-weight:700; line-height:1; margin:10px 0 4px; }
+.inv-sub { font-size:12px; color:#6b7280; }
+.inv-section-title { font-size:18px; font-weight:700; color:#f3f4f6; margin-bottom:16px; }
+.inv-table { width:100%; border-collapse:collapse; }
+.inv-table th { font-size:12px; color:#6b7280; font-weight:500; text-align:left; padding:10px 12px; border-bottom:1px solid #2a2a2a; }
+.inv-table td { padding:14px 12px; border-bottom:1px solid #1e1e1e; font-size:14px; color:#e5e5e5; }
+.inv-table tr:last-child td { border-bottom:none; }
+.inv-table tr:hover td { background:#1e1e1e; }
+.inv-badge-neg { background:#7f1d1d; color:#fca5a5; font-size:12px; font-weight:700; padding:3px 10px; border-radius:999px; display:inline-block; }
+.inv-badge-low { background:#78350f; color:#fcd34d; font-size:12px; font-weight:700; padding:3px 10px; border-radius:999px; display:inline-block; }
+.inv-badge-out { background:#1e3a5f; color:#93c5fd; font-size:12px; font-weight:700; padding:3px 10px; border-radius:999px; display:inline-block; }
+.inv-btn { font-size:12px; color:#9ca3af; border:1px solid #2a2a2a; padding:4px 12px; border-radius:6px; background:transparent; cursor:pointer; transition:all .15s; }
+.inv-btn:hover { color:#f3f4f6; border-color:#444; }
+.inv-btn-restock { font-size:12px; color:#22c55e; border:1px solid #14532d; padding:4px 12px; border-radius:6px; background:#0a1f12; cursor:pointer; text-decoration:none; transition:all .15s; }
+.inv-btn-restock:hover { background:#14532d; }
+.inv-range-select { background:#1a1a1a; border:1px solid #2a2a2a; color:#e5e5e5; padding:6px 12px; border-radius:8px; font-size:13px; cursor:pointer; }
+.inv-alert-box { border:1px solid #3b1212; background:#120808; border-radius:12px; margin-bottom:20px; overflow:hidden; }
+.inv-alert-box-low { border-color:#3b2a08; background:#120f04; }
+.inv-alert-box-out { border-color:#0d2340; background:#060e1a; }
+.inv-alert-header { padding:16px 20px 12px; border-bottom:1px solid #2a2a2a; }
+.inv-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
+.inv-movement-type { font-size:11px; font-weight:600; padding:2px 8px; border-radius:4px; text-transform:uppercase; letter-spacing:.5px; }
+.mt-in         { background:#0a2010; color:#22c55e; }
+.mt-out        { background:#1a0808; color:#ef4444; }
+.mt-return     { background:#1a120a; color:#f59e0b; }
+.mt-adjustment { background:#0d0d2a; color:#818cf8; }
+.mt-transfer   { background:#0d1a2a; color:#60a5fa; }
+</style>
+
+<div class="inv-dark -m-6 p-6 min-h-screen">
+
+<!-- ── Header ─────────────────────────────────────────────────────────────── -->
+<div class="flex items-start justify-between mb-8">
+    <div class="flex items-center gap-3">
+        <div class="w-10 h-10 bg-gray-800 rounded-xl flex items-center justify-center">
+            <svg class="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
         </div>
-        <p class="text-2xl font-bold text-gray-800"><?= number_format($totalProducts) ?></p>
-        <div class="flex gap-3 mt-2 text-xs">
-            <span class="text-green-600"><?= $inStock ?> in stock</span>
-            <span class="text-yellow-600"><?= $lowStock ?> low</span>
-            <span class="text-red-600"><?= $outOfStock ?> out</span>
+        <div>
+            <h1 class="text-xl font-bold text-white">Inventory Dashboard</h1>
+            <p class="text-sm text-gray-500">Monitor stock health and movements across your inventory</p>
         </div>
     </div>
-    <div class="bg-white rounded-xl border p-4">
-        <div class="flex items-center justify-between mb-2">
-            <span class="text-xs text-gray-500 uppercase tracking-wide">Total Units</span>
-            <span class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center"><svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg></span>
+    <a href="<?= adminUrl('pages/stock-increase-new.php') ?>" class="flex items-center gap-2 border border-gray-700 text-gray-300 px-4 py-2 rounded-lg text-sm hover:bg-gray-800 transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        Stock Reconciliation
+    </a>
+</div>
+
+<!-- ── Stock Health Overview ──────────────────────────────────────────────── -->
+<p class="inv-section-title">Stock Health Overview</p>
+<div class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+    <div class="inv-card">
+        <div class="flex justify-between items-start">
+            <span class="inv-label">Total Products</span>
+            <svg class="w-5 h-5 text-blue-500 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
         </div>
-        <p class="text-2xl font-bold text-gray-800"><?= number_format($totalUnits) ?></p>
-        <p class="text-xs text-gray-400 mt-1">Across all warehouses</p>
+        <p class="inv-num inv-stat-blue"><?= number_format($totalProducts) ?></p>
     </div>
-    <div class="bg-white rounded-xl border p-4">
-        <div class="flex items-center justify-between mb-2">
-            <span class="text-xs text-gray-500 uppercase tracking-wide">Stock Value (Cost)</span>
-            <span class="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center"><svg class="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1"/></svg></span>
+    <div class="inv-card">
+        <div class="flex justify-between items-start">
+            <span class="inv-label">Healthy Stock</span>
+            <svg class="w-5 h-5 text-green-500 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
         </div>
-        <p class="text-2xl font-bold text-gray-800">৳<?= number_format($totalStockValue) ?></p>
-        <p class="text-xs text-gray-400 mt-1">Retail: ৳<?= number_format($totalRetailValue) ?></p>
+        <p class="inv-num inv-stat-green"><?= number_format($healthyStock) ?></p>
     </div>
-    <div class="bg-white rounded-xl border p-4">
-        <div class="flex items-center justify-between mb-2">
-            <span class="text-xs text-gray-500 uppercase tracking-wide">Pending Actions</span>
-            <span class="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center"><svg class="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></span>
+    <div class="inv-card inv-card-red" style="border-color:#3b2008;background:#150d04;">
+        <div class="flex justify-between items-start">
+            <span class="inv-label">Low Stock</span>
+            <svg class="w-5 h-5 text-orange-500 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
         </div>
-        <p class="text-2xl font-bold text-gray-800"><?= $pendingTransfers + $lowStock ?></p>
-        <div class="flex gap-3 mt-2 text-xs">
-            <span class="text-orange-600"><?= $pendingTransfers ?> transfers</span>
-            <span class="text-yellow-600"><?= $lowStock ?> low stock</span>
+        <p class="inv-num inv-stat-orange"><?= number_format($lowStock) ?></p>
+    </div>
+    <div class="inv-card" style="border-color:#3b1212;background:#1a0d0d;">
+        <div class="flex justify-between items-start">
+            <span class="inv-label">Out of Stock</span>
+            <svg class="w-5 h-5 text-red-500 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
         </div>
+        <p class="inv-num inv-stat-red"><?= number_format($outOfStock) ?></p>
+    </div>
+    <div class="inv-card" style="border-color:#2a1a3b;background:#110a1a;">
+        <div class="flex justify-between items-start">
+            <span class="inv-label">Negative Stock</span>
+            <svg class="w-5 h-5 text-purple-500 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"/></svg>
+        </div>
+        <p class="inv-num inv-stat-purple"><?= number_format($negativeStock) ?></p>
     </div>
 </div>
 
-<!-- Charts Row -->
-<div class="grid lg:grid-cols-2 gap-6 mb-6">
-    <!-- Stock Movement Trend -->
-    <div class="bg-white rounded-xl border shadow-sm p-5">
-        <h4 class="font-semibold text-gray-800 mb-4">Stock Movement (30 Days)</h4>
-        <canvas id="movementChart" height="150"></canvas>
-    </div>
-    <!-- Stock by Category -->
-    <div class="bg-white rounded-xl border shadow-sm p-5">
-        <h4 class="font-semibold text-gray-800 mb-4">Stock Value by Category</h4>
-        <canvas id="categoryChart" height="150"></canvas>
-    </div>
-</div>
-
-<div class="grid lg:grid-cols-3 gap-6 mb-6">
-    <!-- Warehouse Breakdown -->
-    <div class="bg-white rounded-xl border shadow-sm p-5">
-        <h4 class="font-semibold text-gray-800 mb-4">Warehouse Overview</h4>
-        <div class="space-y-3">
-            <?php foreach ($warehouseStats as $ws): ?>
-            <div class="p-3 bg-gray-50 rounded-lg">
-                <div class="flex justify-between items-center mb-1">
-                    <span class="font-medium text-sm"><?= e($ws['name']) ?></span>
-                    <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full"><?= e($ws['code']) ?></span>
-                </div>
-                <div class="flex justify-between text-xs text-gray-500">
-                    <span><?= $ws['products'] ?> products</span>
-                    <span><?= number_format($ws['total_units']) ?> units</span>
-                    <span class="font-medium text-gray-700">৳<?= number_format($ws['stock_value']) ?></span>
-                </div>
-            </div>
+<!-- ── Stock Movement Summary ─────────────────────────────────────────────── -->
+<div class="flex items-center justify-between mb-4">
+    <p class="inv-section-title mb-0">Stock Movement Summary</p>
+    <form method="GET" class="flex items-center gap-2">
+        <select name="range" onchange="this.form.submit()" class="inv-range-select">
+            <?php foreach ([7=>'Last 7 days', 30=>'Last 30 days', 90=>'Last 90 days'] as $v=>$l): ?>
+            <option value="<?= $v ?>" <?= $range==$v?'selected':'' ?>><?= $l ?></option>
             <?php endforeach; ?>
-            <?php if (empty($warehouseStats)): ?><p class="text-sm text-gray-400">No warehouses</p><?php endif; ?>
+        </select>
+    </form>
+</div>
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    <div class="inv-card">
+        <div class="flex justify-between items-start">
+            <span class="inv-label">Units Sold</span>
+            <svg class="w-5 h-5 text-red-400 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 13l-5 5m0 0l-5-5m5 5V6"/></svg>
         </div>
+        <p class="inv-num inv-stat-red">-<?= number_format($unitsSold) ?></p>
+        <p class="inv-sub">from order deliveries</p>
     </div>
-
-    <!-- Top Movers -->
-    <div class="bg-white rounded-xl border shadow-sm p-5">
-        <h4 class="font-semibold text-gray-800 mb-4">Top Movers (30 Days)</h4>
-        <div class="space-y-2">
-            <?php foreach ($topMovers as $tm): ?>
-            <div class="flex items-center gap-2 py-1.5">
-                <?php if ($tm['featured_image']): ?><img src="<?= uploadUrl($tm['featured_image']) ?>" class="w-7 h-7 rounded object-cover"><?php endif; ?>
-                <div class="flex-1 min-w-0">
-                    <p class="text-sm font-medium text-gray-800 truncate"><?= e($tm['name']) ?></p>
-                    <div class="flex gap-3 text-xs">
-                        <span class="text-green-600">+<?= $tm['total_in'] ?> in</span>
-                        <span class="text-red-600">-<?= $tm['total_out'] ?> out</span>
-                    </div>
-                </div>
-                <span class="text-sm font-semibold"><?= $tm['stock_quantity'] ?></span>
-            </div>
-            <?php endforeach; ?>
-            <?php if (empty($topMovers)): ?><p class="text-sm text-gray-400">No movements yet</p><?php endif; ?>
+    <div class="inv-card">
+        <div class="flex justify-between items-start">
+            <span class="inv-label">Units Purchased</span>
+            <svg class="w-5 h-5 text-green-400 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 11l5-5m0 0l5 5m-5-5v12"/></svg>
         </div>
+        <p class="inv-num inv-stat-green">+<?= number_format($unitsPurchased) ?></p>
+        <p class="inv-sub">from purchase receipts</p>
     </div>
-
-    <!-- Recent Activity -->
-    <div class="bg-white rounded-xl border shadow-sm p-5">
-        <h4 class="font-semibold text-gray-800 mb-4">Recent Activity</h4>
-        <div class="space-y-2 max-h-[400px] overflow-y-auto">
-            <?php foreach ($recentMovements as $rm): ?>
-            <?php $isIn = in_array($rm['movement_type'], ['in', 'return']); ?>
-            <div class="flex items-center gap-2 py-1.5 border-b border-gray-50">
-                <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold <?= $isIn ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600' ?>"><?= $isIn ? '+' : '-' ?></span>
-                <div class="flex-1 min-w-0">
-                    <p class="text-xs font-medium text-gray-800 truncate"><?= e($rm['product_name'] ?? 'Unknown') ?></p>
-                    <p class="text-xs text-gray-400"><?= e($rm['warehouse_name'] ?? '') ?> · <?= e($rm['user_name'] ?? '') ?></p>
-                </div>
-                <div class="text-right">
-                    <span class="text-xs font-bold <?= $isIn ? 'text-green-600' : 'text-red-600' ?>"><?= $isIn ? '+' : '-' ?><?= $rm['quantity'] ?></span>
-                    <p class="text-xs text-gray-400"><?= date('M d', strtotime($rm['created_at'])) ?></p>
-                </div>
-            </div>
-            <?php endforeach; ?>
+    <div class="inv-card">
+        <div class="flex justify-between items-start">
+            <span class="inv-label">Returns</span>
+            <svg class="w-5 h-5 text-yellow-400 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
         </div>
+        <p class="inv-num inv-stat-yellow">+<?= number_format($returns) ?></p>
+        <p class="inv-sub">items returned</p>
+    </div>
+    <div class="inv-card">
+        <div class="flex justify-between items-start">
+            <span class="inv-label">Net Change</span>
+            <svg class="w-5 h-5 text-green-400 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+        </div>
+        <p class="inv-num <?= $netChange >= 0 ? 'inv-stat-green' : 'inv-stat-red' ?>"><?= ($netChange >= 0 ? '+' : '') . number_format($netChange) ?></p>
+        <p class="inv-sub"><?= number_format($totalMovements) ?> total movements</p>
     </div>
 </div>
 
-<!-- Quick Actions -->
-<div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-    <a href="<?= adminUrl('pages/stock-increase-new.php') ?>" class="bg-white rounded-xl border p-4 hover:shadow-md transition-shadow text-center">
-        <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-2"><svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v12m6-6H6"/></svg></div>
-        <p class="text-sm font-medium text-gray-800">Increase Stock</p>
-    </a>
-    <a href="<?= adminUrl('pages/stock-decrease-new.php') ?>" class="bg-white rounded-xl border p-4 hover:shadow-md transition-shadow text-center">
-        <div class="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center mx-auto mb-2"><svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/></svg></div>
-        <p class="text-sm font-medium text-gray-800">Decrease Stock</p>
-    </a>
-    <a href="<?= adminUrl('pages/stock-transfer.php?tab=new') ?>" class="bg-white rounded-xl border p-4 hover:shadow-md transition-shadow text-center">
-        <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-2"><svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg></div>
-        <p class="text-sm font-medium text-gray-800">Transfer Stock</p>
-    </a>
-    <a href="<?= adminUrl('pages/smart-restock.php') ?>" class="bg-white rounded-xl border p-4 hover:shadow-md transition-shadow text-center">
-        <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-2"><svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg></div>
-        <p class="text-sm font-medium text-gray-800">Smart Restock</p>
-    </a>
+<!-- ── Attention Required ─────────────────────────────────────────────────── -->
+<p class="inv-section-title">Attention Required</p>
+
+<?php if (!empty($negativeProducts)): ?>
+<div class="inv-alert-box mb-5">
+    <div class="inv-alert-header">
+        <div class="flex items-center gap-2 text-red-400 font-semibold text-sm mb-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+            Negative Stock
+        </div>
+        <p class="text-gray-500 text-xs">Products with stock below zero require immediate attention.</p>
+    </div>
+    <table class="inv-table">
+        <thead>
+            <tr>
+                <th>Product</th>
+                <th>SKU</th>
+                <th>Stock</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($negativeProducts as $p): ?>
+            <tr>
+                <td><?= e($p['name']) ?></td>
+                <td class="text-gray-500"><?= e($p['sku'] ?: '—') ?></td>
+                <td><span class="inv-badge-neg"><?= $p['stock_quantity'] ?></span></td>
+                <td><a href="<?= adminUrl('pages/stock-increase-new.php?product_id=' . $p['id']) ?>" class="inv-btn">View History</a></td>
+            </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
 </div>
+<?php endif; ?>
 
-<script>
-// Movement Chart
-const movementData = <?= json_encode($movementData) ?>;
-const dates = Object.keys(movementData).sort();
-new Chart(document.getElementById('movementChart'), {
-    type: 'bar',
-    data: {
-        labels: dates.map(d => { const dt = new Date(d); return dt.toLocaleDateString('en',{month:'short',day:'numeric'}); }),
-        datasets: [
-            { label: 'Stock In', data: dates.map(d => movementData[d]?.['in'] || 0), backgroundColor: 'rgba(34,197,94,0.6)', borderRadius: 3 },
-            { label: 'Stock Out', data: dates.map(d => movementData[d]?.['out'] || 0), backgroundColor: 'rgba(239,68,68,0.6)', borderRadius: 3 }
-        ]
-    },
-    options: { responsive: true, plugins: {legend:{position:'bottom'}}, scales: {x:{stacked:false},y:{beginAtZero:true}} }
-});
+<?php if (!empty($lowStockProducts)): ?>
+<div class="inv-alert-box inv-alert-box-low mb-5">
+    <div class="inv-alert-header">
+        <div class="flex items-center gap-2 text-yellow-400 font-semibold text-sm mb-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+            Low Stock
+        </div>
+        <p class="text-gray-500 text-xs">Products below their reorder threshold.</p>
+    </div>
+    <table class="inv-table">
+        <thead>
+            <tr>
+                <th>Product</th>
+                <th>SKU</th>
+                <th>Stock</th>
+                <th>Threshold</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($lowStockProducts as $p): ?>
+            <tr>
+                <td><?= e($p['name']) ?></td>
+                <td class="text-gray-500"><?= e($p['sku'] ?: '—') ?></td>
+                <td><span class="inv-badge-low"><?= $p['stock_quantity'] ?></span></td>
+                <td class="text-gray-500"><?= $p['low_stock_threshold'] ?></td>
+                <td><a href="<?= adminUrl('pages/stock-increase-new.php?product_id=' . $p['id']) ?>" class="inv-btn-restock">Restock</a></td>
+            </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+</div>
+<?php endif; ?>
 
-// Category Chart
-const catData = <?= json_encode($stockByCategory) ?>;
-new Chart(document.getElementById('categoryChart'), {
-    type: 'doughnut',
-    data: {
-        labels: catData.map(c => c.name || 'Uncategorized'),
-        datasets: [{ data: catData.map(c => c.stock_value), backgroundColor: ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316'] }]
-    },
-    options: { responsive: true, plugins: {legend:{position:'bottom',labels:{boxWidth:12,padding:8}}} }
-});
-</script>
+<?php if (!empty($outOfStockProducts)): ?>
+<div class="inv-alert-box inv-alert-box-out mb-5">
+    <div class="inv-alert-header">
+        <div class="flex items-center gap-2 text-blue-400 font-semibold text-sm mb-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            Out of Stock
+        </div>
+        <p class="text-gray-500 text-xs">Products with zero inventory. Restock to resume selling.</p>
+    </div>
+    <table class="inv-table">
+        <thead>
+            <tr>
+                <th>Product</th>
+                <th>SKU</th>
+                <th>Stock</th>
+                <th>Total Sold</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($outOfStockProducts as $p): ?>
+            <tr>
+                <td><?= e($p['name']) ?></td>
+                <td class="text-gray-500"><?= e($p['sku'] ?: '—') ?></td>
+                <td><span class="inv-badge-out">0</span></td>
+                <td class="text-gray-500"><?= $p['sales_count'] ?></td>
+                <td><a href="<?= adminUrl('pages/stock-increase-new.php?product_id=' . $p['id']) ?>" class="inv-btn-restock">Restock</a></td>
+            </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+</div>
+<?php endif; ?>
+
+<?php if (empty($negativeProducts) && empty($lowStockProducts) && empty($outOfStockProducts)): ?>
+<div class="inv-card flex items-center gap-3 text-green-400">
+    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+    <span class="text-sm font-medium">All products are healthy — no attention required.</span>
+</div>
+<?php endif; ?>
+
+<!-- ── Recent Movements ───────────────────────────────────────────────────── -->
+<?php if (!empty($recentMovements)): ?>
+<p class="inv-section-title mt-8">Recent Movements</p>
+<div class="inv-card">
+    <table class="inv-table">
+        <thead>
+            <tr>
+                <th>Type</th>
+                <th>Product</th>
+                <th>SKU</th>
+                <th>Qty</th>
+                <th>By</th>
+                <th>Note</th>
+                <th>Date</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($recentMovements as $m):
+                $typeClass = 'mt-' . $m['movement_type'];
+                $typeLabel = ['in'=>'IN','out'=>'OUT','return'=>'RETURN','adjustment'=>'ADJUST','transfer'=>'TRANSFER'][$m['movement_type']] ?? strtoupper($m['movement_type']);
+                $isIn = in_array($m['movement_type'], ['in','return']);
+            ?>
+            <tr>
+                <td><span class="inv-movement-type <?= $typeClass ?>"><?= $typeLabel ?></span></td>
+                <td class="font-medium"><?= e($m['product_name'] ?? '—') ?></td>
+                <td class="text-gray-500 text-xs"><?= e($m['sku'] ?? '—') ?></td>
+                <td class="<?= $isIn ? 'text-green-400' : 'text-red-400' ?> font-bold"><?= ($isIn?'+':'-') . abs($m['quantity']) ?></td>
+                <td class="text-gray-500 text-xs"><?= e($m['user_name'] ?? '—') ?></td>
+                <td class="text-gray-500 text-xs max-w-[160px] truncate"><?= e($m['note'] ?? '') ?></td>
+                <td class="text-gray-500 text-xs"><?= date('d M, H:i', strtotime($m['created_at'])) ?></td>
+            </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+</div>
+<?php endif; ?>
+
+</div><!-- /inv-dark -->
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
