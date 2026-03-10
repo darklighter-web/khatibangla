@@ -662,6 +662,7 @@ document.addEventListener('click',e=>{
                 subItem('stock-transfer', 'Transfer Stock'),
                 subItem('smart-restock', 'Smart Restock'),
                 subItem('inventory-dashboard', 'Inventory Dashboard'),
+                subItem('suppliers', 'Supplier Management'),
             ], $stats['low_stock']);
             $catalogItems .= navLink('media', 'Media Gallery', $icons['media']);
             if (trim($catalogItems)): ?>
