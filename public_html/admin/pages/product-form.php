@@ -457,7 +457,19 @@ if ($product) {
 
         <!-- Inventory -->
         <div class="bg-white rounded-xl shadow-sm border p-5 space-y-4" id="inventorySection">
-            <h4 class="font-semibold text-gray-800">📦 Inventory</h4>
+            <div class="flex items-center justify-between">
+                <h4 class="font-semibold text-gray-800">📦 Inventory</h4>
+                <div class="flex items-center gap-2">
+                    <label class="text-sm text-gray-600 font-medium whitespace-nowrap">Stock Unit:</label>
+                    <select name="stock_unit" class="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-orange-400 outline-none">
+                        <?php
+                        $stockUnits = ['pcs'=>'Pieces (pcs)','kg'=>'Kilogram (kg)','g'=>'Gram (g)','lb'=>'Pound (lb)','dozen'=>'Dozen','box'=>'Box','pack'=>'Pack','set'=>'Set','roll'=>'Roll','litre'=>'Litre (L)','ml'=>'Millilitre (ml)','meter'=>'Meter (m)','yard'=>'Yard','pair'=>'Pair','bundle'=>'Bundle'];
+                        $curUnit = $product['stock_unit'] ?? 'pcs';
+                        foreach ($stockUnits as $val => $label):
+                        ?><option value="<?= $val ?>" <?= $curUnit===$val?'selected':'' ?>><?= $label ?></option><?php endforeach; ?>
+                    </select>
+                </div>
+            </div>
             <!-- Variable mode: info -->
             <div id="variableStockBanner" class="bg-purple-50 border border-purple-200 rounded-lg px-3 py-2.5 <?= $productType === 'variable' ? '' : 'hidden' ?>">
                 <p class="text-xs text-purple-700"><i class="fas fa-info-circle mr-1"></i>Stock is managed individually per variation below. Enable "Track Stock" on each variation row.</p>
@@ -467,16 +479,6 @@ if ($product) {
                 <label class="flex items-center gap-2 mb-4"><input type="checkbox" name="manage_stock" value="1" <?= ($product['manage_stock'] ?? 1) ? 'checked' : '' ?> class="rounded"><span class="text-sm">Track stock</span></label>
                 <div class="grid md:grid-cols-4 gap-4">
                     <div><label class="block text-sm font-medium text-gray-700 mb-1">Stock Qty</label><input type="number" name="stock_quantity" value="<?= $product['stock_quantity'] ?? 0 ?>" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Stock Unit</label>
-                        <select name="stock_unit" class="w-full px-3 py-2 border rounded-lg text-sm">
-                            <?php
-                            $stockUnits = ['pcs'=>'Pieces (pcs)','kg'=>'Kilogram (kg)','g'=>'Gram (g)','lb'=>'Pound (lb)','dozen'=>'Dozen','box'=>'Box','pack'=>'Pack','set'=>'Set','roll'=>'Roll','litre'=>'Litre (L)','ml'=>'Millilitre (ml)','meter'=>'Meter (m)','yard'=>'Yard','pair'=>'Pair','bundle'=>'Bundle'];
-                            $curUnit = $product['stock_unit'] ?? 'pcs';
-                            foreach ($stockUnits as $val => $label):
-                            ?><option value="<?= $val ?>" <?= $curUnit===$val?'selected':'' ?>><?= $label ?></option><?php endforeach; ?>
-                        </select>
-                    </div>
                     <div><label class="block text-sm font-medium text-gray-700 mb-1">Low Stock Alert</label><input type="number" name="low_stock_threshold" value="<?= $product['low_stock_threshold'] ?? 5 ?>" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
                     <div><label class="block text-sm font-medium text-gray-700 mb-1">Stock Status</label>
                         <select name="stock_status" class="w-full px-3 py-2 border rounded-lg text-sm">
