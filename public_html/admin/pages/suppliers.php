@@ -160,6 +160,7 @@ if ($viewId) {
     $linkedProducts = $db->fetchAll("
         SELECT sp.*,
                p.name, p.sku, p.low_stock_threshold, p.featured_image, p.product_type,
+               COALESCE(p.stock_unit, 'pcs') as stock_unit,
                -- effective stock: sum active variation-type variants if they exist, else parent stock
                CASE
                  WHEN (SELECT COUNT(*) FROM product_variants pv
@@ -417,12 +418,12 @@ $spOut = array_filter($linkedProducts, fn($p) => $p['stock_quantity'] <= 0);
     <div class="flex flex-wrap gap-2">
         <?php foreach ($spOut as $p): ?>
             <span class="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-medium">
-                <?= e($p['name']) ?><?= ($p['variant_count']??0)>0 ? ' — all variants out' : ' — OUT' ?>
+                <?= e($p['name']) ?> — <?= ($p['variant_count']??0)>0 ? 'all variants out' : 'OUT' ?>
             </span>
         <?php endforeach; ?>
         <?php foreach ($spLow as $p): ?>
             <span class="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded text-xs font-medium">
-                <?= e($p['name']) ?> — <?= $p['stock_quantity'] ?><?= ($p['variant_count']??0)>0 ? ' total (variants)' : ' left' ?> ⚠
+                <?= e($p['name']) ?> — <?= $p['stock_quantity'] ?> <?= e($p['stock_unit']??'pcs') ?> left ⚠
             </span>
         <?php endforeach; ?>
     </div>
@@ -467,17 +468,20 @@ $spOut = array_filter($linkedProducts, fn($p) => $p['stock_quantity'] <= 0);
                 <td class="px-4 py-3 text-gray-500 text-xs"><?= e($lp['supplier_sku'] ?? '—') ?></td>
                 <td class="px-4 py-3 text-right"><?= $lp['cost_price'] ? '৳'.number_format($lp['cost_price'],2) : '—' ?></td>
                 <td class="px-4 py-3 text-right">
-                    <?php if ($isOut): ?>
+                    <?php
+                    $unit = $lp['stock_unit'] ?? 'pcs';
+                    $isVariant = ($lp['variant_count'] ?? 0) > 0;
+                    if ($isOut): ?>
                         <span class="text-xs font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full">
-                            <?= ($lp['variant_count'] ?? 0) > 0 ? 'Variants Out' : 'Out' ?>
+                            <?= $isVariant ? 'Variants Out' : 'Out' ?>
                         </span>
                     <?php elseif ($isLow): ?>
                         <span class="text-xs font-bold bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">
-                            <?= $lp['stock_quantity'] ?><?= ($lp['variant_count'] ?? 0) > 0 ? ' total ⚠' : ' ⚠' ?>
+                            <?= $lp['stock_quantity'] ?> <?= e($unit) ?><?= $isVariant ? ' ⚠' : ' ⚠' ?>
                         </span>
                     <?php else: ?>
                         <span class="font-medium text-green-600">
-                            <?= $lp['stock_quantity'] ?><?= ($lp['variant_count'] ?? 0) > 0 ? ' total' : '' ?>
+                            <?= $lp['stock_quantity'] ?> <span class="text-xs text-gray-400 font-normal"><?= e($unit) ?><?= $isVariant ? '*' : '' ?></span>
                         </span>
                     <?php endif; ?>
                 </td>
