@@ -157,9 +157,27 @@ if ($viewId) {
 
     $ledger = $db->fetchAll("SELECT * FROM supplier_transactions WHERE supplier_id=? ORDER BY transaction_date DESC, id DESC", [$viewId]) ?: [];
 
-    $linkedProducts = $db->fetchAll("SELECT sp.*, p.name, p.sku, p.stock_quantity, p.low_stock_threshold, p.featured_image
-        FROM supplier_products sp JOIN products p ON sp.product_id=p.id
-        WHERE sp.supplier_id=? ORDER BY p.stock_quantity ASC", [$viewId]) ?: [];
+    $linkedProducts = $db->fetchAll("
+        SELECT sp.*,
+               p.name, p.sku, p.low_stock_threshold, p.featured_image, p.product_type,
+               -- effective stock: sum active variation-type variants if they exist, else parent stock
+               CASE
+                 WHEN (SELECT COUNT(*) FROM product_variants pv
+                       WHERE pv.product_id = p.id AND pv.option_type = 'variation'
+                         AND pv.is_active = 1 AND pv.manage_stock = 1) > 0
+                 THEN (SELECT COALESCE(SUM(pv2.stock_quantity),0) FROM product_variants pv2
+                       WHERE pv2.product_id = p.id AND pv2.option_type = 'variation'
+                         AND pv2.is_active = 1 AND pv2.manage_stock = 1)
+                 ELSE p.stock_quantity
+               END AS stock_quantity,
+               -- flag so UI can show variant breakdown hint
+               (SELECT COUNT(*) FROM product_variants pv3
+                WHERE pv3.product_id = p.id AND pv3.option_type = 'variation'
+                  AND pv3.is_active = 1) AS variant_count
+        FROM supplier_products sp
+        JOIN products p ON sp.product_id = p.id
+        WHERE sp.supplier_id = ?
+        ORDER BY stock_quantity ASC", [$viewId]) ?: [];
 
     $linkedIds   = array_column($linkedProducts, 'product_id');
     $allProducts = $db->fetchAll("SELECT id, name, sku FROM products WHERE is_active=1 ORDER BY name") ?: [];
@@ -397,8 +415,16 @@ $spOut = array_filter($linkedProducts, fn($p) => $p['stock_quantity'] <= 0);
 <div class="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm">
     <p class="font-semibold text-amber-700 mb-2">⚠ Stock Alert — Contact supplier to reorder:</p>
     <div class="flex flex-wrap gap-2">
-        <?php foreach ($spOut as $p): ?><span class="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-medium"><?= e($p['name']) ?> — OUT</span><?php endforeach; ?>
-        <?php foreach ($spLow as $p): ?><span class="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded text-xs font-medium"><?= e($p['name']) ?> — <?= $p['stock_quantity'] ?> left</span><?php endforeach; ?>
+        <?php foreach ($spOut as $p): ?>
+            <span class="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-medium">
+                <?= e($p['name']) ?><?= ($p['variant_count']??0)>0 ? ' — all variants out' : ' — OUT' ?>
+            </span>
+        <?php endforeach; ?>
+        <?php foreach ($spLow as $p): ?>
+            <span class="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded text-xs font-medium">
+                <?= e($p['name']) ?> — <?= $p['stock_quantity'] ?><?= ($p['variant_count']??0)>0 ? ' total (variants)' : ' left' ?> ⚠
+            </span>
+        <?php endforeach; ?>
     </div>
 </div>
 <?php endif; ?>
@@ -430,7 +456,10 @@ $spOut = array_filter($linkedProducts, fn($p) => $p['stock_quantity'] <= 0);
                         <?php if ($lp['featured_image']): ?><img src="<?= uploadUrl($lp['featured_image']) ?>" class="w-7 h-7 rounded object-cover"><?php endif; ?>
                         <div>
                             <p class="font-medium text-gray-800"><?= e($lp['name']) ?></p>
-                            <?php if ($lp['is_preferred']): ?><span class="text-xs text-orange-500">★ Preferred</span><?php endif; ?>
+                            <div class="flex items-center gap-1 mt-0.5">
+                                <?php if ($lp['is_preferred']): ?><span class="text-xs text-orange-500">★ Preferred</span><?php endif; ?>
+                                <?php if (($lp['variant_count'] ?? 0) > 0): ?><span class="text-xs text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded"><?= $lp['variant_count'] ?> variants</span><?php endif; ?>
+                            </div>
                         </div>
                     </div>
                 </td>
@@ -438,9 +467,19 @@ $spOut = array_filter($linkedProducts, fn($p) => $p['stock_quantity'] <= 0);
                 <td class="px-4 py-3 text-gray-500 text-xs"><?= e($lp['supplier_sku'] ?? '—') ?></td>
                 <td class="px-4 py-3 text-right"><?= $lp['cost_price'] ? '৳'.number_format($lp['cost_price'],2) : '—' ?></td>
                 <td class="px-4 py-3 text-right">
-                    <?php if ($isOut): ?><span class="text-xs font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Out</span>
-                    <?php elseif ($isLow): ?><span class="text-xs font-bold bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full"><?= $lp['stock_quantity'] ?> ⚠</span>
-                    <?php else: ?><span class="font-medium text-green-600"><?= $lp['stock_quantity'] ?></span><?php endif; ?>
+                    <?php if ($isOut): ?>
+                        <span class="text-xs font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full">
+                            <?= ($lp['variant_count'] ?? 0) > 0 ? 'Variants Out' : 'Out' ?>
+                        </span>
+                    <?php elseif ($isLow): ?>
+                        <span class="text-xs font-bold bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">
+                            <?= $lp['stock_quantity'] ?><?= ($lp['variant_count'] ?? 0) > 0 ? ' total ⚠' : ' ⚠' ?>
+                        </span>
+                    <?php else: ?>
+                        <span class="font-medium text-green-600">
+                            <?= $lp['stock_quantity'] ?><?= ($lp['variant_count'] ?? 0) > 0 ? ' total' : '' ?>
+                        </span>
+                    <?php endif; ?>
                 </td>
                 <td class="px-4 py-3 text-right text-gray-500"><?= $lp['min_order_qty'] ?></td>
                 <td class="px-4 py-3 text-right text-gray-500"><?= $lp['lead_days'] ? $lp['lead_days'].'d' : '—' ?></td>
@@ -522,7 +561,15 @@ $spOut = array_filter($linkedProducts, fn($p) => $p['stock_quantity'] <= 0);
         SELECT s.*,
             COALESCE((SELECT SUM(CASE WHEN type='debit' THEN amount ELSE -amount END) FROM supplier_transactions WHERE supplier_id=s.id),0) as balance,
             (SELECT COUNT(*) FROM supplier_products WHERE supplier_id=s.id) as product_count,
-            (SELECT COUNT(*) FROM supplier_products sp2 JOIN products p2 ON sp2.product_id=p2.id WHERE sp2.supplier_id=s.id AND p2.stock_quantity <= p2.low_stock_threshold AND p2.is_active=1) as low_stock_count
+            (SELECT COUNT(*) FROM supplier_products sp2
+              JOIN products p2 ON sp2.product_id=p2.id
+              WHERE sp2.supplier_id=s.id AND p2.is_active=1
+                AND (
+                  CASE WHEN (SELECT COUNT(*) FROM product_variants pv WHERE pv.product_id=p2.id AND pv.option_type='variation' AND pv.is_active=1 AND pv.manage_stock=1)>0
+                       THEN (SELECT COALESCE(SUM(pv2.stock_quantity),0) FROM product_variants pv2 WHERE pv2.product_id=p2.id AND pv2.option_type='variation' AND pv2.is_active=1 AND pv2.manage_stock=1)
+                       ELSE p2.stock_quantity END
+                ) <= p2.low_stock_threshold
+            ) as low_stock_count
         FROM suppliers s $where ORDER BY s.name", $params) ?: [];
 
     require_once __DIR__ . '/../includes/header.php';
