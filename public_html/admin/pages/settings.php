@@ -2915,8 +2915,8 @@ require_once __DIR__ . '/../includes/header.php';
                         <div class="grid md:grid-cols-3 gap-4 pl-2">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Trigger Delay (ms)</label>
-                                <p class="text-xs text-gray-400 mb-1">Show loader after this many ms</p>
-                                <input type="number" name="perf_loader_delay" value="<?= e(getSetting('perf_loader_delay','800')) ?>" min="200" max="5000" step="100" class="w-full px-3 py-2 border rounded-lg text-sm">
+                                <p class="text-xs text-gray-400 mb-1">Show loader if nav takes longer than this (2000ms recommended)</p>
+                                <input type="number" name="perf_loader_delay" value="<?= e(getSetting('perf_loader_delay','2000')) ?>" min="800" max="10000" step="200" class="w-full px-3 py-2 border rounded-lg text-sm">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Loader BG Color</label>

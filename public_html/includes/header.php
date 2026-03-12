@@ -502,48 +502,57 @@ $_autoDesc = seoAutoDescription($seo);
 
     <?php
     // ── Performance: Skeleton + Loader ──────────────────────────────────────
-    $perf_skeleton = getSetting('perf_skeleton_enabled','1') === '1';
-    $perf_loader   = getSetting('perf_loader_enabled','1') === '1';
-    $sk_base       = getSetting('perf_skeleton_base','#e5e7eb');
-    $sk_shimmer    = getSetting('perf_skeleton_shimmer','#f3f4f6');
-    $ld_delay      = max(200, intval(getSetting('perf_loader_delay','800')));
-    $ld_bg         = getSetting('perf_loader_bg','#ffffff');
-    $ld_color      = getSetting('perf_loader_color','#f97316');
-    $ld_style      = getSetting('perf_loader_style','spinner');
-    $ld_text       = getSetting('perf_loader_text','');
-    if ($perf_skeleton || $perf_loader):
+    // Read once — zero extra queries (getSetting uses cached array)
+    $perf_skeleton  = getSetting('perf_skeleton_enabled','1') === '1';
+    $perf_loader    = getSetting('perf_loader_enabled','1')   === '1';
+    $sk_base        = getSetting('perf_skeleton_base','#e5e7eb');
+    $sk_shimmer     = getSetting('perf_skeleton_shimmer','#f3f4f6');
+    $ld_delay       = max(800, intval(getSetting('perf_loader_delay','2000')));
+    $ld_bg          = getSetting('perf_loader_bg','#ffffff');
+    $ld_color       = getSetting('perf_loader_color','#f97316');
+    $ld_style       = getSetting('perf_loader_style','spinner');
+    $ld_text        = getSetting('perf_loader_text','');
     ?>
+    <?php if($perf_skeleton || $perf_loader): ?>
     <style>
     <?php if($perf_skeleton): ?>
+    /* Skeleton — rendered before any JS, zero blocking */
     :root{--sk-base:<?= $sk_base ?>;--sk-shimmer:<?= $sk_shimmer ?>;}
-    .skeleton{background:linear-gradient(90deg,var(--sk-base) 25%,var(--sk-shimmer) 50%,var(--sk-base) 75%);background-size:200% 100%;animation:skAnim 1.5s ease-in-out infinite;}
+    .skeleton{background:linear-gradient(90deg,var(--sk-base) 25%,var(--sk-shimmer) 50%,var(--sk-base) 75%);background-size:200% 100%;animation:skAnim 1.4s ease-in-out infinite;}
     @keyframes skAnim{0%{background-position:200% 0}100%{background-position:-200% 0}}
     .skeleton-card{border-radius:12px;overflow:hidden;background:var(--sk-base);}
     <?php endif; ?>
     <?php if($perf_loader): ?>
-    #kh-page-loader{position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:<?= $ld_bg ?>;opacity:0;pointer-events:none;transition:opacity .25s;}
-    #kh-page-loader.show{opacity:1;pointer-events:all;}
-    #kh-loader-spinner{width:44px;height:44px;border-radius:50%;border:4px solid <?= $ld_color ?>22;border-top-color:<?= $ld_color ?>;animation:khSpin .8s linear infinite;}
+    /* Loader — hidden by default, only shown after threshold on SLOW nav */
+    #kh-page-loader{position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:<?= $ld_bg ?>;opacity:0;pointer-events:none;transition:opacity .3s;}
+    #kh-page-loader.kh-show{opacity:1;pointer-events:all;}
+    /* Spinner */
+    #kh-loader-spinner{width:46px;height:46px;border-radius:50%;border:4px solid <?= $ld_color ?>33;border-top-color:<?= $ld_color ?>;animation:khSpin .75s linear infinite;}
     @keyframes khSpin{to{transform:rotate(360deg)}}
-    #kh-loader-dots{display:flex;gap:7px;}
-    #kh-loader-dots span{width:11px;height:11px;border-radius:50%;background:<?= $ld_color ?>;animation:khBounce 1.1s ease-in-out infinite;}
-    #kh-loader-dots span:nth-child(2){animation-delay:.18s;}
-    #kh-loader-dots span:nth-child(3){animation-delay:.36s;}
-    @keyframes khBounce{0%,80%,100%{transform:scale(0.6);opacity:.5}40%{transform:scale(1);opacity:1}}
-    #kh-loader-bar-wrap{width:160px;height:4px;background:<?= $ld_color ?>22;border-radius:9px;overflow:hidden;}
-    #kh-loader-bar{height:100%;background:<?= $ld_color ?>;border-radius:9px;animation:khBar 1.4s ease-in-out infinite;}
-    @keyframes khBar{0%{width:0;margin-left:0}50%{width:70%;margin-left:0}100%{width:0;margin-left:100%}}
-    #kh-loader-logo{width:56px;height:56px;border-radius:50%;animation:khPulse 1.2s ease-in-out infinite;}
-    @keyframes khPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.12);opacity:.7}}
-    #kh-loader-text{font-size:13px;color:<?= $ld_color ?>;font-weight:500;letter-spacing:.3px;}
+    /* Dots */
+    #kh-loader-dots{display:flex;gap:8px;align-items:center;}
+    #kh-loader-dots span{width:12px;height:12px;border-radius:50%;background:<?= $ld_color ?>;animation:khBounce 1s ease-in-out infinite;}
+    #kh-loader-dots span:nth-child(2){animation-delay:.15s;}
+    #kh-loader-dots span:nth-child(3){animation-delay:.3s;}
+    @keyframes khBounce{0%,80%,100%{transform:scale(.55);opacity:.4}40%{transform:scale(1);opacity:1}}
+    /* Bar */
+    #kh-loader-bar-wrap{width:180px;height:4px;background:<?= $ld_color ?>22;border-radius:9px;overflow:hidden;}
+    #kh-loader-bar{height:100%;background:<?= $ld_color ?>;border-radius:9px;animation:khBar 1.6s ease-in-out infinite;}
+    @keyframes khBar{0%{transform:translateX(-100%)}100%{transform:translateX(400%)}}
+    /* Logo pulse — natural size, no circle clip */
+    #kh-loader-logo{max-width:160px;max-height:80px;width:auto;height:auto;object-fit:contain;animation:khPulse 1.3s ease-in-out infinite;}
+    @keyframes khPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(.95)}}
+    /* Text */
+    #kh-loader-text{font-size:13px;color:<?= $ld_color ?>;font-weight:500;margin-top:4px;}
     <?php endif; ?>
     </style>
     <?php endif; ?>
 </head>
 <body class="bg-gray-50 text-gray-800 antialiased">
 
-<?php if($perf_loader ?? false): ?>
-<div id="kh-page-loader" aria-hidden="true">
+<?php if($perf_loader): ?>
+<!-- Page loader — hidden until slow navigation detected -->
+<div id="kh-page-loader" aria-hidden="true" style="display:none">
     <?php if($ld_style==='spinner'): ?>
     <div id="kh-loader-spinner"></div>
     <?php elseif($ld_style==='dots'): ?>
@@ -552,67 +561,67 @@ $_autoDesc = seoAutoDescription($seo);
     <div id="kh-loader-bar-wrap"><div id="kh-loader-bar"></div></div>
     <?php elseif($ld_style==='logo'): ?>
     <?php if($siteLogo): ?>
-        <img id="kh-loader-logo" src="<?= uploadUrl($siteLogo) ?>" alt="Loading">
+    <img id="kh-loader-logo" src="<?= uploadUrl($siteLogo) ?>" alt="<?= e($siteName) ?>">
     <?php else: ?>
-        <div id="kh-loader-spinner"></div>
+    <div id="kh-loader-spinner"></div>
     <?php endif; ?>
     <?php endif; ?>
-    <?php if($ld_text): ?><span id="kh-loader-text"><?= e($ld_text) ?></span><?php endif; ?>
+    <?php if($ld_text): ?><div id="kh-loader-text"><?= e($ld_text) ?></div><?php endif; ?>
 </div>
 <script>
+// ── Page Loader — priority 3: only on slow navigation ──────────────────────
+// Inline, no defer/async — must run immediately so previous page can set flag
 (function(){
-    var _khl = document.getElementById('kh-page-loader');
-    var _khD = <?= $ld_delay ?>;
-    var _KH_KEY = 'kh_nav_ts';
+    var KEY   = 'kh_nav_ts';
+    var DELAY = <?= $ld_delay ?>; // ms before showing loader
+    var el    = null; // resolved after DOM ready
 
-    // ── HIDE on current page load ───────────────────────────────────────────
-    // Called when this page finishes loading
-    function _khHide(){
-        sessionStorage.removeItem(_KH_KEY);
-        if(!_khl) return;
-        _khl.style.transition = 'opacity .2s';
-        _khl.style.opacity = '0';
-        setTimeout(function(){ _khl.classList.remove('show'); _khl.style.opacity=''; }, 220);
+    function getEl(){ return el || (el = document.getElementById('kh-page-loader')); }
+
+    function showLoader(){
+        var l = getEl();
+        if(!l) return;
+        l.style.display = 'flex';
+        // Force reflow so transition fires
+        l.getBoundingClientRect();
+        l.classList.add('kh-show');
     }
 
-    // ── SHOW if previous page set navigation timestamp ──────────────────────
-    // Check if we navigated here and it's been > threshold
-    var _navTs = parseInt(sessionStorage.getItem(_KH_KEY) || '0');
-    if(_navTs){
-        var _elapsed = Date.now() - _navTs;
-        if(_elapsed >= _khD){
-            // Took longer than threshold — show loader briefly then hide on load
-            if(_khl){ _khl.classList.add('show'); }
+    function hideLoader(){
+        sessionStorage.removeItem(KEY);
+        var l = getEl();
+        if(!l || l.style.display === 'none') return;
+        l.classList.remove('kh-show');
+        setTimeout(function(){ if(l) l.style.display='none'; }, 320);
+    }
+
+    // ── On this page: check if previous nav was slow ────────────────────────
+    var ts = parseInt(sessionStorage.getItem(KEY)||'0');
+    if(ts){
+        var elapsed = Date.now() - ts;
+        if(elapsed >= DELAY){
+            // Navigation genuinely took long — show loader briefly
+            document.addEventListener('DOMContentLoaded', showLoader);
         }
-        // Whether shown or not, hide when fully loaded
-        if(document.readyState === 'complete'){ _khHide(); }
-        else { window.addEventListener('load', _khHide, {once:true}); }
+        // Always hide on full load
+        if(document.readyState === 'complete') hideLoader();
+        else window.addEventListener('load', hideLoader, {once:true});
     }
 
-    // ── SET timestamp on every internal link click ──────────────────────────
+    // ── On link click: record timestamp for NEXT page ──────────────────────
     document.addEventListener('click', function(e){
         var a = e.target.closest('a');
         if(!a) return;
-        var href = a.getAttribute('href') || '';
-        // Skip: external, hash-only, blank, javascript, download
-        if(!href || href.startsWith('#') || href.startsWith('javascript') ||
-           a.target === '_blank' || a.hasAttribute('download')) return;
-        // Skip: different host
-        try{ if(new URL(href, location.href).host !== location.host) return; }catch(ex){ return; }
-        // Record navigation start time
-        sessionStorage.setItem(_KH_KEY, Date.now().toString());
+        var href = a.getAttribute('href')||'';
+        if(!href || href.charAt(0)==='#' || href.indexOf('javascript')===0
+           || a.target==='_blank' || a.hasAttribute('download')) return;
+        try{ if(new URL(href, location.href).host !== location.host) return; }catch(x){ return; }
+        sessionStorage.setItem(KEY, Date.now().toString());
     }, true);
 
-    // ── SET timestamp on form submit ────────────────────────────────────────
-    document.addEventListener('submit', function(e){
-        var f = e.target;
-        if(f && f.method && f.method.toLowerCase() !== 'get') return; // skip POST (handled by redirect)
-        sessionStorage.setItem(_KH_KEY, Date.now().toString());
-    }, true);
-
-    // ── Clean up on bfcache restore ────────────────────────────────────────
+    // ── bfcache cleanup ─────────────────────────────────────────────────────
     window.addEventListener('pageshow', function(e){
-        if(e.persisted){ _khHide(); }
+        if(e.persisted) hideLoader();
     });
 })();
 </script>
