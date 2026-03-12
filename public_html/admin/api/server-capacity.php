@@ -4,18 +4,39 @@
  * Gathers real hardware + software metrics and estimates maximum load capacity.
  * Auth: admin session required.
  */
+
+// Capture ALL output (errors, warnings, notices) so nothing breaks JSON
+ob_start();
+
+// Suppress display errors — we'll catch them ourselves
+@ini_set('display_errors', '0');
+@ini_set('display_startup_errors', '0');
+error_reporting(0);
+
+// Custom error handler — store errors silently
+$_lt_errors = [];
+set_error_handler(function($errno, $errstr, $errfile, $errline) use (&$_lt_errors) {
+    $_lt_errors[] = $errstr;
+    return true;
+});
+
 require_once __DIR__ . '/../../includes/session.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 
+// Discard anything the includes may have printed
+ob_clean();
+
 if (empty($_SESSION['admin_id'])) {
+    ob_end_clean();
     http_response_code(403);
+    header('Content-Type: application/json');
     echo json_encode(['error' => 'Unauthorized']);
     exit;
 }
 
 header('Content-Type: application/json');
-set_time_limit(30);
+set_time_limit(60);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function readFile(string $path): string {
@@ -286,6 +307,7 @@ function estimateCapacity(array $cpu, array $mem, array $php, array $db, array $
 }
 
 // ── Assemble all data ─────────────────────────────────────────────────────────
+try {
 $cpu   = parseCpuinfo();
 $mem   = parseMeminfo();
 $load  = getLoadAvg();
@@ -296,6 +318,10 @@ $db    = getDbStats();
 $bench = runMicroBenchmark();
 $cap   = estimateCapacity($cpu, $mem, $php, $db, $bench, $load);
 $workers = countApacheWorkers();
+
+// Discard any stray output (PHP notices etc) before sending JSON
+ob_end_clean();
+header('Content-Type: application/json');
 
 echo json_encode([
     'cpu'      => $cpu,
@@ -323,3 +349,8 @@ echo json_encode([
     'hostname' => gethostname(),
     'os'       => PHP_OS,
 ], JSON_PRETTY_PRINT);
+} catch (Throwable $e) {
+    ob_end_clean();
+    header('Content-Type: application/json');
+    echo json_encode(['error' => $e->getMessage(), 'trace' => $e->getFile().':'.$e->getLine()]);
+}
