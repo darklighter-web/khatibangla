@@ -81,6 +81,25 @@ input[type=range] { accent-color:#f97316; width:100%; cursor:pointer; }
 /* ── Real badge ── */
 .lt-real-badge { display:inline-flex; align-items:center; gap:5px; background:#ecfdf5; color:#047857;
                  border:1px solid #6ee7b7; font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; }
+/* ── Capacity panel ── */
+.cap-meter-wrap { height:10px; background:#f1f5f9; border-radius:9px; overflow:hidden; }
+.cap-meter-bar  { height:100%; border-radius:9px; transition:width .6s ease; }
+.cap-spec { display:flex; flex-direction:column; gap:2px; }
+.cap-spec-val { font-size:1.2rem; font-weight:800; line-height:1.1; font-variant-numeric:tabular-nums; }
+.cap-spec-lbl { font-size:10px; font-weight:600; color:#9ca3af; text-transform:uppercase; letter-spacing:.4px; }
+.cap-badge { display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; }
+.cap-badge-high    { background:#d1fae5; color:#047857; }
+.cap-badge-good    { background:#dbeafe; color:#1d4ed8; }
+.cap-badge-standard{ background:#fef3c7; color:#b45309; }
+.cap-badge-basic   { background:#fee2e2; color:#b91c1c; }
+.cap-badge-minimal { background:#f3f4f6; color:#374151; }
+.cap-impact-high   { background:#fee2e2; color:#dc2626; }
+.cap-impact-critical{ background:#7f1d1d; color:#fca5a5; }
+.cap-impact-medium { background:#fef3c7; color:#92400e; }
+.cap-load-ring { width:80px; height:80px; }
+.lt-suggest-btn { cursor:pointer; border:2px solid transparent; border-radius:12px; padding:10px 14px; transition:.2s; text-align:left; }
+.lt-suggest-btn:hover { border-color:#f97316; }
+.lt-suggest-btn.selected { border-color:#f97316; background:#fff7ed; }
 </style>
 
 <div class="space-y-5">
@@ -115,6 +134,83 @@ input[type=range] { accent-color:#f97316; width:100%; cursor:pointer; }
             <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><rect x="5" y="5" width="10" height="10" rx="1"/></svg>
             Stop
         </button>
+    </div>
+</div>
+
+<!-- ── Server Capacity Panel ── -->
+<div class="lt-card" id="cap-panel">
+    <div class="flex items-center justify-between flex-wrap gap-3 mb-4">
+        <div>
+            <p class="lt-stitle mb-0">Server Capability Analysis</p>
+            <p class="text-xs text-gray-400 mt-0.5">Real hardware specs · estimated maximum load · recommended test settings</p>
+        </div>
+        <button onclick="ltAnalyzeServer()" id="cap-btn"
+            class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-xl transition shadow-sm">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/></svg>
+            Analyse Server
+        </button>
+    </div>
+
+    <!-- Loading state -->
+    <div id="cap-loading" style="display:none" class="flex items-center gap-3 py-4 text-gray-400 text-sm">
+        <div class="lt-spin"></div> Running benchmarks and reading server metrics…
+    </div>
+
+    <!-- Error state -->
+    <div id="cap-error" style="display:none" class="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700"></div>
+
+    <!-- Results -->
+    <div id="cap-results" style="display:none">
+
+        <!-- Row 1: Hardware specs -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 mb-5" id="cap-specs-row"></div>
+
+        <!-- Row 2: Capacity estimates + Load gauge -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
+
+            <!-- Capacity bars -->
+            <div class="space-y-4" id="cap-bars-col">
+                <p class="text-sm font-semibold text-gray-700">Estimated Load Capacity</p>
+            </div>
+
+            <!-- Circular gauge + rating -->
+            <div class="flex flex-col items-center justify-center gap-3 p-4 bg-gray-50 rounded-2xl">
+                <svg class="cap-load-ring -rotate-90" viewBox="0 0 80 80">
+                    <circle cx="40" cy="40" r="32" fill="none" stroke="#f1f5f9" stroke-width="10"/>
+                    <circle id="cap-gauge-arc" cx="40" cy="40" r="32" fill="none" stroke="#6366f1" stroke-width="10"
+                            stroke-linecap="round" stroke-dasharray="201" stroke-dashoffset="201" style="transition:stroke-dashoffset .8s ease"/>
+                </svg>
+                <div class="text-center -mt-2">
+                    <p class="text-2xl font-black text-gray-800" id="cap-gauge-val">—</p>
+                    <p class="text-xs text-gray-400 font-semibold uppercase tracking-wider">Current Load</p>
+                </div>
+                <span id="cap-rating-badge" class="cap-badge cap-badge-standard">Checking…</span>
+                <p class="text-xs text-gray-400 text-center" id="cap-rating-note"></p>
+            </div>
+        </div>
+
+        <!-- Row 3: Bottlenecks -->
+        <div id="cap-bottlenecks-wrap" class="mb-5" style="display:none">
+            <p class="text-sm font-semibold text-gray-700 mb-3">⚠ Bottlenecks Detected</p>
+            <div id="cap-bottlenecks" class="space-y-2"></div>
+        </div>
+
+        <!-- Row 4: Suggested load test presets -->
+        <div>
+            <p class="text-sm font-semibold text-gray-700 mb-3">Suggested Load Test Presets
+                <span class="text-xs text-gray-400 font-normal ml-2">Click to apply to test config</span>
+            </p>
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2" id="cap-presets"></div>
+        </div>
+
+        <!-- Row 5: Tech details accordion -->
+        <details class="mt-4 border border-gray-100 rounded-xl overflow-hidden">
+            <summary class="px-4 py-3 bg-gray-50 text-sm font-semibold text-gray-700 cursor-pointer select-none list-none flex items-center justify-between">
+                <span>Full Server Details</span>
+                <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </summary>
+            <div class="p-4 space-y-4 text-sm" id="cap-details"></div>
+        </details>
     </div>
 </div>
 
@@ -737,7 +833,240 @@ function ltLoadPreview(silent) {
 }
 
 // Load on page open
-window.addEventListener('DOMContentLoaded', () => ltLoadPreview(false));
+window.addEventListener('DOMContentLoaded', () => {
+    ltLoadPreview(false);
+    ltAnalyzeServer(); // auto-run on page load
+});
+
+// ═══════════════════════════════════════════════════════════════
+// SERVER CAPACITY ANALYSER
+// ═══════════════════════════════════════════════════════════════
+var CAP_URL = '<?= e($siteUrl) ?>/admin/api/server-capacity.php';
+
+function ltAnalyzeServer() {
+    var btn  = document.getElementById('cap-btn');
+    var load = document.getElementById('cap-loading');
+    var err  = document.getElementById('cap-error');
+    var res  = document.getElementById('cap-results');
+
+    btn.disabled = true;
+    btn.innerHTML = '<div class="lt-spin" style="width:16px;height:16px;border-width:2px"></div> Analysing…';
+    load.style.display = 'flex';
+    err.style.display  = 'none';
+    res.style.display  = 'none';
+
+    fetch(CAP_URL, { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            load.style.display = 'none';
+            btn.disabled = false;
+            btn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Re-analyse';
+
+            if (data.error) {
+                err.style.display = 'block';
+                err.textContent = 'Error: ' + data.error;
+                return;
+            }
+
+            renderCapacity(data);
+            res.style.display = 'block';
+        })
+        .catch(e => {
+            load.style.display = 'none';
+            btn.disabled = false;
+            btn.innerHTML = 'Analyse Server';
+            err.style.display = 'block';
+            err.textContent = 'Failed to contact server: ' + e.message;
+        });
+}
+
+function renderCapacity(d) {
+    var cap = d.capacity;
+    var mem = d.mem;
+    var cpu = d.cpu;
+    var php = d.php;
+    var db  = d.db;
+    var bn  = d.bench;
+    var ld  = d.load;
+
+    // ── Spec chips ─────────────────────────────────────────────
+    var specs = [
+        { val: cpu.cores || '?',                      lbl: 'CPU Cores',       color: 'text-blue-600',   bg: 'bg-blue-50' },
+        { val: mem.total_mb ? Math.round(mem.total_mb/1024*10)/10+'GB' : '?MB', lbl: 'Total RAM', color: 'text-indigo-600', bg: 'bg-indigo-50' },
+        { val: mem.available_mb ? Math.round(mem.available_mb/1024*10)/10+'GB' : '?', lbl: 'Free RAM', color: 'text-green-600', bg: 'bg-green-50' },
+        { val: 'PHP ' + (php.version||'?'),           lbl: 'Runtime',         color: 'text-purple-600', bg: 'bg-purple-50' },
+        { val: db.vars && db.vars.max_connections ? db.vars.max_connections : '?', lbl: 'DB Conn Limit', color: 'text-orange-600', bg: 'bg-orange-50' },
+        { val: ld['1m'] !== null ? ld['1m'] : '?',   lbl: 'Load Avg (1m)',   color: 'text-gray-700',   bg: 'bg-gray-50' },
+    ];
+    document.getElementById('cap-specs-row').innerHTML = specs.map(s =>
+        '<div class="lt-stat '+s.bg+'">'
+        +'<div class="cap-spec-val '+s.color+'">'+s.val+'</div>'
+        +'<div class="cap-spec-lbl">'+s.lbl+'</div>'
+        +'</div>'
+    ).join('');
+
+    // ── Capacity bars ───────────────────────────────────────────
+    var bars = [
+        { label: 'Max Concurrent Requests', val: cap.maxConcurrent, suffix: '', color: '#6366f1', note: 'Based on RAM ÷ PHP memory limit' },
+        { label: 'Safe Concurrent (70%)',   val: cap.safeConcurrent, suffix: '', color: '#10b981', note: 'Recommended operating level' },
+        { label: 'Max Requests / sec',      val: cap.maxRps, suffix: ' rps', color: '#f97316', note: 'CPU-based estimate × OPcache boost' },
+        { label: 'DB Connections Available',val: cap.dbMaxConn, suffix: '', color: '#8b5cf6', note: 'MariaDB max_connections setting' },
+        { label: 'PHP Memory / Process',    val: Math.round(cap.phpMemLimitMB)+'MB', suffix: '', isStr:true, color: '#ec4899', note: 'memory_limit in php.ini' },
+    ];
+    var maxVal = Math.max(cap.maxConcurrent, cap.maxRps, cap.dbMaxConn, 1);
+    document.getElementById('cap-bars-col').innerHTML = '<p class="text-sm font-semibold text-gray-700">Estimated Load Capacity</p>'
+        + bars.map(b => {
+            var w = b.isStr ? 60 : Math.min(100, Math.round((b.val / maxVal) * 100));
+            return '<div class="space-y-1">'
+                +'<div class="flex justify-between text-xs text-gray-600"><span>'+b.label+'</span><span class="font-bold">'+b.val+(b.suffix||'')+'</span></div>'
+                +'<div class="cap-meter-wrap"><div class="cap-meter-bar" style="width:'+w+'%;background:'+b.color+'"></div></div>'
+                +'<p class="text-[10px] text-gray-300">'+b.note+'</p>'
+                +'</div>';
+        }).join('');
+
+    // ── Gauge ring (current load vs max) ───────────────────────
+    var currentLoad1m = parseFloat(ld['1m']) || 0;
+    var loadPct = cap.cores > 0 ? Math.min(100, (currentLoad1m / cap.cores) * 100) : 0;
+    var circumference = 201; // 2π×32
+    var offset = circumference - (circumference * loadPct / 100);
+    var arc = document.getElementById('cap-gauge-arc');
+    if (arc) {
+        arc.style.strokeDashoffset = offset;
+        arc.style.stroke = loadPct < 40 ? '#10b981' : loadPct < 70 ? '#f97316' : '#ef4444';
+    }
+    var gv = document.getElementById('cap-gauge-val');
+    if (gv) gv.textContent = Math.round(loadPct) + '%';
+
+    // Rating badge
+    var ratingMap = {
+        'high-performance': ['cap-badge-high',   '🚀 High Performance', 'Enterprise-grade server'],
+        'good':             ['cap-badge-good',   '✅ Good',             'Solid hosting for moderate traffic'],
+        'standard':         ['cap-badge-standard','⚡ Standard',        'Suitable for typical e-commerce load'],
+        'basic':            ['cap-badge-basic',  '⚠ Basic',            'May struggle with traffic spikes'],
+        'minimal':          ['cap-badge-minimal','🐌 Minimal',          'Very limited — upgrade recommended'],
+    };
+    var rm = ratingMap[cap.rating] || ratingMap['standard'];
+    var rb = document.getElementById('cap-rating-badge');
+    var rn = document.getElementById('cap-rating-note');
+    if (rb) { rb.className = 'cap-badge ' + rm[0]; rb.textContent = rm[1]; }
+    if (rn) rn.textContent = rm[2];
+
+    // ── Bottlenecks ─────────────────────────────────────────────
+    var bw = document.getElementById('cap-bottlenecks-wrap');
+    var bc = document.getElementById('cap-bottlenecks');
+    if (cap.bottlenecks && cap.bottlenecks.length) {
+        bw.style.display = 'block';
+        bc.innerHTML = cap.bottlenecks.map(b =>
+            '<div class="flex items-start gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">'
+            +'<span class="cap-badge cap-impact-'+b.impact+' flex-shrink-0 mt-0.5">'+b.impact.toUpperCase()+'</span>'
+            +'<div><p class="text-sm font-semibold text-gray-800">'+b.label+'</p>'
+            +'<p class="text-xs text-gray-500 mt-0.5">'+b.fix+'</p></div>'
+            +'</div>'
+        ).join('');
+    } else {
+        bw.style.display = 'none';
+    }
+
+    // ── Presets ─────────────────────────────────────────────────
+    var presetColors = {
+        light:  'bg-green-50  border-green-200  text-green-800',
+        normal: 'bg-blue-50   border-blue-200   text-blue-800',
+        stress: 'bg-yellow-50 border-yellow-200 text-yellow-800',
+        spike:  'bg-orange-50 border-orange-200 text-orange-800',
+        danger: 'bg-red-50    border-red-200    text-red-700',
+    };
+    document.getElementById('cap-presets').innerHTML = Object.entries(cap.suggested).map(([key, p]) => {
+        var cls = presetColors[key] || 'bg-gray-50 border-gray-200 text-gray-700';
+        return '<button class="lt-suggest-btn border '+cls+'" onclick="ltApplyPreset('+p.concurrency+')" title="Apply '+p.concurrency+' concurrent to test config">'
+            +'<p class="text-xs font-bold">'+p.label+'</p>'
+            +'<p class="text-xl font-black tabular-nums mt-1">'+p.concurrency+'</p>'
+            +'<p class="text-[10px] mt-0.5 opacity-70">concurrent</p>'
+            +'</button>';
+    }).join('');
+
+    // ── Full details ─────────────────────────────────────────────
+    var sections = [
+        { title: '🖥 CPU', rows: [
+            ['Model', cpu.model || 'N/A'],
+            ['Cores', cpu.cores],
+            ['Clock Speed', cpu.mhz ? Math.round(cpu.mhz)+' MHz' : 'N/A'],
+            ['Cache', cpu.cache || 'N/A'],
+            ['Benchmark (CPU)', bn.cpuMs+'ms'],
+            ['Benchmark (Mem)', bn.memMs+'ms'],
+            ['Benchmark (String)', bn.strMs+'ms'],
+        ]},
+        { title: '💾 Memory', rows: [
+            ['Total RAM', mem.total_mb+'MB'],
+            ['Available', mem.available_mb+'MB'],
+            ['Used', mem.used_mb+'MB ('+mem.used_pct+'%)'],
+            ['Buffers', mem.buffers_mb+'MB'],
+            ['Cached', mem.cached_mb+'MB'],
+            ['Swap Total', mem.swap_total_mb+'MB'],
+            ['Swap Used', mem.swap_used_mb+'MB'],
+        ]},
+        { title: '⚙ PHP', rows: [
+            ['Version', php.version],
+            ['SAPI', php.sapi],
+            ['Memory Limit', php.memory_limit],
+            ['Max Exec Time', php.max_exec_time+'s'],
+            ['OPcache', php.opcache_enabled ? '✅ Enabled' : '❌ Disabled'],
+            ['APCu', php.apcu ? '✅ Available' : '—'],
+            ['Redis', php.redis ? '✅ Available' : '—'],
+            ['cURL Multi', php.curl_multi ? '✅ Yes' : '❌ No'],
+        ]},
+        { title: '🗃 Database', rows: [
+            ['Version', (db.vars||{})['version'] || 'N/A'],
+            ['Max Connections', (db.vars||{})['max_connections'] || 'N/A'],
+            ['Active Connections', (db.status||{})['Threads_connected'] || 'N/A'],
+            ['Running Queries', (db.status||{})['Threads_running'] || 'N/A'],
+            ['Buffer Pool Hit Rate', d.capacity.buffer_pool_hit_rate !== undefined ? (db.buffer_pool_hit_rate||'N/A')+'%' : 'N/A'],
+            ['Slow Queries', (db.status||{})['Slow_queries'] || '0'],
+            ['Aborted Connects', (db.status||{})['Aborted_connects'] || '0'],
+            ['Buffer Pool Size', (db.vars||{})['innodb_buffer_pool_size'] ? Math.round((db.vars||{})['innodb_buffer_pool_size']/1048576)+'MB' : 'N/A'],
+        ]},
+        { title: '🌐 System', rows: [
+            ['Hostname', d.hostname],
+            ['OS', d.os],
+            ['Load 1m / 5m / 15m', [ld['1m'], ld['5m'], ld['15m']].join(' / ')],
+            ['Web Server', (d.workers||{}).server || 'N/A'],
+            ['Active Workers', (d.workers||{}).active || 'N/A'],
+            ['Net RX', d.net ? d.net.rx_mb+'MB total' : 'N/A'],
+            ['Net TX', d.net ? d.net.tx_mb+'MB total' : 'N/A'],
+            ['Scanned at', d.timestamp],
+        ]},
+    ];
+    document.getElementById('cap-details').innerHTML = sections.map(s =>
+        '<div>'
+        +'<p class="font-semibold text-gray-700 mb-2">'+s.title+'</p>'
+        +'<div class="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1">'
+        + s.rows.map(([l,v]) =>
+            '<div class="flex gap-1 text-xs"><span class="text-gray-400 flex-shrink-0">'+l+':</span><span class="text-gray-700 font-medium">'+v+'</span></div>'
+        ).join('')
+        +'</div></div>'
+    ).join('<hr class="my-3 border-gray-100">');
+}
+
+// Apply a preset concurrency to the test slider
+function ltApplyPreset(concurrency) {
+    // Highlight selected
+    document.querySelectorAll('.lt-suggest-btn').forEach(b => b.classList.remove('selected'));
+    event.currentTarget.classList.add('selected');
+
+    if (concurrency <= 200) {
+        document.getElementById('s-users').value = concurrency;
+        document.getElementById('v-users').textContent = concurrency;
+        document.getElementById('s-danger').value = 0;
+        document.getElementById('v-danger').textContent = 'off';
+    } else {
+        // Beyond standard slider — use danger zone
+        document.getElementById('s-danger').value = Math.min(500, concurrency);
+        document.getElementById('v-danger').textContent = Math.min(500, concurrency);
+        document.getElementById('v-users').textContent = Math.min(500, concurrency);
+    }
+
+    // Scroll to config
+    document.getElementById('lt-run-btn').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
 </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
