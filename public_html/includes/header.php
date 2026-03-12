@@ -551,28 +551,69 @@ $_autoDesc = seoAutoDescription($seo);
     <?php elseif($ld_style==='bar'): ?>
     <div id="kh-loader-bar-wrap"><div id="kh-loader-bar"></div></div>
     <?php elseif($ld_style==='logo'): ?>
-    <?php $logoSrc = settingImgUrl($s??[], 'site_logo'); if($logoSrc): ?><img id="kh-loader-logo" src="<?= $logoSrc ?>" alt="Loading"><?php else: ?><div id="kh-loader-spinner"></div><?php endif; ?>
+    <?php if($siteLogo): ?>
+        <img id="kh-loader-logo" src="<?= uploadUrl($siteLogo) ?>" alt="Loading">
+    <?php else: ?>
+        <div id="kh-loader-spinner"></div>
+    <?php endif; ?>
     <?php endif; ?>
     <?php if($ld_text): ?><span id="kh-loader-text"><?= e($ld_text) ?></span><?php endif; ?>
 </div>
 <script>
 (function(){
-    var _khl  = document.getElementById('kh-page-loader');
-    var _khT  = null;
-    var _khD  = <?= $ld_delay ?>;
-    // Show loader after delay if page hasn't finished loading
-    if(_khl && document.readyState !== 'complete'){
-        _khT = setTimeout(function(){ _khl.classList.add('show'); }, _khD);
-    }
-    // Hide once page is fully loaded
+    var _khl = document.getElementById('kh-page-loader');
+    var _khD = <?= $ld_delay ?>;
+    var _KH_KEY = 'kh_nav_ts';
+
+    // ── HIDE on current page load ───────────────────────────────────────────
+    // Called when this page finishes loading
     function _khHide(){
-        if(_khT){ clearTimeout(_khT); _khT = null; }
-        if(_khl){ _khl.classList.remove('show'); }
+        sessionStorage.removeItem(_KH_KEY);
+        if(!_khl) return;
+        _khl.style.transition = 'opacity .2s';
+        _khl.style.opacity = '0';
+        setTimeout(function(){ _khl.classList.remove('show'); _khl.style.opacity=''; }, 220);
     }
-    if(document.readyState === 'complete'){ _khHide(); }
-    else { window.addEventListener('load', _khHide, {once:true}); }
-    // Also hide on navigation away (bfcache)
-    window.addEventListener('pageshow', _khHide, {once:true});
+
+    // ── SHOW if previous page set navigation timestamp ──────────────────────
+    // Check if we navigated here and it's been > threshold
+    var _navTs = parseInt(sessionStorage.getItem(_KH_KEY) || '0');
+    if(_navTs){
+        var _elapsed = Date.now() - _navTs;
+        if(_elapsed >= _khD){
+            // Took longer than threshold — show loader briefly then hide on load
+            if(_khl){ _khl.classList.add('show'); }
+        }
+        // Whether shown or not, hide when fully loaded
+        if(document.readyState === 'complete'){ _khHide(); }
+        else { window.addEventListener('load', _khHide, {once:true}); }
+    }
+
+    // ── SET timestamp on every internal link click ──────────────────────────
+    document.addEventListener('click', function(e){
+        var a = e.target.closest('a');
+        if(!a) return;
+        var href = a.getAttribute('href') || '';
+        // Skip: external, hash-only, blank, javascript, download
+        if(!href || href.startsWith('#') || href.startsWith('javascript') ||
+           a.target === '_blank' || a.hasAttribute('download')) return;
+        // Skip: different host
+        try{ if(new URL(href, location.href).host !== location.host) return; }catch(ex){ return; }
+        // Record navigation start time
+        sessionStorage.setItem(_KH_KEY, Date.now().toString());
+    }, true);
+
+    // ── SET timestamp on form submit ────────────────────────────────────────
+    document.addEventListener('submit', function(e){
+        var f = e.target;
+        if(f && f.method && f.method.toLowerCase() !== 'get') return; // skip POST (handled by redirect)
+        sessionStorage.setItem(_KH_KEY, Date.now().toString());
+    }, true);
+
+    // ── Clean up on bfcache restore ────────────────────────────────────────
+    window.addEventListener('pageshow', function(e){
+        if(e.persisted){ _khHide(); }
+    });
 })();
 </script>
 <?php endif; ?>
