@@ -200,11 +200,38 @@ $bannerCount  = count($banners);
                 <?= htmlspecialchars($allTitle) ?>
             </h2>
         </div>
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+        <?php $__skHome = getSetting('perf_skeleton_enabled','1')==='1'; ?>
+        <?php if($__skHome): ?>
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4" id="skAllGrid" aria-hidden="true">
+            <?php for($__i=0;$__i<10;$__i++): ?>
+            <div class="skeleton-card" style="min-height:240px;">
+                <div class="skeleton" style="height:150px;"></div>
+                <div class="p-3 space-y-2">
+                    <div class="skeleton h-3 rounded" style="width:75%;"></div>
+                    <div class="skeleton h-3 rounded" style="width:50%;"></div>
+                    <div class="skeleton h-6 rounded mt-2" style="width:60%;"></div>
+                </div>
+            </div>
+            <?php endfor; ?>
+        </div>
+        <?php endif; ?>
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4 <?= $__skHome ? 'hidden' : '' ?>" id="realAllGrid">
             <?php foreach ($allProducts as $product): ?>
                 <?php include ROOT_PATH . 'includes/product-card.php'; ?>
             <?php endforeach; ?>
         </div>
+        <?php if($__skHome ?? false): ?>
+        <script>
+        (function(){
+            function showHomeGrids(){
+                ['skAllGrid'].forEach(function(id){var el=document.getElementById(id);if(el)el.remove();});
+                ['realAllGrid'].forEach(function(id){var el=document.getElementById(id);if(el)el.classList.remove('hidden');});
+            }
+            if(document.readyState==='complete') showHomeGrids();
+            else window.addEventListener('load',showHomeGrids,{once:true});
+        })();
+        </script>
+        <?php endif; ?>
     </section>
     <?php endif; ?>
 

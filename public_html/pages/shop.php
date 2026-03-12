@@ -383,11 +383,40 @@ include ROOT_PATH . 'includes/header.php';
 
             <?php else: ?>
             <!-- Product Grid -->
-            <div class="shop-grid">
+            <?php $__skeleton = getSetting('perf_skeleton_enabled','1')==='1'; ?>
+            <?php if($__skeleton): ?>
+            <div class="shop-grid" id="skeletonGrid" aria-hidden="true">
+                <?php for($__i=0;$__i<intval($gridCols)*2;$__i++): ?>
+                <div class="skeleton-card" style="min-height:280px;">
+                    <div class="skeleton" style="height:180px;"></div>
+                    <div class="p-3 space-y-2">
+                        <div class="skeleton h-3 rounded" style="width:75%;"></div>
+                        <div class="skeleton h-3 rounded" style="width:50%;"></div>
+                        <div class="skeleton h-6 rounded mt-2" style="width:60%;"></div>
+                    </div>
+                </div>
+                <?php endfor; ?>
+            </div>
+            <?php endif; ?>
+            <div class="shop-grid <?= $__skeleton ? 'hidden' : '' ?>" id="realGrid">
                 <?php foreach ($products as $product): ?>
                     <?php include ROOT_PATH . 'includes/product-card.php'; ?>
                 <?php endforeach; ?>
             </div>
+            <?php if($__skeleton): ?>
+            <script>
+            (function(){
+                function showReal(){
+                    var sk=document.getElementById('skeletonGrid');
+                    var rg=document.getElementById('realGrid');
+                    if(sk) sk.remove();
+                    if(rg) rg.classList.remove('hidden');
+                }
+                if(document.readyState==='complete') showReal();
+                else window.addEventListener('load', showReal, {once:true});
+            })();
+            </script>
+            <?php endif; ?>
 
             <!-- Pagination -->
             <?php if ($totalPages > 1): ?>

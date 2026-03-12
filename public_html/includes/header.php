@@ -499,8 +499,83 @@ $_autoDesc = seoAutoDescription($seo);
 
 
     <?= renderClerkHead() ?>
+
+    <?php
+    // ── Performance: Skeleton + Loader ──────────────────────────────────────
+    $perf_skeleton = getSetting('perf_skeleton_enabled','1') === '1';
+    $perf_loader   = getSetting('perf_loader_enabled','1') === '1';
+    $sk_base       = getSetting('perf_skeleton_base','#e5e7eb');
+    $sk_shimmer    = getSetting('perf_skeleton_shimmer','#f3f4f6');
+    $ld_delay      = max(200, intval(getSetting('perf_loader_delay','800')));
+    $ld_bg         = getSetting('perf_loader_bg','#ffffff');
+    $ld_color      = getSetting('perf_loader_color','#f97316');
+    $ld_style      = getSetting('perf_loader_style','spinner');
+    $ld_text       = getSetting('perf_loader_text','');
+    if ($perf_skeleton || $perf_loader):
+    ?>
+    <style>
+    <?php if($perf_skeleton): ?>
+    :root{--sk-base:<?= $sk_base ?>;--sk-shimmer:<?= $sk_shimmer ?>;}
+    .skeleton{background:linear-gradient(90deg,var(--sk-base) 25%,var(--sk-shimmer) 50%,var(--sk-base) 75%);background-size:200% 100%;animation:skAnim 1.5s ease-in-out infinite;}
+    @keyframes skAnim{0%{background-position:200% 0}100%{background-position:-200% 0}}
+    .skeleton-card{border-radius:12px;overflow:hidden;background:var(--sk-base);}
+    <?php endif; ?>
+    <?php if($perf_loader): ?>
+    #kh-page-loader{position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:<?= $ld_bg ?>;opacity:0;pointer-events:none;transition:opacity .25s;}
+    #kh-page-loader.show{opacity:1;pointer-events:all;}
+    #kh-loader-spinner{width:44px;height:44px;border-radius:50%;border:4px solid <?= $ld_color ?>22;border-top-color:<?= $ld_color ?>;animation:khSpin .8s linear infinite;}
+    @keyframes khSpin{to{transform:rotate(360deg)}}
+    #kh-loader-dots{display:flex;gap:7px;}
+    #kh-loader-dots span{width:11px;height:11px;border-radius:50%;background:<?= $ld_color ?>;animation:khBounce 1.1s ease-in-out infinite;}
+    #kh-loader-dots span:nth-child(2){animation-delay:.18s;}
+    #kh-loader-dots span:nth-child(3){animation-delay:.36s;}
+    @keyframes khBounce{0%,80%,100%{transform:scale(0.6);opacity:.5}40%{transform:scale(1);opacity:1}}
+    #kh-loader-bar-wrap{width:160px;height:4px;background:<?= $ld_color ?>22;border-radius:9px;overflow:hidden;}
+    #kh-loader-bar{height:100%;background:<?= $ld_color ?>;border-radius:9px;animation:khBar 1.4s ease-in-out infinite;}
+    @keyframes khBar{0%{width:0;margin-left:0}50%{width:70%;margin-left:0}100%{width:0;margin-left:100%}}
+    #kh-loader-logo{width:56px;height:56px;border-radius:50%;animation:khPulse 1.2s ease-in-out infinite;}
+    @keyframes khPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.12);opacity:.7}}
+    #kh-loader-text{font-size:13px;color:<?= $ld_color ?>;font-weight:500;letter-spacing:.3px;}
+    <?php endif; ?>
+    </style>
+    <?php endif; ?>
 </head>
 <body class="bg-gray-50 text-gray-800 antialiased">
+
+<?php if($perf_loader ?? false): ?>
+<div id="kh-page-loader" aria-hidden="true">
+    <?php if($ld_style==='spinner'): ?>
+    <div id="kh-loader-spinner"></div>
+    <?php elseif($ld_style==='dots'): ?>
+    <div id="kh-loader-dots"><span></span><span></span><span></span></div>
+    <?php elseif($ld_style==='bar'): ?>
+    <div id="kh-loader-bar-wrap"><div id="kh-loader-bar"></div></div>
+    <?php elseif($ld_style==='logo'): ?>
+    <?php $logoSrc = settingImgUrl($s??[], 'site_logo'); if($logoSrc): ?><img id="kh-loader-logo" src="<?= $logoSrc ?>" alt="Loading"><?php else: ?><div id="kh-loader-spinner"></div><?php endif; ?>
+    <?php endif; ?>
+    <?php if($ld_text): ?><span id="kh-loader-text"><?= e($ld_text) ?></span><?php endif; ?>
+</div>
+<script>
+(function(){
+    var _khl  = document.getElementById('kh-page-loader');
+    var _khT  = null;
+    var _khD  = <?= $ld_delay ?>;
+    // Show loader after delay if page hasn't finished loading
+    if(_khl && document.readyState !== 'complete'){
+        _khT = setTimeout(function(){ _khl.classList.add('show'); }, _khD);
+    }
+    // Hide once page is fully loaded
+    function _khHide(){
+        if(_khT){ clearTimeout(_khT); _khT = null; }
+        if(_khl){ _khl.classList.remove('show'); }
+    }
+    if(document.readyState === 'complete'){ _khHide(); }
+    else { window.addEventListener('load', _khHide, {once:true}); }
+    // Also hide on navigation away (bfcache)
+    window.addEventListener('pageshow', _khHide, {once:true});
+})();
+</script>
+<?php endif; ?>
 
 <!-- Top Bar / Announcement -->
 <div class="text-sm py-1.5 text-center overflow-hidden topbar-text" style="background-color:<?= $topbarBg ?>;color:<?= $topbarText ?>">

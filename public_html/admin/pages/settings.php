@@ -200,6 +200,7 @@ require_once __DIR__ . '/../includes/header.php';
                 'advanced' => ['Advanced', 'fa-tools'],
                 'email' => ['Email / SMTP', 'fa-envelope'],
                 'retention' => ['Retention CRM', 'fa-redo'],
+                'performance' => ['Performance & UX', 'fa-tachometer-alt'],
             ];
             foreach ($tabs as $tkey => $tdata): ?>
             <a href="?tab=<?= $tkey ?>" class="flex items-center gap-3 px-4 py-3 text-sm font-medium border-b last:border-b-0 transition
@@ -2847,6 +2848,165 @@ require_once __DIR__ . '/../includes/header.php';
                     <button type="submit" class="bg-teal-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-teal-700">Save Retention Settings</button>
                 </div>
             </div>
+
+            <?php elseif ($tab === 'performance'): ?>
+            <div class="space-y-5">
+
+                <!-- Skeleton Loading -->
+                <div class="bg-white rounded-xl border p-5">
+                    <h3 class="font-bold text-gray-800 mb-1 flex items-center gap-2">
+                        <i class="fas fa-layer-group text-orange-500"></i> Skeleton Loading
+                    </h3>
+                    <p class="text-xs text-gray-400 mb-5">Shows placeholder shimmer cards while page content loads. Improves perceived speed.</p>
+
+                    <div class="space-y-4">
+                        <!-- Enable skeleton -->
+                        <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl border">
+                            <div>
+                                <p class="text-sm font-semibold text-gray-800">Enable Skeleton Loading</p>
+                                <p class="text-xs text-gray-400 mt-0.5">Show shimmer placeholders on product listings, homepage, and category pages</p>
+                            </div>
+                            <div>
+                                <input type="hidden" name="perf_skeleton_enabled" value="0">
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" name="perf_skeleton_enabled" value="1" <?= getSetting('perf_skeleton_enabled','1')==='1'?'checked':'' ?> class="sr-only peer">
+                                    <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-orange-500 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Skeleton color -->
+                        <div class="grid md:grid-cols-2 gap-4 pl-2">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Skeleton Base Color</label>
+                                <input type="color" name="perf_skeleton_base" value="<?= e(getSetting('perf_skeleton_base','#e5e7eb')) ?>" class="h-9 w-full rounded-lg border cursor-pointer">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Skeleton Shimmer Color</label>
+                                <input type="color" name="perf_skeleton_shimmer" value="<?= e(getSetting('perf_skeleton_shimmer','#f3f4f6')) ?>" class="h-9 w-full rounded-lg border cursor-pointer">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Page Loader -->
+                <div class="bg-white rounded-xl border p-5">
+                    <h3 class="font-bold text-gray-800 mb-1 flex items-center gap-2">
+                        <i class="fas fa-spinner text-blue-500"></i> Page Loader
+                    </h3>
+                    <p class="text-xs text-gray-400 mb-5">Full-screen overlay shown when a page takes too long to load. Activates after a delay threshold.</p>
+
+                    <div class="space-y-4">
+                        <!-- Enable loader -->
+                        <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl border">
+                            <div>
+                                <p class="text-sm font-semibold text-gray-800">Enable Page Loader</p>
+                                <p class="text-xs text-gray-400 mt-0.5">Show a full-screen spinner overlay if load exceeds the threshold</p>
+                            </div>
+                            <div>
+                                <input type="hidden" name="perf_loader_enabled" value="0">
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" name="perf_loader_enabled" value="1" <?= getSetting('perf_loader_enabled','1')==='1'?'checked':'' ?> class="sr-only peer">
+                                    <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-orange-500 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="grid md:grid-cols-3 gap-4 pl-2">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Trigger Delay (ms)</label>
+                                <p class="text-xs text-gray-400 mb-1">Show loader after this many ms</p>
+                                <input type="number" name="perf_loader_delay" value="<?= e(getSetting('perf_loader_delay','800')) ?>" min="200" max="5000" step="100" class="w-full px-3 py-2 border rounded-lg text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Loader BG Color</label>
+                                <p class="text-xs text-gray-400 mb-1">Overlay background</p>
+                                <input type="color" name="perf_loader_bg" value="<?= e(getSetting('perf_loader_bg','#ffffff')) ?>" class="h-9 w-full rounded-lg border cursor-pointer">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Spinner Color</label>
+                                <p class="text-xs text-gray-400 mb-1">Spinner / brand accent</p>
+                                <input type="color" name="perf_loader_color" value="<?= e(getSetting('perf_loader_color','#f97316')) ?>" class="h-9 w-full rounded-lg border cursor-pointer">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Loader Style</label>
+                                <p class="text-xs text-gray-400 mb-1">Spinner style</p>
+                                <select name="perf_loader_style" class="w-full px-3 py-2 border rounded-lg text-sm">
+                                    <?php foreach(['spinner'=>'Spinner Ring','dots'=>'Bouncing Dots','bar'=>'Progress Bar','logo'=>'Logo Pulse'] as $v=>$l): ?>
+                                    <option value="<?= $v ?>" <?= getSetting('perf_loader_style','spinner')===$v?'selected':'' ?>><?= $l ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Loader Text</label>
+                                <p class="text-xs text-gray-400 mb-1">Optional message below spinner</p>
+                                <input type="text" name="perf_loader_text" value="<?= e(getSetting('perf_loader_text','')) ?>" placeholder="e.g. Loading..." class="w-full px-3 py-2 border rounded-lg text-sm">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Preview -->
+                <div class="bg-white rounded-xl border p-5">
+                    <h3 class="font-bold text-gray-800 mb-3 flex items-center gap-2">
+                        <i class="fas fa-eye text-gray-400"></i> Live Preview
+                    </h3>
+                    <div class="flex gap-4 flex-wrap">
+                        <div>
+                            <p class="text-xs text-gray-400 mb-2">Skeleton Card</p>
+                            <div id="skeletonPreview" class="w-40 rounded-xl overflow-hidden border">
+                                <div class="h-28 skeleton-prev"></div>
+                                <div class="p-3 space-y-2">
+                                    <div class="h-3 rounded skeleton-prev w-3/4"></div>
+                                    <div class="h-3 rounded skeleton-prev w-1/2"></div>
+                                    <div class="h-5 rounded skeleton-prev w-2/3 mt-1"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-400 mb-2">Loader Overlay</p>
+                            <div id="loaderPreview" class="w-40 h-28 rounded-xl border flex items-center justify-center flex-col gap-2" style="background:#fff">
+                                <div id="previewSpinner" class="w-8 h-8 rounded-full border-4 border-gray-200 border-t-orange-500 animate-spin"></div>
+                                <p id="previewLoaderText" class="text-xs text-gray-400"></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <style>
+            .skeleton-prev { background: linear-gradient(90deg, var(--sk-base,#e5e7eb) 25%, var(--sk-shimmer,#f3f4f6) 50%, var(--sk-base,#e5e7eb) 75%); background-size: 200% 100%; animation: skPrev 1.4s ease-in-out infinite; }
+            @keyframes skPrev { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+            </style>
+            <script>
+            (function(){
+                function updatePreview(){
+                    var base    = document.querySelector('[name=perf_skeleton_base]')?.value || '#e5e7eb';
+                    var shimmer = document.querySelector('[name=perf_skeleton_shimmer]')?.value || '#f3f4f6';
+                    var bg      = document.querySelector('[name=perf_loader_bg]')?.value || '#ffffff';
+                    var color   = document.querySelector('[name=perf_loader_color]')?.value || '#f97316';
+                    var text    = document.querySelector('[name=perf_loader_text]')?.value || '';
+                    var style   = document.querySelector('[name=perf_loader_style]')?.value || 'spinner';
+                    document.documentElement.style.setProperty('--sk-base', base);
+                    document.documentElement.style.setProperty('--sk-shimmer', shimmer);
+                    var lp = document.getElementById('loaderPreview');
+                    if(lp) lp.style.background = bg;
+                    var sp = document.getElementById('previewSpinner');
+                    if(sp){
+                        sp.style.borderTopColor = color;
+                        sp.style.display = style === 'bar' ? 'none' : '';
+                    }
+                    var pt = document.getElementById('previewLoaderText');
+                    if(pt){ pt.textContent = text; pt.style.color = color; }
+                }
+                document.querySelectorAll('[name^=perf_]').forEach(function(el){
+                    el.addEventListener('input', updatePreview);
+                    el.addEventListener('change', updatePreview);
+                });
+                updatePreview();
+            })();
+            </script>
+
 
             <?php endif; ?>
 

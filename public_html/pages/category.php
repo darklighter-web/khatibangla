@@ -129,11 +129,35 @@ include ROOT_PATH . 'includes/header.php';
     $arColsMobile = getSetting('ar_grid_cols_mobile', '2');
     $gridClass = "grid grid-cols-{$arColsMobile} sm:grid-cols-3 md:grid-cols-{$arColsTablet} lg:grid-cols-{$arColsDesktop} gap-3 sm:gap-4";
     ?>
-    <div class="<?= $gridClass ?>">
+    <?php $__skeleton = getSetting('perf_skeleton_enabled','1')==='1'; ?>
+    <?php if($__skeleton): ?>
+    <div class="<?= $gridClass ?>" id="skeletonGrid" aria-hidden="true">
+        <?php for($__i=0;$__i<intval($arColsDesktop)*2;$__i++): ?>
+        <div class="skeleton-card" style="min-height:260px;">
+            <div class="skeleton" style="height:160px;"></div>
+            <div class="p-3 space-y-2">
+                <div class="skeleton h-3 rounded" style="width:75%;"></div>
+                <div class="skeleton h-3 rounded" style="width:50%;"></div>
+                <div class="skeleton h-6 rounded mt-2" style="width:60%;"></div>
+            </div>
+        </div>
+        <?php endfor; ?>
+    </div>
+    <?php endif; ?>
+    <div class="<?= $gridClass ?> <?= $__skeleton ? 'hidden' : '' ?>" id="realGrid">
         <?php foreach ($products as $product): ?>
             <?php include ROOT_PATH . 'includes/product-card.php'; ?>
         <?php endforeach; ?>
     </div>
+    <?php if($__skeleton): ?>
+    <script>
+    (function(){
+        function showReal(){var sk=document.getElementById('skeletonGrid');var rg=document.getElementById('realGrid');if(sk)sk.remove();if(rg)rg.classList.remove('hidden');}
+        if(document.readyState==='complete') showReal();
+        else window.addEventListener('load',showReal,{once:true});
+    })();
+    </script>
+    <?php endif; ?>
     
     <?= renderPagination($pagination) ?>
     <?php endif; ?>
