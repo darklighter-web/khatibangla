@@ -175,12 +175,15 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
   .no-print{display:none!important}
   body{padding:0;margin:0;background:#fff}
   @page{size:<?= $pgW ?> <?= $pgH ?>;margin:2mm}
-  .sticker{display:block;margin:0 auto!important;page-break-inside:avoid;page-break-after:always}
-  .sticker:last-child{page-break-after:auto}
+  .sticker{display:block;margin:0!important;page-break-inside:avoid;page-break-after:always;break-after:page}
+  .sticker:last-child{page-break-after:auto;break-after:auto}
+  .stk-sep{display:block;page-break-after:always;break-after:page;height:0;overflow:hidden}
+  .stk-sep:last-child{display:none}
 }
 @media screen{
   body{background:#d1d5db;padding:16px;min-height:100vh}
   .sticker{display:block;margin:12px auto!important;box-shadow:0 4px 16px rgba(0,0,0,.15);max-width:var(--stk-w)}
+  .stk-sep{display:none}
 }
 .sticker{width:var(--stk-w);border:2px solid #000;padding:10px;position:relative;box-sizing:border-box}
 <?php if ($tpl==='stk_pos'): ?>
@@ -692,12 +695,17 @@ foreach($orders as $idx=>$order):
 <?php endif; /* end template switch */ ?>
 
 <?php
-    // Close layout cell
+    // Close layout cell (invoice layouts only)
     if ($useLayout): ?></div><!-- /layout-cell --><?php endif;
 
-    // Close layout group wrapper at group end
+    // Close layout group wrapper at group end (invoice layouts only)
     if ($useLayout && $isGroupEnd): ?></div><!-- /layout-row --><?php endif;
-?>
+
+    // Sticker page separator — forces printer to eject after each label
+    // Both CSS page-break AND an explicit element ensure all browsers/printers comply
+    if ($isSticker && $idx < $totalOrders - 1): ?>
+<div class="stk-sep"></div>
+<?php endif; ?>
 <?php endforeach;?>
 
 <?php if($showBarcode): ?>
