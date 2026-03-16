@@ -476,7 +476,7 @@ function sortIcon($col) {
         <div id="actionsMenu" class="hidden absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-xl border z-50 py-1 max-h-[70vh] overflow-y-auto">
             <div class="px-3 py-1.5 flex items-center justify-between"><span id="selC" class="text-[10px] text-gray-400">0 selected</span><button type="button" onclick="document.getElementById('selectAll').checked=true;toggleAll(document.getElementById('selectAll'))" class="text-[10px] text-blue-600">Select All</button></div><hr class="my-0.5">
             <p class="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase">Print</p>
-            <button type="button" onclick="openPrintPopup()" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 font-medium">🖨 Print Selected...</button>
+            <button type="button" onclick="openInvPrint()" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 font-medium">🖨 Print Selected...</button>
             <hr class="my-0.5"><p class="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase">Status</p>
             <button type="button" onclick="bStatus('confirmed')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">✅ Confirm</button>
             <button type="button" onclick="bStatus('ready_to_ship')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">📦 Ready to Ship</button>
@@ -753,7 +753,8 @@ function sortIcon($col) {
 <!-- Row Action Menu (reusable popup) -->
 <div id="rowMenu" class="hidden fixed z-50 w-44 bg-white rounded-lg shadow-xl border py-1" style="font-size:12px">
     <a id="rmOpen" href="#" class="block px-3 py-1.5 hover:bg-gray-50">📋 Open Order</a>
-    <button id="rmPrint" type="button" class="w-full text-left block px-3 py-1.5 hover:bg-gray-50">🖨 Print</button>
+    <button id="rmPrintInv" type="button" class="w-full text-left block px-3 py-1.5 hover:bg-blue-50 text-blue-700">📄 Print Invoice</button>
+    <button id="rmPrintStk" type="button" class="w-full text-left block px-3 py-1.5 hover:bg-orange-50 text-orange-700">🏷 Print Sticker</button>
     <hr class="my-0.5">
     <button id="rmConfirm" class="w-full text-left px-3 py-1.5 hover:bg-gray-50 text-blue-600" type="button">✅ Confirm</button>
     <button id="rmShip" class="w-full text-left px-3 py-1.5 hover:bg-gray-50 text-purple-600" type="button">🚚 Ship</button>
@@ -919,45 +920,7 @@ function toggleAll(el){document.querySelectorAll('.order-check').forEach(c=>c.ch
 function updateBulk(){const n=document.querySelectorAll('.order-check:checked').length;document.getElementById('selC').textContent=n+' selected'}
 function getIds(){return Array.from(document.querySelectorAll('.order-check:checked')).map(c=>c.value)}
 
-function bPrint(t){const ids=getIds();if(!ids.length){alert('Select orders');return}openPrintPopup(ids,t)}
-function openPrintPopup(forceIds,defaultTpl){
-    const ids=forceIds||getIds();
-    if(!ids.length){alert('Select orders first');return}
-    document.getElementById('actionsMenu')?.classList.add('hidden');
-    document.getElementById('rowMenu')?.classList.add('hidden');
-    const m=document.getElementById('printModal');
-    m.classList.remove('hidden');
-    document.getElementById('printCount').textContent=ids.length;
-    document.getElementById('printLoading').style.display='flex';
-    m._ids=ids;
-    // Load default template
-    const tpl=defaultTpl||document.getElementById('printTplSelect').value;
-    document.getElementById('printTplSelect').value=tpl;
-    loadPrintPreview(ids,tpl);
-}
-function closePrintModal(){document.getElementById('printModal').classList.add('hidden');document.getElementById('printIframe').src='about:blank'}
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!document.getElementById('printModal').classList.contains('hidden'))closePrintModal()});
-function loadPrintPreview(ids,tpl){
-    const iframe=document.getElementById('printIframe');
-    const layout=document.getElementById('printLayoutSelect')?.value||'a4_1';
-    iframe.src='<?= adminUrl('pages/order-print.php') ?>?ids='+ids.join(',')+'&template='+tpl+'&layout='+layout;
-}
-function changePrintTemplate(){
-    document.getElementById('printLoading').style.display='flex';
-    const tpl=document.getElementById('printTplSelect').value;
-    const ids=document.getElementById('printModal')._ids||[];
-    loadPrintPreview(ids,tpl);
-}
-function doPrint(){
-    const iframe=document.getElementById('printIframe');
-    iframe.contentWindow.print();
-}
-function openInNewTab(){
-    const tpl=document.getElementById('printTplSelect').value;
-    const ids=document.getElementById('printModal')._ids||[];
-    const layout=document.getElementById('printLayoutSelect')?.value||'a4_1';
-    window.open('<?= adminUrl('pages/order-print.php') ?>?ids='+ids.join(',')+'&template='+tpl+'&layout='+layout,'_blank');
-}
+// Print functions — see invPrint/stkPrint modals at bottom of page
 function bStatus(s){
   const ids=getIds();
   if(!ids.length){alert('Select orders');return}
@@ -1001,7 +964,8 @@ function toggleRowMenu(el, orderId) {
     rm.classList.remove('hidden');
     rm._open = orderId;
     document.getElementById('rmOpen').href = '<?= adminUrl('pages/order-view.php?id=') ?>' + orderId;
-    document.getElementById('rmPrint').onclick = () => { rm.classList.add('hidden'); openPrintPopup([orderId]); };
+    document.getElementById('rmPrintInv').onclick = () => { rm.classList.add('hidden'); openInvPrint([orderId]); };
+    document.getElementById('rmPrintStk').onclick = () => { rm.classList.add('hidden'); openStkPrint([orderId]); };
     ['Confirm','Ship','Deliver','Cancel'].forEach(a => {
         const btn = document.getElementById('rm'+a);
         btn.onclick = () => { if(confirm(a+' this order?')){
@@ -1147,94 +1111,199 @@ setInterval(pollOrderLocks, 8000);
 <?php
 $selInv = getSetting('selected_invoice_template', 'inv_standard');
 $selStk = getSetting('selected_sticker_template', 'stk_standard');
-// Load custom presets for print modal dropdown
 $custInvTpls = []; $custStkTpls = [];
 try {
     $custInvTpls = $db->fetchAll("SELECT template_key, name FROM print_templates WHERE template_type='invoice' AND is_builtin=0 AND template_key NOT LIKE '\\_preview\\_%' ORDER BY name") ?: [];
     $custStkTpls = $db->fetchAll("SELECT template_key, name FROM print_templates WHERE template_type='sticker' AND is_builtin=0 AND template_key NOT LIKE '\\_preview\\_%' ORDER BY name") ?: [];
 } catch(\Throwable $e){}
+$defLayout = getSetting('print_default_layout', 'a4_1');
 ?>
-<div id="printModal" class="hidden fixed inset-0 z-[9999] flex items-center justify-center bg-black/60" onclick="if(event.target===this)closePrintModal()">
-    <div class="bg-white rounded-2xl shadow-2xl w-[95vw] max-w-5xl h-[90vh] flex flex-col overflow-hidden" onclick="event.stopPropagation()">
-        <!-- Modal Header -->
-        <div class="flex items-center justify-between px-5 py-3 border-b bg-gray-50 shrink-0">
-            <div class="flex items-center gap-3">
-                <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center"><span class="text-lg">🖨</span></div>
-                <div>
-                    <h3 class="font-bold text-gray-800 text-sm">Print Preview</h3>
-                    <p class="text-[11px] text-gray-400"><span id="printCount">0</span> order(s) selected</p>
-                </div>
-            </div>
-            <div class="flex items-center gap-2">
-                <!-- Template Selector -->
-                <select id="printTplSelect" onchange="changePrintTemplate()" class="border rounded-lg px-3 py-1.5 text-xs bg-white focus:ring-2 focus:ring-blue-300 min-w-[180px]">
-                    <optgroup label="📄 Invoice Templates">
-                        <option value="inv_standard" <?= $selInv==='inv_standard'?'selected':'' ?>>Standard Invoice</option>
-                        <option value="inv_compact" <?= $selInv==='inv_compact'?'selected':'' ?>>Compact / Thermal</option>
-                        <option value="inv_modern" <?= $selInv==='inv_modern'?'selected':'' ?>>Modern (Dark Header)</option>
-                        <option value="inv_branded" <?= $selInv==='inv_branded'?'selected':'' ?>>Branded (Gradient)</option>
-                        <option value="inv_detailed" <?= $selInv==='inv_detailed'?'selected':'' ?>>Detailed (With Images)</option>
-                        <option value="inv_minimal" <?= $selInv==='inv_minimal'?'selected':'' ?>>Minimal / Clean</option>
-                        <option value="inv_picking">Picking Sheet</option>
-                    </optgroup>
-                    <?php if (!empty($custInvTpls)): ?>
-                    <optgroup label="📄 Custom Invoices">
-                        <?php foreach ($custInvTpls as $ci): ?>
-                        <option value="<?= e($ci['template_key']) ?>" <?= $selInv===$ci['template_key']?'selected':'' ?>><?= e($ci['name']) ?></option>
-                        <?php endforeach; ?>
-                    </optgroup>
-                    <?php endif; ?>
-                    <optgroup label="🏷 Sticker Templates">
-                        <option value="stk_standard" <?= $selStk==='stk_standard'?'selected':'' ?>>Standard Sticker</option>
-                        <option value="stk_detailed" <?= $selStk==='stk_detailed'?'selected':'' ?>>Detailed (Product Table)</option>
-                        <option value="stk_courier" <?= $selStk==='stk_courier'?'selected':'' ?>>Courier Label</option>
-                        <option value="stk_pos" <?= $selStk==='stk_pos'?'selected':'' ?>>POS 80mm Receipt</option>
-                        <option value="stk_cod" <?= $selStk==='stk_cod'?'selected':'' ?>>COD Badge</option>
-                        <option value="stk_wide" <?= $selStk==='stk_wide'?'selected':'' ?>>Wide (3-inch)</option>
-                        <option value="stk_sku" <?= $selStk==='stk_sku'?'selected':'' ?>>SKU Rows</option>
-                        <option value="stk_note" <?= $selStk==='stk_note'?'selected':'' ?>>With Notes</option>
-                    </optgroup>
-                    <?php if (!empty($custStkTpls)): ?>
-                    <optgroup label="🏷 Custom Stickers">
-                        <?php foreach ($custStkTpls as $cs): ?>
-                        <option value="<?= e($cs['template_key']) ?>" <?= $selStk===$cs['template_key']?'selected':'' ?>><?= e($cs['name']) ?></option>
-                        <?php endforeach; ?>
-                    </optgroup>
-                    <?php endif; ?>
-                </select>
-                <!-- Quick Presets -->
-                <div class="flex bg-white border rounded-lg overflow-hidden text-xs">
-                    <button onclick="document.getElementById('printTplSelect').value='<?= $selInv ?>';changePrintTemplate()" class="px-2.5 py-1.5 hover:bg-blue-50 text-blue-600 font-medium border-r" title="Use saved invoice template">📄 Invoice</button>
-                    <button onclick="document.getElementById('printTplSelect').value='<?= $selStk ?>';changePrintTemplate()" class="px-2.5 py-1.5 hover:bg-teal-50 text-teal-600 font-medium" title="Use saved sticker template">🏷 Sticker</button>
-                </div>
-                <!-- Page Layout -->
-                <?php $defLayout = getSetting('print_default_layout', 'a4_1'); ?>
-                <select id="printLayoutSelect" onchange="changePrintTemplate()" class="border rounded-lg px-2 py-1.5 text-xs bg-white focus:ring-2 focus:ring-blue-300" title="Page layout">
-                    <option value="a4_1" <?= $defLayout==='a4_1'?'selected':'' ?>>A4 × 1</option>
-                    <option value="a3_2" <?= $defLayout==='a3_2'?'selected':'' ?>>A3 × 2</option>
-                    <option value="a4_3" <?= $defLayout==='a4_3'?'selected':'' ?>>A4 × 3</option>
-                </select>
-                <!-- Print / Open / Close -->
-                <button onclick="doPrint()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
-                    Print
-                </button>
-                <button onclick="openInNewTab()" class="border px-2.5 py-1.5 rounded-lg text-xs text-gray-500 hover:bg-gray-50" title="Open in new tab">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-                </button>
-                <button onclick="closePrintModal()" class="text-gray-400 hover:text-gray-600 transition p-1">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                </button>
-            </div>
+
+<!-- ══════════════════════════════════════════
+     INVOICE PRINT MODAL
+     ══════════════════════════════════════════ -->
+<div id="invPrintModal" class="hidden fixed inset-0 z-[9999] flex items-center justify-center bg-black/60" onclick="if(event.target===this)closeInvModal()">
+  <div class="bg-white rounded-2xl shadow-2xl w-[95vw] max-w-5xl h-[90vh] flex flex-col overflow-hidden" onclick="event.stopPropagation()">
+    <div class="flex items-center justify-between px-5 py-3 border-b bg-blue-50 shrink-0">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center text-lg">📄</div>
+        <div>
+          <h3 class="font-bold text-gray-800 text-sm">Print Invoice</h3>
+          <p class="text-[11px] text-gray-400"><span id="invPrintCount">0</span> order(s)</p>
         </div>
-        <!-- Iframe Preview -->
-        <div class="flex-1 bg-gray-100 relative">
-            <div id="printLoading" class="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
-                <div class="text-center"><div class="text-2xl mb-2">⏳</div><p class="text-sm text-gray-500">Loading preview...</p></div>
-            </div>
-            <iframe id="printIframe" class="w-full h-full border-0" onload="document.getElementById('printLoading').style.display='none'" src="about:blank"></iframe>
-        </div>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <select id="invTplSelect" onchange="reloadInvPreview()" class="border rounded-lg px-3 py-1.5 text-xs bg-white focus:ring-2 focus:ring-blue-300 min-w-[200px]">
+          <optgroup label="📄 Invoice Templates">
+            <option value="inv_standard" <?=($selInv==='inv_standard')?'selected':''?>>Standard Invoice</option>
+            <option value="inv_compact"  <?=($selInv==='inv_compact')?'selected':''?>>Compact / Thermal</option>
+            <option value="inv_modern"   <?=($selInv==='inv_modern')?'selected':''?>>Modern (Dark Header)</option>
+            <option value="inv_branded"  <?=($selInv==='inv_branded')?'selected':''?>>Branded (Gradient)</option>
+            <option value="inv_detailed" <?=($selInv==='inv_detailed')?'selected':''?>>Detailed (With Images)</option>
+            <option value="inv_minimal"  <?=($selInv==='inv_minimal')?'selected':''?>>Minimal / Clean</option>
+            <option value="inv_picking">Picking Sheet</option>
+          </optgroup>
+          <?php if (!empty($custInvTpls)): ?>
+          <optgroup label="📄 Custom Invoices">
+            <?php foreach ($custInvTpls as $ci): ?>
+            <option value="<?=e($ci['template_key'])?>" <?=($selInv===$ci['template_key'])?'selected':''?>><?=e($ci['name'])?></option>
+            <?php endforeach; ?>
+          </optgroup>
+          <?php endif; ?>
+        </select>
+        <select id="invLayoutSelect" onchange="reloadInvPreview()" class="border rounded-lg px-2 py-1.5 text-xs bg-white focus:ring-2 focus:ring-blue-300">
+          <option value="a4_1" <?=($defLayout==='a4_1')?'selected':''?>>A4 × 1</option>
+          <option value="a3_2" <?=($defLayout==='a3_2')?'selected':''?>>A3 × 2</option>
+          <option value="a4_3" <?=($defLayout==='a4_3')?'selected':''?>>A4 × 3</option>
+        </select>
+        <button onclick="doInvPrint()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>Print
+        </button>
+        <button onclick="openInvNewTab()" class="border px-2.5 py-1.5 rounded-lg text-xs text-gray-500 hover:bg-gray-50" title="Open in new tab">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+        </button>
+        <button onclick="closeInvModal()" class="text-gray-400 hover:text-gray-600 p-1">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
     </div>
+    <div class="flex-1 bg-gray-100 relative">
+      <div id="invPrintLoading" class="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
+        <div class="text-center"><div class="text-2xl mb-2">⏳</div><p class="text-sm text-gray-500">Loading preview…</p></div>
+      </div>
+      <iframe id="invPrintIframe" class="w-full h-full border-0" onload="document.getElementById('invPrintLoading').style.display='none'" src="about:blank"></iframe>
+    </div>
+  </div>
 </div>
+
+<!-- ══════════════════════════════════════════
+     STICKER PRINT MODAL
+     ══════════════════════════════════════════ -->
+<div id="stkPrintModal" class="hidden fixed inset-0 z-[9999] flex items-center justify-center bg-black/60" onclick="if(event.target===this)closeStkModal()">
+  <div class="bg-white rounded-2xl shadow-2xl w-[95vw] max-w-5xl h-[90vh] flex flex-col overflow-hidden" onclick="event.stopPropagation()">
+    <div class="flex items-center justify-between px-5 py-3 border-b bg-orange-50 shrink-0">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center text-lg">🏷</div>
+        <div>
+          <h3 class="font-bold text-gray-800 text-sm">Print Sticker</h3>
+          <p class="text-[11px] text-gray-400"><span id="stkPrintCount">0</span> order(s)</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <select id="stkTplSelect" onchange="reloadStkPreview()" class="border rounded-lg px-3 py-1.5 text-xs bg-white focus:ring-2 focus:ring-orange-300 min-w-[200px]">
+          <optgroup label="🏷 Sticker Templates">
+            <option value="stk_standard"    <?=($selStk==='stk_standard')?'selected':''?>>Standard Sticker</option>
+            <option value="stk_compact"     <?=($selStk==='stk_compact')?'selected':''?>>Sticker 1 (2 inch)</option>
+            <option value="stk_detailed"    <?=($selStk==='stk_detailed')?'selected':''?>>Sticker 2 (Detailed)</option>
+            <option value="stk_pos"         <?=($selStk==='stk_pos')?'selected':''?>>POS 80mm Receipt</option>
+            <option value="stk_note"        <?=($selStk==='stk_note')?'selected':''?>>Sticker 4 (With Note)</option>
+            <option value="stk_thermal"     <?=($selStk==='stk_thermal')?'selected':''?>>Sticker 7 (75mm Thermal)</option>
+            <option value="stk_thermal_m"   <?=($selStk==='stk_thermal_m')?'selected':''?>>Sticker 8 (Multi-Page)</option>
+            <option value="stk_thermal_sku" <?=($selStk==='stk_thermal_sku')?'selected':''?>>Sticker 9 (SKU Thermal)</option>
+            <option value="stk_2in"         <?=($selStk==='stk_2in')?'selected':''?>>Sticker 10 (2 inch)</option>
+            <option value="stk_3in"         <?=($selStk==='stk_3in')?'selected':''?>>Sticker 11 (3 inch)</option>
+            <option value="stk_cod_t"       <?=($selStk==='stk_cod_t')?'selected':''?>>Sticker 12 (COD Thermal)</option>
+            <option value="stk_courier"     <?=($selStk==='stk_courier')?'selected':''?>>Sticker 13 (Courier)</option>
+            <option value="stk_4x3"         <?=($selStk==='stk_4x3')?'selected':''?>>Sticker 14 (4×3 SKU)</option>
+            <option value="stk_3in_note"    <?=($selStk==='stk_3in_note')?'selected':''?>>Sticker 15 (3 inch + Note)</option>
+            <option value="stk_3sq"         <?=($selStk==='stk_3sq')?'selected':''?>>Sticker 16 (3×3 Square)</option>
+            <option value="stk_wide"        <?=($selStk==='stk_wide')?'selected':''?>>Sticker Wide (3.5 inch)</option>
+            <option value="stk_sku"         <?=($selStk==='stk_sku')?'selected':''?>>Sticker SKU</option>
+            <option value="stk_cod"         <?=($selStk==='stk_cod')?'selected':''?>>Sticker COD Badge</option>
+            <option value="stk_mini"        <?=($selStk==='stk_mini')?'selected':''?>>Sticker 17 (38×25mm)</option>
+          </optgroup>
+          <?php if (!empty($custStkTpls)): ?>
+          <optgroup label="🏷 Custom Stickers">
+            <?php foreach ($custStkTpls as $cs): ?>
+            <option value="<?=e($cs['template_key'])?>" <?=($selStk===$cs['template_key'])?'selected':''?>><?=e($cs['name'])?></option>
+            <?php endforeach; ?>
+          </optgroup>
+          <?php endif; ?>
+        </select>
+        <button onclick="doStkPrint()" class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>Print
+        </button>
+        <button onclick="openStkNewTab()" class="border px-2.5 py-1.5 rounded-lg text-xs text-gray-500 hover:bg-gray-50" title="Open in new tab">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+        </button>
+        <button onclick="closeStkModal()" class="text-gray-400 hover:text-gray-600 p-1">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="flex-1 bg-gray-100 relative">
+      <div id="stkPrintLoading" class="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
+        <div class="text-center"><div class="text-2xl mb-2">⏳</div><p class="text-sm text-gray-500">Loading preview…</p></div>
+      </div>
+      <iframe id="stkPrintIframe" class="w-full h-full border-0" onload="document.getElementById('stkPrintLoading').style.display='none'" src="about:blank"></iframe>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Invoice modal ──────────────────────────────────────────────
+var _invIds = [];
+function openInvPrint(forceIds) {
+    _invIds = forceIds || getIds();
+    if (!_invIds.length) { alert('Select orders first'); return; }
+    document.getElementById('actionsMenu')?.classList.add('hidden');
+    document.getElementById('rowMenu')?.classList.add('hidden');
+    document.getElementById('invPrintCount').textContent = _invIds.length;
+    document.getElementById('invPrintLoading').style.display = 'flex';
+    document.getElementById('invPrintModal').classList.remove('hidden');
+    reloadInvPreview();
+}
+function closeInvModal() { document.getElementById('invPrintModal').classList.add('hidden'); document.getElementById('invPrintIframe').src = 'about:blank'; }
+function reloadInvPreview() {
+    document.getElementById('invPrintLoading').style.display = 'flex';
+    var tpl = document.getElementById('invTplSelect').value;
+    var layout = document.getElementById('invLayoutSelect').value;
+    document.getElementById('invPrintIframe').src = '<?= adminUrl('pages/order-print.php') ?>?ids=' + _invIds.join(',') + '&template=' + tpl + '&layout=' + layout;
+}
+function doInvPrint() { document.getElementById('invPrintIframe').contentWindow.print(); }
+function openInvNewTab() {
+    var tpl = document.getElementById('invTplSelect').value;
+    var layout = document.getElementById('invLayoutSelect').value;
+    window.open('<?= adminUrl('pages/order-print.php') ?>?ids=' + _invIds.join(',') + '&template=' + tpl + '&layout=' + layout, '_blank');
+}
+
+// ── Sticker modal ──────────────────────────────────────────────
+var _stkIds = [];
+function openStkPrint(forceIds) {
+    _stkIds = forceIds || getIds();
+    if (!_stkIds.length) { alert('Select orders first'); return; }
+    document.getElementById('actionsMenu')?.classList.add('hidden');
+    document.getElementById('rowMenu')?.classList.add('hidden');
+    document.getElementById('stkPrintCount').textContent = _stkIds.length;
+    document.getElementById('stkPrintLoading').style.display = 'flex';
+    document.getElementById('stkPrintModal').classList.remove('hidden');
+    reloadStkPreview();
+}
+function closeStkModal() { document.getElementById('stkPrintModal').classList.add('hidden'); document.getElementById('stkPrintIframe').src = 'about:blank'; }
+function reloadStkPreview() {
+    document.getElementById('stkPrintLoading').style.display = 'flex';
+    var tpl = document.getElementById('stkTplSelect').value;
+    document.getElementById('stkPrintIframe').src = '<?= adminUrl('pages/order-print.php') ?>?ids=' + _stkIds.join(',') + '&template=' + tpl;
+}
+function doStkPrint() { document.getElementById('stkPrintIframe').contentWindow.print(); }
+function openStkNewTab() {
+    var tpl = document.getElementById('stkTplSelect').value;
+    window.open('<?= adminUrl('pages/order-print.php') ?>?ids=' + _stkIds.join(',') + '&template=' + tpl, '_blank');
+}
+
+// ── Legacy aliases (keep any existing calls working) ──────────────────────────
+function openPrintPopup(forceIds, defaultTpl) {
+    var ids = forceIds || getIds();
+    if (!ids.length) { alert('Select orders first'); return; }
+    if (defaultTpl && defaultTpl.startsWith('stk_')) openStkPrint(ids);
+    else openInvPrint(ids);
+}
+function closePrintModal() { closeInvModal(); closeStkModal(); }
+function bPrint(t) { var ids = getIds(); if (!ids.length) { alert('Select orders'); return; } if (t && t.startsWith('stk_')) openStkPrint(ids); else openInvPrint(ids); }
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') { closeInvModal(); closeStkModal(); }
+});
+</script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

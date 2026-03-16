@@ -339,7 +339,11 @@ function delPreset(key,name){
 
 function openBuilder(eKey,isBuiltin){
     editKey=eKey&&!isBuiltin?eKey:null;
-    bCfg={primary_color:'#000000',font_size:'12',sticker_width:'288',show_phone:true,show_barcode:true,show_variant:true,show_courier:true,show_parcel:true,show_notes:true,show_shipping_note:true,show_advance:true,show_discount:true,show_sku:false,custom_shipping_note:''};
+    bCfg={primary_color:'#000000',font_size:'12',sticker_width:'288',
+        show_phone:true,show_barcode:true,show_variant:true,show_courier:true,
+        show_parcel:true,show_notes:true,show_shipping_note:true,
+        show_advance:true,show_discount:true,show_sku:false,
+        custom_shipping_note:''};
     document.getElementById('bN').value='';document.getElementById('bD').value='';document.getElementById('bClr').value='#000000';
     setBW(288,true);document.getElementById('bFS').value='12';document.getElementById('fsV').textContent='12px';document.getElementById('bSN').value='';
     resetToggles();document.querySelectorAll('.cdot').forEach(function(d){d.classList.remove('act');});
@@ -356,7 +360,13 @@ function openBuilder(eKey,isBuiltin){
                 if(cfg.font_size){document.getElementById('bFS').value=cfg.font_size;document.getElementById('fsV').textContent=cfg.font_size+'px';}
                 if(cfg.sticker_width)setBW(parseInt(cfg.sticker_width),true);
                 if(cfg.custom_shipping_note)document.getElementById('bSN').value=cfg.custom_shipping_note;
-                document.querySelectorAll('.toggle-sw').forEach(function(ts){var k=ts.dataset.key;if(k in cfg){cfg[k]?ts.classList.add('on'):ts.classList.remove('on');}});
+                document.querySelectorAll('.toggle-sw[data-key]').forEach(function(ts){
+                    var k=ts.dataset.key;
+                    if(k in cfg){
+                        cfg[k]?ts.classList.add('on'):ts.classList.remove('on');
+                        bCfg[k]=!!cfg[k];
+                    }
+                });
                 updateBldPv();}
         });
     } else if(eKey&&isBuiltin){
@@ -378,17 +388,31 @@ function closeBld(){
 }
 
 function resetToggles(){
-    var df={show_phone:true,show_barcode:true,show_variant:true,show_courier:true,show_parcel:true,show_notes:true,show_shipping_note:true,show_advance:true,show_discount:true,show_sku:false};
-    document.querySelectorAll('.toggle-sw').forEach(function(ts){df[ts.dataset.key]?ts.classList.add('on'):ts.classList.remove('on');});
+    var df={show_phone:true,show_barcode:true,show_variant:true,show_courier:true,
+            show_parcel:true,show_notes:true,show_shipping_note:true,
+            show_advance:true,show_discount:true,show_sku:false};
+    document.querySelectorAll('.toggle-sw').forEach(function(ts){
+        var k=ts.dataset.key;
+        if(k===undefined)return;
+        // If key not in df, default to true (show by default)
+        var val = (k in df) ? df[k] : true;
+        val ? ts.classList.add('on') : ts.classList.remove('on');
+        bCfg[k] = val;
+    });
 }
 function setBW(w,silent){document.getElementById('bSW').value=w;document.getElementById('swV').textContent=w+'px';bCfg.sticker_width=String(w);if(!silent)dbPv();}
 function setClr(val,dot){bCfg.primary_color=val;document.getElementById('bClr').value=val;if(dot){document.querySelectorAll('.cdot').forEach(function(d){d.classList.remove('act');});dot.classList.add('act');}dbPv();}
 function dbPv(){clearTimeout(_dbT);_dbT=setTimeout(updateBldPv,500);}
 
 function updateBldPv(){
-    bCfg.primary_color=document.getElementById('bClr').value;bCfg.font_size=document.getElementById('bFS').value;
-    bCfg.sticker_width=document.getElementById('bSW').value;bCfg.custom_shipping_note=document.getElementById('bSN').value;
-    document.querySelectorAll('.toggle-sw').forEach(function(ts){bCfg[ts.dataset.key]=ts.classList.contains('on');});
+    bCfg.primary_color=document.getElementById('bClr').value;
+    bCfg.font_size=document.getElementById('bFS').value;
+    bCfg.sticker_width=document.getElementById('bSW').value;
+    bCfg.custom_shipping_note=document.getElementById('bSN').value;
+    // Read ALL toggle states including note toggles
+    document.querySelectorAll('.toggle-sw[data-key]').forEach(function(ts){
+        bCfg[ts.dataset.key]=ts.classList.contains('on');
+    });
     var base=document.getElementById('bBase').value,tmpK='cust__preview_tmp_stk',fd=new URLSearchParams();
     fd.set('action','save_preset');fd.set('template_key',tmpK);fd.set('name','_tmp');fd.set('description','');fd.set('base_template',base);fd.set('config',JSON.stringify(bCfg));
     document.getElementById('bPvLoad').classList.remove('hidden');
@@ -401,7 +425,7 @@ function savePreset(){
     if(!name){alert('Please enter a name');document.getElementById('bN').focus();return;}
     bCfg.primary_color=document.getElementById('bClr').value;bCfg.font_size=document.getElementById('bFS').value;
     bCfg.sticker_width=document.getElementById('bSW').value;bCfg.custom_shipping_note=document.getElementById('bSN').value;
-    document.querySelectorAll('.toggle-sw').forEach(function(ts){bCfg[ts.dataset.key]=ts.classList.contains('on');});
+    document.querySelectorAll('.toggle-sw[data-key]').forEach(function(ts){bCfg[ts.dataset.key]=ts.classList.contains('on');});
     var fd=new URLSearchParams();fd.set('action','save_preset');fd.set('template_key',editKey||'');fd.set('name',name);
     fd.set('description',document.getElementById('bD').value.trim());fd.set('base_template',document.getElementById('bBase').value);fd.set('config',JSON.stringify(bCfg));
     fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:fd.toString()})
