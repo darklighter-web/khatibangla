@@ -1172,7 +1172,7 @@ $defLayout = getSetting('print_default_layout', 'a4_1');
       <div id="invPrintLoading" class="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
         <div class="text-center"><div class="text-2xl mb-2">⏳</div><p class="text-sm text-gray-500">Loading preview…</p></div>
       </div>
-      <iframe id="invPrintIframe" class="w-full h-full border-0" onload="document.getElementById('invPrintLoading').style.display='none'" src="about:blank"></iframe>
+      <iframe id="invPrintIframe" class="w-full h-full border-0" onload="if(this.src&&this.src!=='about:blank'){document.getElementById('invPrintLoading').style.display='none';}" src="about:blank"></iframe>
     </div>
   </div>
 </div>
@@ -1273,7 +1273,7 @@ $defLayout = getSetting('print_default_layout', 'a4_1');
       <div id="stkPrintLoading" class="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
         <div class="text-center"><div class="text-2xl mb-2">⏳</div><p class="text-sm text-gray-500">Loading preview…</p></div>
       </div>
-      <iframe id="stkPrintIframe" class="w-full h-full border-0" onload="document.getElementById('stkPrintLoading').style.display='none'" src="about:blank"></iframe>
+      <iframe id="stkPrintIframe" class="w-full h-full border-0" onload="if(this.src&&this.src!=='about:blank'){document.getElementById('stkPrintLoading').style.display='none';}" src="about:blank"></iframe>
     </div>
   </div>
 </div>

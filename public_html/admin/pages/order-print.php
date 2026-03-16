@@ -53,7 +53,11 @@ function logoOrName(string $logoUrl, string $siteName, string $maxH = '48px', st
     }
     return '<span style="font-weight:800;font-size:'.($maxH==='24px'?'11':'14').'px">'.htmlspecialchars($siteName, ENT_QUOTES).'</span>';
 }
-$shippingNote = cfg('custom_shipping_note', getSetting('invoice_shipping_note', ''));
+// Shipping note: use custom text from preset, fallback to site setting
+// Respects show_shipping_note toggle — if off, force empty
+$_shipNoteText = cfg('custom_shipping_note', '') ?: getSetting('invoice_shipping_note', '');
+$showShipNote  = cfg('show_shipping_note', true);
+$shippingNote  = $showShipNote ? $_shipNoteText : '';
 $customFooter = cfg('custom_footer', '');
 
 // Color overrides from custom config
@@ -83,7 +87,6 @@ $showVariant = cfg('show_variant', true);
 $showCourier = cfg('show_courier', true);
 $showParcel = cfg('show_parcel', true);
 $showNotes = cfg('show_notes', true);
-$showShipNote = cfg('show_shipping_note', true);
 $showAdvance = cfg('show_advance', true);
 $showDiscount = cfg('show_discount', true);
 $showBarcode = cfg('show_barcode', getSetting('print_show_barcode', '1') === '1');
@@ -188,8 +191,8 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
 }
 /* Screen: preview box */
 @media screen{
-  body{background:<?= $isPreview ? '#fff' : '#d1d5db' ?>;padding:<?= $isPreview ? '0' : '16px' ?>}
-  .sticker{display:block;width:var(--stk-w)!important;min-height:calc(var(--stk-w) * 1.38);margin:<?= $isPreview ? '0 auto' : '12px auto' ?>!important;<?= $isPreview ? '' : 'box-shadow:0 4px 20px rgba(0,0,0,.18);' ?>background:#fff}
+  body{background:#f4f4f4;padding:12px}
+  .sticker{display:block;width:var(--stk-w)!important;min-height:calc(var(--stk-w) * 1.38);margin:0 auto!important;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.15)}
   .stk-sep{display:none}
 }
 /* Base sticker — never overridden by per-template rules below */
@@ -359,9 +362,9 @@ $totalOrders = count($orders);
     $parcel     = $order['courier_consignment_id'] ?? $order['courier_tracking_id'] ?? '';
     $dt         = date('d/m/Y', strtotime($order['created_at']));
     $addr       = trim(($order['customer_address']??'').($order['customer_city']?', '.$order['customer_city']:'').($order['customer_district']?', '.$order['customer_district']:''));
-    $notes      = trim(($order['notes']??'').' '.($order['order_note']??''));
+    $notes      = $showNotes ? trim(($order['notes']??'').' '.($order['order_note']??'')) : '';
     $aNotes     = $order['admin_notes'] ?? '';
-    $orderNote  = $order['order_note'] ?? '';
+    $orderNote  = $showNotes ? ($order['order_note'] ?? '') : '';
     $barcodeVal = $order['order_number'] ?? ('ORD-'.$order['id']);
     $barcodeId  = 'bc_'.$idx;
     $posInGroup  = $idx % $perPage;
