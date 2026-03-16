@@ -191,8 +191,9 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
 }
 /* Screen: preview box */
 @media screen{
-  body{background:#f4f4f4;padding:12px}
-  .sticker{display:block;width:var(--stk-w)!important;min-height:calc(var(--stk-w) * 1.38);margin:0 auto!important;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.15)}
+  html,body{overflow-x:hidden;max-width:100%}
+  body{background:#f4f4f4;padding:8px}
+  .sticker{display:block;width:min(var(--stk-w), calc(100vw - 16px))!important;min-height:calc(var(--stk-w) * 1.38);margin:0 auto!important;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.15);max-width:100%}
   .stk-sep{display:none}
 }
 /* Base sticker — never overridden by per-template rules below */
@@ -311,7 +312,8 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
 </style>
 </head>
 <body>
-<?php if(!$isPreview): ?>
+<?php $isModal = !empty($_GET['modal']); ?>
+<?php if(!$isPreview && !$isModal): ?>
 <div class="no-print">
     <button onclick="window.print()" style="background:var(--primary);color:white;border-color:var(--primary)">🖨 Print</button>
     <a href="<?=adminUrl('pages/order-management.php')?>">← Back</a>

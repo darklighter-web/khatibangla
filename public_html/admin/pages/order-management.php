@@ -1296,7 +1296,7 @@ function reloadInvPreview() {
     document.getElementById('invPrintLoading').style.display = 'flex';
     var tpl = document.getElementById('invTplSelect').value;
     var layout = document.getElementById('invLayoutSelect').value;
-    document.getElementById('invPrintIframe').src = '<?= adminUrl('pages/order-print.php') ?>?ids=' + _invIds.join(',') + '&template=' + tpl + '&layout=' + layout;
+    document.getElementById('invPrintIframe').src = '<?= adminUrl('pages/order-print.php') ?>?ids=' + _invIds.join(',') + '&template=' + tpl + '&layout=' + layout + '&modal=1';
 }
 function doInvPrint() { document.getElementById('invPrintIframe').contentWindow.print(); }
 function openInvNewTab() {
@@ -1331,7 +1331,7 @@ function closeStkModal() { document.getElementById('stkPrintModal').classList.ad
 function reloadStkPreview() {
     document.getElementById('stkPrintLoading').style.display = 'flex';
     var tpl = document.getElementById('stkTplSelect').value;
-    document.getElementById('stkPrintIframe').src = '<?= adminUrl('pages/order-print.php') ?>?ids=' + _stkIds.join(',') + '&template=' + tpl + stkSizeParams();
+    document.getElementById('stkPrintIframe').src = '<?= adminUrl('pages/order-print.php') ?>?ids=' + _stkIds.join(',') + '&template=' + tpl + stkSizeParams() + '&modal=1';
 }
 function doStkPrint() { document.getElementById('stkPrintIframe').contentWindow.print(); }
 function openStkNewTab() {
