@@ -314,35 +314,33 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
 
 <?php
 $isSticker = (strpos($tpl, 'stk_') === 0);
-$perPage = ($layout==='a3_2') ? 2 : (($layout==='a4_3') ? 3 : 1);
+$perPage   = ($layout==='a3_2') ? 2 : (($layout==='a4_3') ? 3 : 1);
 $useLayout = (!$isSticker && $perPage > 1);
 $totalOrders = count($orders);
-
-foreach($orders as $idx=>$order):
-    $items=$allItems[$order['id']]??[];
-    $discount=floatval($order['discount']??$order['discount_amount']??0);
-    $advance=floatval($order['advance_amount']??0);
-    $due=floatval($order['total'])-$advance;
-    $pay=strtoupper($order['payment_method']??'COD');
-    $courier=$order['courier_name']??'';
-    $parcel=$order['courier_consignment_id']??$order['courier_tracking_id']??'';
-    $dt=date('d/m/Y',strtotime($order['created_at']));
-    $addr=trim(($order['customer_address']??'').($order['customer_city']?', '.$order['customer_city']:'').($order['customer_district']?', '.$order['customer_district']:''));
-    $notes=trim(($order['notes']??'').' '.($order['order_note']??''));$aNotes=$order['admin_notes']??'';$orderNote=$order['order_note']??'';
-    $barcodeVal=$order['order_number']??('ORD-'.$order['id']);
-    $barcodeId='bc_'.$idx;
-
-    // Layout wrapper: open at start of each group
-    $posInGroup = $idx % $perPage;
-    $isGroupStart = ($posInGroup === 0);
-    $isGroupEnd = ($posInGroup === $perPage - 1) || ($idx === $totalOrders - 1);
-
-    // Page break: only for a4_1 layout (traditional), others handled by wrapper
-    $pb = '';
-    if (!$useLayout && $idx < $totalOrders - 1) $pb = 'page-break';
-
+?>
+<?php foreach ($orders as $idx => $order): ?>
+<?php
+    $items      = $allItems[$order['id']] ?? [];
+    $discount   = floatval($order['discount'] ?? $order['discount_amount'] ?? 0);
+    $advance    = floatval($order['advance_amount'] ?? 0);
+    $due        = floatval($order['total']) - $advance;
+    $pay        = strtoupper($order['payment_method'] ?? 'COD');
+    $courier    = $order['courier_name'] ?? '';
+    $parcel     = $order['courier_consignment_id'] ?? $order['courier_tracking_id'] ?? '';
+    $dt         = date('d/m/Y', strtotime($order['created_at']));
+    $addr       = trim(($order['customer_address']??'').($order['customer_city']?', '.$order['customer_city']:'').($order['customer_district']?', '.$order['customer_district']:''));
+    $notes      = trim(($order['notes']??'').' '.($order['order_note']??''));
+    $aNotes     = $order['admin_notes'] ?? '';
+    $orderNote  = $order['order_note'] ?? '';
+    $barcodeVal = $order['order_number'] ?? ('ORD-'.$order['id']);
+    $barcodeId  = 'bc_'.$idx;
+    $posInGroup  = $idx % $perPage;
+    $isGroupStart= ($posInGroup === 0);
+    $isGroupEnd  = ($posInGroup === $perPage - 1) || ($idx === $totalOrders - 1);
+    $pb = (!$useLayout && $idx < $totalOrders - 1) ? 'page-break' : '';
+?>
 <?php if ($useLayout && $isGroupStart): ?>
-<?php if ($layout === 'a3_2'): ?><div class="layout-a3-row"><?php elseif ($layout === 'a4_3'): ?><div class="layout-a4-triple"><?php endif; ?>
+    <?php if ($layout === 'a3_2'): ?><div class="layout-a3-row"><?php elseif ($layout === 'a4_3'): ?><div class="layout-a4-triple"><?php endif; ?>
 <?php endif; ?>
 <?php if ($useLayout): ?><div class="layout-cell<?= $perPage===3?'-3':'' ?>"><?php endif; ?>
 <?php if ($isSticker && $idx > 0): ?><div class="stk-sep"></div><?php endif; ?>
