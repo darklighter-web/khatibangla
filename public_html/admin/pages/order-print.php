@@ -176,66 +176,41 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
 .barcode-wrap{margin-top:8px;text-align:center}.barcode-wrap svg{max-width:100%}
 .barcode-wrap-sm{margin-top:5px;text-align:center}.barcode-wrap-sm svg{max-width:100%;height:auto}
 <?php if ($isSticker): ?>
-/* ── STICKER PRINT CSS ──────────────────────────────── */
+/* STICKER CSS */
+/* Print: @page matches label, content fills label exactly */
 @media print{
   .no-print{display:none!important}
-  html,body{padding:0;margin:0;background:#fff;width:<?= $labelW ?>}
+  html,body{padding:0;margin:0;background:#fff}
   @page{size:<?= $labelW ?> <?= $labelH ?>;margin:0}
-  .sticker{
-    display:block;
-    width:<?= $labelW ?>!important;
-    <?= $labelH!=='auto' ? 'max-height:'.$labelH.';overflow:hidden;' : '' ?>
-    padding:3mm;
-    margin:0!important;
-    box-sizing:border-box;
-    page-break-inside:avoid;
-    break-inside:avoid;
-    page-break-after:avoid;
-    break-after:avoid
-  }
-  .stk-sep{
-    display:block;
-    width:<?= $labelW ?>;
-    height:0;
-    margin:0;
-    padding:0;
-    visibility:hidden;
-    page-break-before:always;
-    break-before:page;
-    page-break-after:avoid;
-    break-after:avoid
-  }
+  .sticker{display:block;width:<?= $labelW ?>!important;padding:3mm;margin:0!important;box-sizing:border-box;page-break-inside:avoid;break-inside:avoid}
+  .stk-sep{display:block;width:0;height:0;margin:0;padding:0;page-break-before:always;break-before:page}
 }
+/* Screen: preview box */
 @media screen{
   body{background:#d1d5db;padding:16px;min-height:100vh}
-  .sticker{display:block;margin:12px auto!important;box-shadow:0 4px 16px rgba(0,0,0,.15)}
+  .sticker{display:block;width:var(--stk-w)!important;min-height:calc(var(--stk-w) * 1.38);margin:12px auto!important;box-shadow:0 4px 20px rgba(0,0,0,.18);background:#fff}
+  .stk-sep{display:none}
 }
-/* Screen: sticker renders at CSS pixel width matching label proportions */
-.sticker{width:var(--stk-w);min-height:calc(var(--stk-w) * 1.389);border:1px solid #333;padding:8px;position:relative;box-sizing:border-box;background:#fff}
+/* Base sticker — never overridden by per-template rules below */
+.sticker{position:relative;box-sizing:border-box;background:#fff;overflow:hidden}
+/* Per-template extra styles (tables etc) — no .sticker overrides */
 <?php if ($tpl==='stk_pos'): ?>
-.sticker{border:none;border-bottom:2px dashed #ccc;border-radius:0;text-align:center;margin:0 auto!important}
+.sticker{border-bottom:2px dashed #ccc!important;border-left:none!important;border-right:none!important;border-top:none!important;border-radius:0!important;text-align:center}
 .stk-pos-tbl{width:100%;font-size:10px;border-collapse:collapse}.stk-pos-tbl th{border-bottom:1px dashed #999;padding:3px 2px;font-size:9px;color:#777}.stk-pos-tbl td{padding:3px 2px;border-bottom:1px dotted #eee}
 <?php elseif ($tpl==='stk_cod'): ?>
-.sticker{border:3px solid #000;border-radius:10px;padding:12px;overflow:hidden}
+.sticker{border:3px solid #000!important;border-radius:10px!important}
 <?php elseif ($tpl==='stk_cod_t'): ?>
-.sticker{border:3px solid #111;border-radius:8px;padding:8px;overflow:hidden}
-<?php elseif ($tpl==='stk_mini'): ?>
-.sticker{padding:5px;font-size:9px;text-align:center}
+.sticker{border:3px solid #111!important;border-radius:8px!important}
 <?php elseif ($tpl==='stk_detailed'): ?>
 .stk-ptbl{width:100%;border-collapse:collapse;font-size:10px;margin:5px 0}.stk-ptbl th{text-align:left;border-bottom:1px solid #999;padding:2px 4px;font-size:9px;color:#666}.stk-ptbl td{padding:2px 4px;border-bottom:1px solid #eee}
 <?php elseif ($tpl==='stk_sku' || $tpl==='stk_thermal_sku' || $tpl==='stk_3sq'): ?>
-.sku-tbl,.tsku-tbl,.s3sq-tbl{width:100%;border-collapse:collapse;font-size:9px;margin:3px 0}
-.sku-tbl th,.tsku-tbl th,.s3sq-tbl th{background:#f0f0f0;border:1px solid #ccc;padding:2px 4px;font-size:8px}
-.sku-tbl td,.tsku-tbl td,.s3sq-tbl td{border:1px solid #ddd;padding:2px 4px}
+.sku-tbl,.tsku-tbl,.s3sq-tbl{width:100%;border-collapse:collapse;font-size:9px;margin:3px 0}.sku-tbl th,.tsku-tbl th,.s3sq-tbl th{background:#f0f0f0;border:1px solid #ccc;padding:2px 4px;font-size:8px}.sku-tbl td,.tsku-tbl td,.s3sq-tbl td{border:1px solid #ddd;padding:2px 4px}
 <?php elseif ($tpl==='stk_thermal' || $tpl==='stk_thermal_m' || $tpl==='stk_2in' || $tpl==='stk_3in' || $tpl==='stk_3in_note' || $tpl==='stk_compact'): ?>
-.thm-ptbl,.s2in-ptbl,.s3in-ptbl,.s3n-ptbl{width:100%;border-collapse:collapse;font-size:9px;margin:3px 0}
-.thm-ptbl th,.s2in-ptbl th,.s3in-ptbl th,.s3n-ptbl th{border-bottom:1px solid #999;padding:1px 3px;font-size:8px;color:#555}
-.thm-ptbl td,.s2in-ptbl td,.s3in-ptbl td,.s3n-ptbl td{padding:1px 3px;border-bottom:1px solid #eee}
+.thm-ptbl,.s2in-ptbl,.s3in-ptbl,.s3n-ptbl{width:100%;border-collapse:collapse;font-size:9px;margin:3px 0}.thm-ptbl th,.s2in-ptbl th,.s3in-ptbl th,.s3n-ptbl th{border-bottom:1px solid #999;padding:1px 3px;font-size:8px;color:#555}.thm-ptbl td,.s2in-ptbl td,.s3in-ptbl td,.s3n-ptbl td{padding:1px 3px;border-bottom:1px solid #eee}
 <?php elseif ($tpl==='stk_4x3'): ?>
-.s4x3-tbl{width:100%;border-collapse:collapse;font-size:10px;margin:4px 0}
-.s4x3-tbl th{background:#111;color:#fff;padding:3px 5px;font-size:8px;text-transform:uppercase}
-.s4x3-tbl td{border-bottom:1px solid #ddd;padding:3px 5px}
+.s4x3-tbl{width:100%;border-collapse:collapse;font-size:10px;margin:4px 0}.s4x3-tbl th{background:#111;color:#fff;padding:3px 5px;font-size:8px;text-transform:uppercase}.s4x3-tbl td{border-bottom:1px solid #ddd;padding:3px 5px}
 <?php endif; ?>
+
 <?php else: ?>
 /* ── INVOICE / LAYOUT CSS ──────────────────────────── */
 <?php if ($layout==='a4_1'): ?>
