@@ -191,9 +191,9 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
 }
 /* Screen: preview box */
 @media screen{
-  html,body{overflow-x:hidden;max-width:100%}
-  body{background:#f4f4f4;padding:8px}
-  .sticker{display:block;width:var(--stk-w)!important;min-height:calc(var(--stk-w) * 1.38);margin:0 auto!important;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.15);max-width:100%}
+  html{overflow-x:hidden}
+  body{background:#f4f4f4;padding:8px;overflow-x:hidden;box-sizing:border-box}
+  .sticker{display:block;width:var(--stk-w)!important;max-width:calc(100% - 16px)!important;min-height:calc(var(--stk-w) * 1.38);margin:0 auto!important;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.15);box-sizing:border-box}
   .stk-sep{display:none}
 }
 /* Base sticker — never overridden by per-template rules below */
