@@ -1191,6 +1191,38 @@ $defLayout = getSetting('print_default_layout', 'a4_1');
         </div>
       </div>
       <div class="flex items-center gap-2 flex-wrap">
+        <!-- Sticker Size Selector -->
+        <select id="stkSizeSelect" onchange="reloadStkPreview()" class="border rounded-lg px-2 py-1.5 text-xs bg-white focus:ring-2 focus:ring-orange-300 font-medium" title="Label size — match your physical sticker roll">
+          <optgroup label="3×4 inch (76×102mm) — Most common">
+            <option value="288" data-w="76.2mm" data-h="101.6mm" selected>3×4 inch (76×102mm)</option>
+          </optgroup>
+          <optgroup label="Thermal 75mm wide">
+            <option value="280" data-w="75mm" data-h="50mm">75×50mm thermal</option>
+            <option value="280" data-w="75mm" data-h="40mm">75×40mm thermal</option>
+          </optgroup>
+          <optgroup label="2 inch wide">
+            <option value="192" data-w="50.8mm" data-h="76.2mm">2×3 inch (50×76mm)</option>
+            <option value="192" data-w="50.8mm" data-h="101.6mm">2×4 inch (50×102mm)</option>
+          </optgroup>
+          <optgroup label="3 inch wide">
+            <option value="288" data-w="76.2mm" data-h="50.8mm">3×2 inch (76×51mm)</option>
+            <option value="288" data-w="76.2mm" data-h="76.2mm">3×3 inch (76×76mm)</option>
+            <option value="288" data-w="76.2mm" data-h="152.4mm">3×6 inch (76×152mm)</option>
+          </optgroup>
+          <optgroup label="4 inch wide">
+            <option value="384" data-w="101.6mm" data-h="76.2mm">4×3 inch (102×76mm)</option>
+            <option value="384" data-w="101.6mm" data-h="152.4mm">4×6 inch (102×152mm)</option>
+          </optgroup>
+          <optgroup label="Small labels">
+            <option value="144" data-w="38mm" data-h="25mm">38×25mm mini</option>
+            <option value="192" data-w="50mm" data-h="30mm">50×30mm</option>
+            <option value="224" data-w="57mm" data-h="32mm">57×32mm receipt</option>
+          </optgroup>
+          <optgroup label="Wide format">
+            <option value="302" data-w="80mm" data-h="auto">80mm continuous</option>
+            <option value="360" data-w="100mm" data-h="150mm">100×150mm (4×6 shipping)</option>
+          </optgroup>
+        </select>
         <select id="stkTplSelect" onchange="reloadStkPreview()" class="border rounded-lg px-3 py-1.5 text-xs bg-white focus:ring-2 focus:ring-orange-300 min-w-[200px]">
           <optgroup label="🏷 Sticker Templates">
             <option value="stk_standard"    <?=($selStk==='stk_standard')?'selected':''?>>Standard Sticker</option>
@@ -1274,6 +1306,16 @@ function openInvNewTab() {
 
 // ── Sticker modal ──────────────────────────────────────────────
 var _stkIds = [];
+
+function stkSizeParams() {
+    var sel = document.getElementById('stkSizeSelect');
+    var opt = sel ? sel.options[sel.selectedIndex] : null;
+    var w   = opt ? opt.getAttribute('data-w') : '76.2mm';
+    var h   = opt ? opt.getAttribute('data-h') : '101.6mm';
+    var sw  = sel ? sel.value : '288';
+    return '&sticker_width=' + sw + '&label_w=' + encodeURIComponent(w) + '&label_h=' + encodeURIComponent(h);
+}
+
 function openStkPrint(forceIds) {
     _stkIds = forceIds || getIds();
     if (!_stkIds.length) { alert('Select orders first'); return; }
@@ -1288,12 +1330,12 @@ function closeStkModal() { document.getElementById('stkPrintModal').classList.ad
 function reloadStkPreview() {
     document.getElementById('stkPrintLoading').style.display = 'flex';
     var tpl = document.getElementById('stkTplSelect').value;
-    document.getElementById('stkPrintIframe').src = '<?= adminUrl('pages/order-print.php') ?>?ids=' + _stkIds.join(',') + '&template=' + tpl;
+    document.getElementById('stkPrintIframe').src = '<?= adminUrl('pages/order-print.php') ?>?ids=' + _stkIds.join(',') + '&template=' + tpl + stkSizeParams();
 }
 function doStkPrint() { document.getElementById('stkPrintIframe').contentWindow.print(); }
 function openStkNewTab() {
     var tpl = document.getElementById('stkTplSelect').value;
-    window.open('<?= adminUrl('pages/order-print.php') ?>?ids=' + _stkIds.join(',') + '&template=' + tpl, '_blank');
+    window.open('<?= adminUrl('pages/order-print.php') ?>?ids=' + _stkIds.join(',') + '&template=' + tpl + stkSizeParams(), '_blank');
 }
 
 // ── Legacy aliases (keep any existing calls working) ──────────────────────────

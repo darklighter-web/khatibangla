@@ -60,14 +60,17 @@ $customFooter = cfg('custom_footer', '');
 $primaryColor = cfg('primary_color', '#2563eb');
 $headerBg = cfg('header_bg', '');
 $fontSize = intval(cfg('font_size', 13));
-// Sticker width: use config override or derive from template
+// Sticker width: from URL param (set by size selector in modal), config, or template default
 $tplDefaultWidths = [
-    'stk_standard'=>280,'stk_detailed'=>280,'stk_courier'=>280,'stk_pos'=>302,'stk_cod'=>260,
-    'stk_wide'=>360,'stk_sku'=>280,'stk_note'=>280,'stk_compact'=>192,'stk_thermal'=>280,
+    'stk_standard'=>288,'stk_detailed'=>288,'stk_courier'=>288,'stk_pos'=>302,'stk_cod'=>288,
+    'stk_wide'=>384,'stk_sku'=>288,'stk_note'=>288,'stk_compact'=>192,'stk_thermal'=>280,
     'stk_thermal_m'=>280,'stk_thermal_sku'=>280,'stk_2in'=>192,'stk_3in'=>288,'stk_cod_t'=>280,
-    'stk_4x3'=>288,'stk_3in_note'=>288,'stk_3sq'=>288,'stk_mini'=>144,
+    'stk_4x3'=>384,'stk_3in_note'=>288,'stk_3sq'=>288,'stk_mini'=>144,
 ];
-$stickerWidth = intval(cfg('sticker_width', $tplDefaultWidths[$baseTemplate] ?? 280));
+$stickerWidth = intval($_GET['sticker_width'] ?? cfg('sticker_width', $tplDefaultWidths[$baseTemplate] ?? 288));
+// Label physical dimensions from modal size selector (for display only — NOT used in @page)
+$labelW = preg_replace('/[^0-9a-z.]/', '', $_GET['label_w'] ?? '76.2mm');
+$labelH = preg_replace('/[^0-9a-z.]/', '', $_GET['label_h'] ?? '101.6mm');
 
 // Show/hide toggles
 $showLogo = cfg('show_logo', true);
@@ -163,7 +166,7 @@ if ($isSticker) {
 <title>Print <?= count($orders) ?> Order(s)</title>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <style>
-:root{--primary:<?=$primaryColor?>;--font-size:<?=$fontSize?>px;--stk-w:<?=$stickerWidth?>px}
+:root{--primary:<?=$primaryColor?>;--font-size:<?=$fontSize?>px;--stk-w:<?=$stickerWidth?>px;--label-w:<?=$labelW?>;--label-h:<?=$labelH?>}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#333;background:#f9fafb}
 .no-print{background:#f3f4f6;padding:10px 20px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-bottom:1px solid #e5e7eb;position:sticky;top:0;z-index:10}
@@ -176,26 +179,31 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
 /* ── STICKER PRINT CSS ──────────────────────────────── */
 @media print{
   .no-print{display:none!important}
-  html,body{padding:0;margin:0;background:#fff;width:<?= $pgW ?>;height:<?= $pgH === 'auto' ? 'auto' : $pgH ?>}
-  @page{
-    size:<?= $pgW ?> <?= $pgH ?>;
-    margin:0mm;
-  }
+  html,body{padding:0;margin:0;background:#fff}
+  /* NO @page size — let the printer driver use its own configured label size.
+     Adding @page{size} overrides the driver and stops the printer after 1 label. */
+  @page{margin:0}
   .sticker{
     display:block;
-    width:<?= $pgW ?>!important;
-    <?php if ($pgH !== 'auto'): ?>min-height:<?= $pgH ?>;max-height:<?= $pgH ?>;overflow:hidden;<?php endif; ?>
+    width:var(--stk-w);
     padding:4mm;
-    margin:0!important;
+    margin:0 auto!important;
     box-sizing:border-box;
     page-break-inside:avoid;
     break-inside:avoid;
+    page-break-after:avoid;
+    break-after:avoid;
   }
   .stk-sep{
     display:block;
-    width:0;height:0;
+    width:100%;
+    height:0;
+    margin:0;
+    padding:0;
     page-break-before:always;
     break-before:page;
+    page-break-after:avoid;
+    break-after:avoid;
   }
 }
 @media screen{
@@ -338,7 +346,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
     foreach($stkTpls as $t=>$l):?><a href="?<?=$idParam?>&template=<?=$t?>" class="<?=$template===$t?'active':''?>"><?=$l?></a><?php endforeach;?>
     <span style="margin-left:auto;font-size:12px;color:#888"><?=count($orders)?> order(s) · <?=$pgW?> × <?=$pgH?></span>
     <span style="margin-left:8px;font-size:10px;background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:4px;white-space:nowrap">
-      ⚙ Chrome: More settings → Paper = <strong><?=$pgW?> × <?=$pgH?></strong> · Margins = None · Scale = 100%
+      ⚙ Label: <strong><?=e($labelW)?> × <?=e($labelH)?></strong> · Chrome: Margins=None · Scale=100% · Fit=OFF
     </span>
     <?php else: ?>
     <?php
