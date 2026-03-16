@@ -11,7 +11,8 @@ try { $db->query("CREATE TABLE IF NOT EXISTS print_templates (id INT AUTO_INCREM
 
 $isPreview  = !empty($_GET['preview']);
 $isExtract  = !empty($_GET['extract']); // output sticker HTML fragment only (for modal fetch preview)
-if ($isExtract) ob_start(); // capture ALL output from this point
+$isModal    = !empty($_GET['modal']); // suppress toolbar in iframe/extract
+if ($isExtract) { ob_start(); $isModal = true; } // capture ALL output, hide toolbar
 $template = $_GET['template'] ?? getSetting('selected_invoice_template', 'inv_standard');
 $layout = $_GET['layout'] ?? getSetting('print_default_layout', 'a4_1'); // a4_1 | a3_2 | a4_3
 if (!in_array($layout, ['a4_1','a3_2','a4_3'])) $layout = 'a4_1';
@@ -314,7 +315,6 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
 </style>
 </head>
 <body>
-<?php $isModal = !empty($_GET['modal']); ?>
 <?php if(!$isPreview && !$isModal): ?>
 <div class="no-print">
     <button onclick="window.print()" style="background:var(--primary);color:white;border-color:var(--primary)">🖨 Print</button>
