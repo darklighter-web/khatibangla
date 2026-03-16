@@ -175,15 +175,12 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
   .no-print{display:none!important}
   body{padding:0;margin:0;background:#fff}
   @page{size:<?= $pgW ?> <?= $pgH ?>;margin:2mm}
-  .sticker{display:block;margin:0!important;page-break-inside:avoid;page-break-after:always;break-after:page}
-  .sticker:last-child{page-break-after:auto;break-after:auto}
-  .stk-sep{display:block;page-break-after:always;break-after:page;height:0;overflow:hidden}
-  .stk-sep:last-child{display:none}
+  .sticker{display:block;margin:0!important;page-break-inside:avoid;break-inside:avoid}
+  .stk-sep{display:block;height:0;page-break-before:always;break-before:page}
 }
 @media screen{
   body{background:#d1d5db;padding:16px;min-height:100vh}
   .sticker{display:block;margin:12px auto!important;box-shadow:0 4px 16px rgba(0,0,0,.15);max-width:var(--stk-w)}
-  .stk-sep{display:none}
 }
 .sticker{width:var(--stk-w);border:2px solid #000;padding:10px;position:relative;box-sizing:border-box}
 <?php if ($tpl==='stk_pos'): ?>
@@ -353,6 +350,7 @@ foreach($orders as $idx=>$order):
     if ($useLayout): ?><div class="layout-cell<?=$perPage===3?'-3':''?>"><?php endif;
 ?>
 
+<?php if ($isSticker && $idx > 0): ?><div class="stk-sep"></div><?php endif; ?>
 <?php if($tpl==='inv_standard'):?>
 <div class="invoice <?=$pb?>">
     <div class="inv-hdr"><div class="logo"><?= logoOrName($logoUrl,$siteName,'48px') ?><?php if($sitePhone&&$showPhone):?><p>📞 <?=e($sitePhone)?></p><?php endif;?><?php if($siteAddress&&$showAddress):?><p>📍 <?=e($siteAddress)?></p><?php endif;?></div>
@@ -701,11 +699,7 @@ foreach($orders as $idx=>$order):
     // Close layout group wrapper at group end (invoice layouts only)
     if ($useLayout && $isGroupEnd): ?></div><!-- /layout-row --><?php endif;
 
-    // Sticker page separator — forces printer to eject after each label
-    // Both CSS page-break AND an explicit element ensure all browsers/printers comply
-    if ($isSticker && $idx < $totalOrders - 1): ?>
-<div class="stk-sep"></div>
-<?php endif; ?>
+
 <?php endforeach;?>
 
 <?php if($showBarcode): ?>
