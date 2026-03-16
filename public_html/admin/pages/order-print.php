@@ -179,34 +179,31 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
 /* ── STICKER PRINT CSS ──────────────────────────────── */
 @media print{
   .no-print{display:none!important}
-  html,body{padding:0;margin:0;background:#fff}
-  /* @page size MUST match the label size selected in printer driver.
-     User must select the same size in Chrome print dialog → Paper size. */
-  @page{
-    size: <?= $labelW ?> <?= $labelH ?>;
-    margin: 0;
-  }
+  html,body{padding:0;margin:0;background:#fff;width:<?= $labelW ?>}
+  @page{size:<?= $labelW ?> <?= $labelH ?>;margin:0}
   .sticker{
-    display: block;
-    width: <?= $labelW ?>!important;
-    <?php if ($labelH !== 'auto'): ?>
-    height: <?= $labelH ?>!important;
-    overflow: hidden;
-    <?php endif; ?>
-    padding: 3mm;
-    margin: 0!important;
-    box-sizing: border-box;
-    page-break-inside: avoid;
-    break-inside: avoid;
+    display:block;
+    width:<?= $labelW ?>!important;
+    <?= $labelH!=='auto' ? 'max-height:'.$labelH.';overflow:hidden;' : '' ?>
+    padding:3mm;
+    margin:0!important;
+    box-sizing:border-box;
+    page-break-inside:avoid;
+    break-inside:avoid;
+    page-break-after:avoid;
+    break-after:avoid
   }
   .stk-sep{
-    display: block;
-    width: 0;
-    height: 0;
-    margin: 0;
-    padding: 0;
-    page-break-before: always;
-    break-before: page;
+    display:block;
+    width:<?= $labelW ?>;
+    height:0;
+    margin:0;
+    padding:0;
+    visibility:hidden;
+    page-break-before:always;
+    break-before:page;
+    page-break-after:avoid;
+    break-after:avoid
   }
 }
 @media screen{
@@ -214,7 +211,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
   .sticker{display:block;margin:12px auto!important;box-shadow:0 4px 16px rgba(0,0,0,.15)}
 }
 /* Screen: sticker renders at CSS pixel width matching label proportions */
-.sticker{width:var(--stk-w);border:1px solid #333;padding:8px;position:relative;box-sizing:border-box;background:#fff}
+.sticker{width:var(--stk-w);min-height:calc(var(--stk-w) * 1.389);border:1px solid #333;padding:8px;position:relative;box-sizing:border-box;background:#fff}
 <?php if ($tpl==='stk_pos'): ?>
 .sticker{border:none;border-bottom:2px dashed #ccc;border-radius:0;text-align:center;margin:0 auto!important}
 .stk-pos-tbl{width:100%;font-size:10px;border-collapse:collapse}.stk-pos-tbl th{border-bottom:1px dashed #999;padding:3px 2px;font-size:9px;color:#777}.stk-pos-tbl td{padding:3px 2px;border-bottom:1px dotted #eee}
