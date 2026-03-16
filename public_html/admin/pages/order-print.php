@@ -124,6 +124,37 @@ if ($isPreview) {
 $tpl = $baseTemplate;
 // Detect sticker vs invoice
 $isSticker = strpos($tpl, 'stk_') === 0;
+
+// Physical label dimensions per template (width × height in mm)
+// Die-cut roll printers (HOIN, Xprinter, Zebra, TSC) use @page size
+// to tell the printer exactly when to advance to the next label.
+// Values are standard label stock sizes.
+if ($isSticker) {
+    $labelSizes = [
+        'stk_standard'    => [76.2, 101.6], // 3×4 inch — default
+        'stk_compact'     => [50.8, 76.2],  // 2×3 inch
+        'stk_detailed'    => [76.2, 101.6], // 3×4 inch
+        'stk_courier'     => [76.2, 101.6], // 3×4 inch
+        'stk_pos'         => [80.0,   0],   // 80mm width, continuous
+        'stk_cod'         => [76.2, 101.6], // 3×4 inch
+        'stk_wide'        => [101.6, 76.2], // 4×3 inch landscape
+        'stk_sku'         => [76.2, 101.6], // 3×4 inch
+        'stk_note'        => [76.2, 101.6], // 3×4 inch
+        'stk_thermal'     => [75.0,  50.0], // 75×50mm
+        'stk_thermal_m'   => [75.0,  50.0], // 75×50mm
+        'stk_thermal_sku' => [75.0,  50.0], // 75×50mm
+        'stk_2in'         => [50.8, 101.6], // 2×4 inch
+        'stk_3in'         => [76.2, 101.6], // 3×4 inch
+        'stk_cod_t'       => [75.0,  50.0], // 75×50mm
+        'stk_4x3'         => [101.6, 76.2], // 4×3 inch
+        'stk_3in_note'    => [76.2, 101.6], // 3×4 inch
+        'stk_3sq'         => [76.2,  76.2], // 3×3 inch square
+        'stk_mini'        => [38.0,  25.0], // 38×25mm
+    ];
+    $sz  = $labelSizes[$tpl] ?? [76.2, 101.6];
+    $pgW = $sz[0].'mm';
+    $pgH = $sz[1] > 0 ? $sz[1].'mm' : 'auto';
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -145,16 +176,34 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
 /* ── STICKER PRINT CSS ──────────────────────────────── */
 @media print{
   .no-print{display:none!important}
-  body{padding:0;margin:0;background:#fff}
-  @page{margin:0}
-  .sticker{display:block;margin:0 auto!important;page-break-inside:avoid;break-inside:avoid}
-  .stk-sep{display:block;height:0;page-break-before:always;break-before:page;break-after:avoid}
+  html,body{padding:0;margin:0;background:#fff;width:<?= $pgW ?>;height:<?= $pgH === 'auto' ? 'auto' : $pgH ?>}
+  @page{
+    size:<?= $pgW ?> <?= $pgH ?>;
+    margin:0mm;
+  }
+  .sticker{
+    display:block;
+    width:<?= $pgW ?>!important;
+    <?php if ($pgH !== 'auto'): ?>min-height:<?= $pgH ?>;max-height:<?= $pgH ?>;overflow:hidden;<?php endif; ?>
+    padding:4mm;
+    margin:0!important;
+    box-sizing:border-box;
+    page-break-inside:avoid;
+    break-inside:avoid;
+  }
+  .stk-sep{
+    display:block;
+    width:0;height:0;
+    page-break-before:always;
+    break-before:page;
+  }
 }
 @media screen{
   body{background:#d1d5db;padding:16px;min-height:100vh}
-  .sticker{display:block;margin:12px auto!important;box-shadow:0 4px 16px rgba(0,0,0,.15);max-width:var(--stk-w)}
+  .sticker{display:block;margin:12px auto!important;box-shadow:0 4px 16px rgba(0,0,0,.15)}
 }
-.sticker{width:var(--stk-w);border:2px solid #000;padding:10px;position:relative;box-sizing:border-box}
+/* Screen: sticker renders at CSS pixel width matching label proportions */
+.sticker{width:var(--stk-w);border:1px solid #333;padding:8px;position:relative;box-sizing:border-box;background:#fff}
 <?php if ($tpl==='stk_pos'): ?>
 .sticker{border:none;border-bottom:2px dashed #ccc;border-radius:0;text-align:center;margin:0 auto!important}
 .stk-pos-tbl{width:100%;font-size:10px;border-collapse:collapse}.stk-pos-tbl th{border-bottom:1px dashed #999;padding:3px 2px;font-size:9px;color:#777}.stk-pos-tbl td{padding:3px 2px;border-bottom:1px dotted #eee}
@@ -287,7 +336,10 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
               'stk_thermal_sku'=>'SKU-Thm','stk_2in'=>'2-inch','stk_3in'=>'3-inch','stk_cod_t'=>'COD-T',
               'stk_4x3'=>'4×3','stk_3in_note'=>'3in+Note','stk_3sq'=>'3×3Sq','stk_mini'=>'Mini'];
     foreach($stkTpls as $t=>$l):?><a href="?<?=$idParam?>&template=<?=$t?>" class="<?=$template===$t?'active':''?>"><?=$l?></a><?php endforeach;?>
-    <span style="margin-left:auto;font-size:12px;color:#888"><?=count($orders)?> order(s) · Sticker</span>
+    <span style="margin-left:auto;font-size:12px;color:#888"><?=count($orders)?> order(s) · <?=$pgW?> × <?=$pgH?></span>
+    <span style="margin-left:8px;font-size:10px;background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:4px;white-space:nowrap">
+      ⚙ Chrome: More settings → Paper = <strong><?=$pgW?> × <?=$pgH?></strong> · Margins = None · Scale = 100%
+    </span>
     <?php else: ?>
     <?php
     $invTpls=['inv_standard'=>'📄Standard','inv_compact'=>'📋Compact','inv_modern'=>'🎨Modern',
