@@ -341,15 +341,10 @@ foreach($orders as $idx=>$order):
     $pb = '';
     if (!$useLayout && $idx < $totalOrders - 1) $pb = 'page-break';
 
-    if ($useLayout && $isGroupStart):
-        if ($layout === 'a3_2'): ?><div class="layout-a3-row"><?php
-        elseif ($layout === 'a4_3'): ?><div class="layout-a4-triple"><?php
-        endif;
-    endif;
-
-    if ($useLayout): ?><div class="layout-cell<?=$perPage===3?'-3':''?>"><?php endif;
-?>
-
+<?php if ($useLayout && $isGroupStart): ?>
+<?php if ($layout === 'a3_2'): ?><div class="layout-a3-row"><?php elseif ($layout === 'a4_3'): ?><div class="layout-a4-triple"><?php endif; ?>
+<?php endif; ?>
+<?php if ($useLayout): ?><div class="layout-cell<?= $perPage===3?'-3':'' ?>"><?php endif; ?>
 <?php if ($isSticker && $idx > 0): ?><div class="stk-sep"></div><?php endif; ?>
 <?php if($tpl==='inv_standard'):?>
 <div class="invoice <?=$pb?>">
@@ -691,16 +686,9 @@ foreach($orders as $idx=>$order):
 </div>
 
 <?php endif; /* end template switch */ ?>
-
-<?php
-    // Close layout cell (invoice layouts only)
-    if ($useLayout): ?></div><!-- /layout-cell --><?php endif; ?>
-
-    // Close layout group wrapper at group end (invoice layouts only)
-    if ($useLayout && $isGroupEnd): ?></div><!-- /layout-row --><?php endif; ?>
-
-
-<?php endforeach;?>
+<?php if ($useLayout): ?></div><!-- /layout-cell --><?php endif; ?>
+<?php if ($useLayout && $isGroupEnd): ?></div><!-- /layout-row --><?php endif; ?>
+<?php endforeach; ?>
 
 <?php if($showBarcode): ?>
 <script>
