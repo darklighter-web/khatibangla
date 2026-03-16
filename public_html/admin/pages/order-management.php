@@ -1272,14 +1272,11 @@ $defLayout = getSetting('print_default_layout', 'a4_1');
         <svg class="w-3.5 h-3.5 flex-shrink-0 text-amber-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/></svg>
         <span><strong>Chrome print:</strong> Select label size above → Chrome auto-sets paper size · Margins = <strong>None</strong> · Scale = <strong>100%</strong> · Pages per sheet = <strong>1</strong></span>
       </div>
-    <div class="flex-1 relative overflow-hidden bg-gray-100" style="min-height:0">
+    <div class="flex-1 relative overflow-auto bg-gray-100 p-4" style="min-height:0" id="stkPreviewArea">
       <div id="stkPrintLoading" class="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
         <div class="text-center"><div class="text-2xl mb-2">⏳</div><p class="text-sm text-gray-500">Loading preview…</p></div>
       </div>
-      <iframe id="stkPrintIframe"
-        style="display:block;width:100%;height:100%;border:0;min-height:0"
-        onload="if(this.src&&this.src!=='about:blank'){document.getElementById('stkPrintLoading').style.display='none';}"
-        src="about:blank"></iframe>
+      <div id="stkPreviewContent" class="flex flex-col gap-4 items-center"></div>
     </div>
   </div>
 </div>
@@ -1317,9 +1314,9 @@ var _stkIds = [];
 function stkSizeParams() {
     var sel = document.getElementById('stkSizeSelect');
     var opt = sel ? sel.options[sel.selectedIndex] : null;
-    var w   = opt ? opt.getAttribute('data-w') : '76.2mm';
-    var h   = opt ? opt.getAttribute('data-h') : '101.6mm';
-    var sw  = sel ? sel.value : '288';
+    var w   = opt ? opt.getAttribute('data-w') : '72mm';
+    var h   = opt ? opt.getAttribute('data-h') : '100mm';
+    var sw  = sel ? sel.value : '272';
     return '&sticker_width=' + sw + '&label_w=' + encodeURIComponent(w) + '&label_h=' + encodeURIComponent(h);
 }
 
@@ -1329,18 +1326,35 @@ function openStkPrint(forceIds) {
     document.getElementById('actionsMenu')?.classList.add('hidden');
     document.getElementById('rowMenu')?.classList.add('hidden');
     document.getElementById('stkPrintCount').textContent = _stkIds.length;
-    document.getElementById('stkPrintLoading').style.display = 'flex';
     document.getElementById('stkPrintModal').classList.remove('hidden');
     reloadStkPreview();
 }
-function closeStkModal() { document.getElementById('stkPrintModal').classList.add('hidden'); document.getElementById('stkPrintIframe').src = 'about:blank'; }
+function closeStkModal() {
+    document.getElementById('stkPrintModal').classList.add('hidden');
+    document.getElementById('stkPreviewContent').innerHTML = '';
+}
 
 function reloadStkPreview() {
-    document.getElementById('stkPrintLoading').style.display = 'flex';
+    var loading = document.getElementById('stkPrintLoading');
+    var content = document.getElementById('stkPreviewContent');
     var tpl = document.getElementById('stkTplSelect').value;
-    document.getElementById('stkPrintIframe').src = '<?= adminUrl('pages/order-print.php') ?>?ids=' + _stkIds.join(',') + '&template=' + tpl + stkSizeParams() + '&modal=1';
+    var url = '<?= adminUrl('pages/order-print.php') ?>?ids=' + _stkIds.join(',') + '&template=' + tpl + stkSizeParams() + '&extract=1';
+    loading.style.display = 'flex';
+    content.innerHTML = '';
+    fetch(url, {credentials: 'same-origin'})
+        .then(function(r){ return r.text(); })
+        .then(function(html){
+            content.innerHTML = html;
+            loading.style.display = 'none';
+        })
+        .catch(function(){ loading.style.display = 'none'; });
 }
-function doStkPrint() { document.getElementById('stkPrintIframe').contentWindow.print(); }
+function doStkPrint() {
+    var tpl = document.getElementById('stkTplSelect').value;
+    var url = '<?= adminUrl('pages/order-print.php') ?>?ids=' + _stkIds.join(',') + '&template=' + tpl + stkSizeParams();
+    var w = window.open(url, '_blank');
+    if (w) { w.addEventListener('load', function(){ w.print(); }); }
+}
 function openStkNewTab() {
     var tpl = document.getElementById('stkTplSelect').value;
     window.open('<?= adminUrl('pages/order-print.php') ?>?ids=' + _stkIds.join(',') + '&template=' + tpl + stkSizeParams(), '_blank');

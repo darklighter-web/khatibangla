@@ -9,7 +9,8 @@ $db = Database::getInstance();
 // Ensure table exists
 try { $db->query("CREATE TABLE IF NOT EXISTS print_templates (id INT AUTO_INCREMENT PRIMARY KEY,template_key VARCHAR(100) NOT NULL UNIQUE,template_type ENUM('invoice','sticker') NOT NULL DEFAULT 'invoice',name VARCHAR(100) NOT NULL,description VARCHAR(255) DEFAULT '',base_template VARCHAR(100) NOT NULL DEFAULT 'inv_standard',is_builtin TINYINT(1) NOT NULL DEFAULT 0,config JSON DEFAULT NULL,created_by INT DEFAULT NULL,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,INDEX idx_type(template_type)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"); } catch(\Throwable $e){}
 
-$isPreview = !empty($_GET['preview']);
+$isPreview  = !empty($_GET['preview']);
+$isExtract  = !empty($_GET['extract']); // output sticker HTML fragment only (for modal fetch preview)
 $template = $_GET['template'] ?? getSetting('selected_invoice_template', 'inv_standard');
 $layout = $_GET['layout'] ?? getSetting('print_default_layout', 'a4_1'); // a4_1 | a3_2 | a4_3
 if (!in_array($layout, ['a4_1','a3_2','a4_3'])) $layout = 'a4_1';
@@ -163,6 +164,37 @@ if ($isSticker) {
     $pgH = $sz[1] > 0 ? $sz[1].'mm' : 'auto';
 }
 ?>
+<?php if ($isExtract): ?>
+<style>
+:root{--primary:<?=$primaryColor?>;--font-size:<?=$fontSize?>px;--stk-w:<?=$stickerWidth?>px}
+*{box-sizing:border-box}
+.sticker-extract{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#333}
+<?php if ($isSticker): ?>
+.sticker{display:block;width:var(--stk-w)!important;max-width:100%!important;padding:8px;margin:0 auto 16px auto!important;background:#fff;border:1px solid #ccc;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.12);box-sizing:border-box;position:relative;overflow:hidden}
+<?php if ($boldText): ?>.sticker *{font-weight:700!important}<?php endif; ?>
+<?php if ($tpl==='stk_pos'): ?>
+.sticker{border-bottom:2px dashed #ccc!important;border-left:none!important;border-right:none!important;border-top:none!important;border-radius:0!important;text-align:center}
+.stk-pos-tbl{width:100%;font-size:10px;border-collapse:collapse}.stk-pos-tbl th{border-bottom:1px dashed #999;padding:3px 2px;font-size:9px;color:#777}.stk-pos-tbl td{padding:3px 2px;border-bottom:1px dotted #eee}
+<?php elseif ($tpl==='stk_cod'): ?>
+.sticker{border:3px solid #000!important;border-radius:10px!important}
+<?php elseif ($tpl==='stk_cod_t'): ?>
+.sticker{border:3px solid #111!important;border-radius:8px!important}
+<?php elseif ($tpl==='stk_detailed'): ?>
+.stk-ptbl{width:100%;border-collapse:collapse;font-size:10px;margin:5px 0}.stk-ptbl th{text-align:left;border-bottom:1px solid #999;padding:2px 4px;font-size:9px;color:#666}.stk-ptbl td{padding:2px 4px;border-bottom:1px solid #eee}
+<?php elseif ($tpl==='stk_sku' || $tpl==='stk_thermal_sku' || $tpl==='stk_3sq'): ?>
+.sku-tbl,.tsku-tbl,.s3sq-tbl{width:100%;border-collapse:collapse;font-size:9px;margin:3px 0}.sku-tbl th,.tsku-tbl th,.s3sq-tbl th{background:#f0f0f0;border:1px solid #ccc;padding:2px 4px;font-size:8px}.sku-tbl td,.tsku-tbl td,.s3sq-tbl td{border:1px solid #ddd;padding:2px 4px}
+<?php elseif ($tpl==='stk_thermal' || $tpl==='stk_thermal_m' || $tpl==='stk_2in' || $tpl==='stk_3in' || $tpl==='stk_3in_note' || $tpl==='stk_compact'): ?>
+.thm-ptbl,.s2in-ptbl,.s3in-ptbl,.s3n-ptbl{width:100%;border-collapse:collapse;font-size:9px;margin:3px 0}.thm-ptbl th,.s2in-ptbl th,.s3in-ptbl th,.s3n-ptbl th{border-bottom:1px solid #999;padding:1px 3px;font-size:8px;color:#555}.thm-ptbl td,.s2in-ptbl td,.s3in-ptbl td,.s3n-ptbl td{padding:1px 3px;border-bottom:1px solid #eee}
+<?php elseif ($tpl==='stk_4x3'): ?>
+.s4x3-tbl{width:100%;border-collapse:collapse;font-size:10px;margin:4px 0}.s4x3-tbl th{background:#111;color:#fff;padding:3px 5px;font-size:8px;text-transform:uppercase}.s4x3-tbl td{border-bottom:1px solid #ddd;padding:3px 5px}
+<?php endif; ?>
+.barcode-wrap{margin-top:6px;text-align:center}.barcode-wrap svg,.barcode-wrap-sm svg{max-width:100%;height:auto}
+.barcode-wrap-sm{margin-top:4px;text-align:center}
+.text-right{text-align:right}.text-center{text-align:center}
+<?php endif; ?>
+</style>
+<div class="sticker-extract">
+<?php endif; ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -752,4 +784,10 @@ document.addEventListener('DOMContentLoaded', function(){
 </script>
 <?php endif; ?>
 
+<?php if ($isExtract): ?></div>
+<?php if($showBarcode): ?>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<script>document.addEventListener('DOMContentLoaded',function(){document.querySelectorAll('svg[data-value]').forEach(function(svg){var val=svg.getAttribute('data-value');if(!val)return;try{JsBarcode(svg,val,{format:'CODE128',width:1.2,height:32,displayValue:true,fontSize:9});}catch(e){}});});</script>
+<?php endif; ?>
+<?php exit; endif; ?>
 </body></html>
