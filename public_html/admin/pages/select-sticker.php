@@ -237,6 +237,18 @@ $baseOptions=[
                 </div>
             </div>
 
+            <!-- Bold text toggle -->
+            <div class="bld-sec">
+                <span class="bld-lbl">Text Style</span>
+                <div class="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50">
+                    <div>
+                        <p class="text-sm font-semibold text-gray-700">Bold All Text</p>
+                        <p class="text-[10px] text-gray-400">Make all sticker text bold for easier reading</p>
+                    </div>
+                    <div class="toggle-sw" data-key="bold_text" onclick="this.classList.toggle('on');bCfg[this.dataset.key]=this.classList.contains('on');dbPv()"></div>
+                </div>
+            </div>
+
             <!-- ★ Notes — highlighted section -->
             <div class="bld-sec">
                 <span class="bld-lbl">📝 Order & Shipping Notes</span>
@@ -343,7 +355,7 @@ function openBuilder(eKey,isBuiltin){
         show_phone:true,show_barcode:true,show_variant:true,show_courier:true,
         show_parcel:true,show_notes:true,show_shipping_note:true,
         show_advance:true,show_discount:true,show_sku:false,
-        custom_shipping_note:''};
+        bold_text:false,custom_shipping_note:''};
     document.getElementById('bN').value='';document.getElementById('bD').value='';document.getElementById('bClr').value='#000000';
     setBW(288,true);document.getElementById('bFS').value='12';document.getElementById('fsV').textContent='12px';document.getElementById('bSN').value='';
     resetToggles();document.querySelectorAll('.cdot').forEach(function(d){d.classList.remove('act');});
@@ -390,7 +402,7 @@ function closeBld(){
 function resetToggles(){
     var df={show_phone:true,show_barcode:true,show_variant:true,show_courier:true,
             show_parcel:true,show_notes:true,show_shipping_note:true,
-            show_advance:true,show_discount:true,show_sku:false};
+            show_advance:true,show_discount:true,show_sku:false,bold_text:false};
     document.querySelectorAll('.toggle-sw').forEach(function(ts){
         var k=ts.dataset.key;
         if(k===undefined)return;

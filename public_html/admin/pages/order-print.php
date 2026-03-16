@@ -75,6 +75,7 @@ $labelH = preg_replace('/[^0-9a-z.]/', '', $_GET['label_h'] ?? '101.6mm');
 // Show/hide toggles
 $showLogo = cfg('show_logo', true);
 $showPhone = cfg('show_phone', true);
+$boldText = cfg('bold_text', false); // Sticker text bold toggle
 $showAddress = cfg('show_address', true);
 $showSku = cfg('show_sku', false);
 $showImages = cfg('show_images', false);
@@ -187,12 +188,13 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
 }
 /* Screen: preview box */
 @media screen{
-  body{background:#d1d5db;padding:16px;min-height:100vh}
-  .sticker{display:block;width:var(--stk-w)!important;min-height:calc(var(--stk-w) * 1.38);margin:12px auto!important;box-shadow:0 4px 20px rgba(0,0,0,.18);background:#fff}
+  body{background:<?= $isPreview ? '#fff' : '#d1d5db' ?>;padding:<?= $isPreview ? '0' : '16px' ?>}
+  .sticker{display:block;width:var(--stk-w)!important;min-height:calc(var(--stk-w) * 1.38);margin:<?= $isPreview ? '0 auto' : '12px auto' ?>!important;<?= $isPreview ? '' : 'box-shadow:0 4px 20px rgba(0,0,0,.18);' ?>background:#fff}
   .stk-sep{display:none}
 }
 /* Base sticker — never overridden by per-template rules below */
 .sticker{position:relative;box-sizing:border-box;background:#fff;overflow:hidden}
+<?php if($boldText): ?>.sticker *{font-weight:700!important}.sticker strong{font-weight:900!important}<?php endif; ?>
 /* Per-template extra styles (tables etc) — no .sticker overrides */
 <?php if ($tpl==='stk_pos'): ?>
 .sticker{border-bottom:2px dashed #ccc!important;border-left:none!important;border-right:none!important;border-top:none!important;border-radius:0!important;text-align:center}
@@ -393,7 +395,7 @@ $totalOrders = count($orders);
     <div style="display:flex;justify-content:space-between;margin-bottom:8px;font-size:11px;color:#555"><span>#<?=e($order['order_number'])?></span><span><?=$dt?></span></div>
     <div style="border:1px solid #eee;padding:8px;border-radius:4px;margin-bottom:10px;font-size:12px;line-height:1.5"><strong><?=e($order['customer_name'])?></strong><br>📞 <?=e($order['customer_phone'])?><br>📍 <?=e($addr)?></div>
     <table class="cmp-tbl"><thead><tr><th>Item</th><th class="text-center">Qty</th><th class="text-right">Total</th></tr></thead><tbody>
-    <?php foreach($items as $it):?><tr><td><?=e($it['product_name'])?></td><td class="text-center"><?=$it['quantity']?></td><td class="text-right">৳<?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
+    <?php foreach($items as $it):?><tr><td><?=e($it['product_name'])?><?=$showVariant&&!empty($it['variant_name'])?"<br><span style='font-size:10px;color:#777'>".e($it['variant_name'])."</span>":''?></td><td class="text-center"><?=$it['quantity']?></td><td class="text-right">৳<?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
     </tbody></table>
     <div style="text-align:right;font-size:11px;color:#666">Ship: ৳<?=number_format($order['shipping_cost'])?><?=$showDiscount&&$discount>0?' | Disc: -৳'.number_format($discount):''?></div>
     <div style="text-align:right;font-weight:bold;font-size:16px;margin:10px 0">Due: ৳<?=number_format($due)?></div>
@@ -406,7 +408,7 @@ $totalOrders = count($orders);
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:30px"><div><?= logoOrName($logoUrl,$siteName,'45px') ?></div><div class="mod-badge">INVOICE</div></div>
     <div class="mod-meta"><div><h4>Bill To</h4><p><strong><?=e($order['customer_name'])?></strong><br>📞 <?=e($order['customer_phone'])?><br>📍 <?=e($addr)?></p></div><div style="text-align:right"><h4>Invoice</h4><p><strong>#<?=e($order['order_number'])?></strong><br><?=date('d M Y',strtotime($order['created_at']))?><br><?=$pay?></p><?php if($showBarcode):?><div class="barcode-wrap" style="margin-top:6px"><svg id="<?=$barcodeId?>" class="barcode-svg" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?></div></div>
     <table class="mod-tbl"><thead><tr><th>#</th><th>Product</th><th class="text-center">Qty</th><th class="text-right">Price</th><th class="text-right">Amount</th></tr></thead><tbody>
-    <?php foreach($items as $i=>$it):?><tr><td><?=$i+1?></td><td><?=e($it['product_name'])?></td><td class="text-center"><?=$it['quantity']?></td><td class="text-right">৳<?=number_format($it['price'])?></td><td class="text-right">৳<?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
+    <?php foreach($items as $i=>$it):?><tr><td><?=$i+1?></td><td><?=e($it['product_name'])?><?=$showVariant&&!empty($it['variant_name'])?"<br><span style='font-size:11px;color:#aaa'>".e($it['variant_name'])."</span>":''?></td><td class="text-center"><?=$it['quantity']?></td><td class="text-right">৳<?=number_format($it['price'])?></td><td class="text-right">৳<?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
     </tbody></table>
     <table class="mod-tots"><tr><td>Subtotal</td><td class="text-right">৳<?=number_format($order['subtotal'])?></td></tr><tr><td>Delivery</td><td class="text-right">৳<?=number_format($order['shipping_cost'])?></td></tr><?php if($showDiscount&&$discount>0):?><tr><td>Discount</td><td class="text-right">-৳<?=number_format($discount)?></td></tr><?php endif;?><tr class="grand"><td>Due Amount</td><td class="text-right">৳<?=number_format($due)?></td></tr></table>
     <div style="text-align:center;margin-top:30px;font-size:11px;color:#999"><?=$customFooter?e($customFooter):'Thank you for your order!'?></div>
@@ -417,7 +419,7 @@ $totalOrders = count($orders);
     <div class="brd-hdr"><div><?= logoOrName($logoUrl,$siteName,'45px','filter:brightness(10)') ?></div><div class="right"><p style="font-size:20px;font-weight:700;margin-bottom:4px">#<?=e($order['order_number'])?></p><p><?=date('d M Y',strtotime($order['created_at']))?></p><p><?=$pay?></p><?php if($showBarcode):?><div style="margin-top:6px;filter:invert(1)"><svg id="<?=$barcodeId?>" class="barcode-svg" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?></div></div>
     <div class="brd-addr"><div><h4>Customer</h4><p><strong><?=e($order['customer_name'])?></strong><br>📞 <?=e($order['customer_phone'])?></p></div><div><h4>Ship To</h4><p><?=e($addr)?></p></div></div>
     <table class="brd-tbl"><thead><tr><th>#</th><th>Product</th><th class="text-center">Qty</th><th class="text-right">Price</th><th class="text-right">Total</th></tr></thead><tbody>
-    <?php foreach($items as $i=>$it):?><tr><td><?=$i+1?></td><td><?=e($it['product_name'])?></td><td class="text-center"><?=$it['quantity']?></td><td class="text-right">৳<?=number_format($it['price'])?></td><td class="text-right">৳<?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
+    <?php foreach($items as $i=>$it):?><tr><td><?=$i+1?></td><td><?=e($it['product_name'])?><?=$showVariant&&!empty($it['variant_name'])?"<br><span style='font-size:11px;color:#666'>".e($it['variant_name'])."</span>":''?></td><td class="text-center"><?=$it['quantity']?></td><td class="text-right">৳<?=number_format($it['price'])?></td><td class="text-right">৳<?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
     </tbody></table>
     <div class="brd-tots"><table><tr><td>Subtotal</td><td class="text-right">৳<?=number_format($order['subtotal'])?></td></tr><tr><td>Delivery</td><td class="text-right">৳<?=number_format($order['shipping_cost'])?></td></tr><?php if($showDiscount&&$discount>0):?><tr><td>Discount</td><td class="text-right">-৳<?=number_format($discount)?></td></tr><?php endif;?><tr class="grand"><td>Due Amount</td><td class="text-right">৳<?=number_format($due)?></td></tr></table></div>
 </div>
@@ -438,7 +440,7 @@ $totalOrders = count($orders);
     <div style="display:flex;justify-content:space-between;margin-bottom:40px"><h1 style="font-size:28px;font-weight:300;color:#111;letter-spacing:2px">Invoice</h1><div style="font-size:12px;color:#888;text-align:right;line-height:1.8"><strong style="color:#333">#<?=e($order['order_number'])?></strong><br><?=date('d M Y',strtotime($order['created_at']))?><br><?=$pay?><?php if($showBarcode):?><div class="barcode-wrap" style="margin-top:4px"><svg id="<?=$barcodeId?>" class="barcode-svg" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?></div></div>
     <div style="margin-bottom:30px;line-height:1.7"><div style="font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Bill To</div><strong><?=e($order['customer_name'])?></strong><br><?=e($order['customer_phone'])?><br><?=e($addr)?></div>
     <table class="min-tbl"><thead><tr><th>Item</th><th class="text-center">Qty</th><th class="text-right">Price</th><th class="text-right">Amount</th></tr></thead><tbody>
-    <?php foreach($items as $it):?><tr><td><?=e($it['product_name'])?></td><td class="text-center"><?=$it['quantity']?></td><td class="text-right">৳<?=number_format($it['price'])?></td><td class="text-right">৳<?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
+    <?php foreach($items as $it):?><tr><td><?=e($it['product_name'])?><?=$showVariant&&!empty($it['variant_name'])?"<br><span style='font-size:11px;color:#aaa'>".e($it['variant_name'])."</span>":''?></td><td class="text-center"><?=$it['quantity']?></td><td class="text-right">৳<?=number_format($it['price'])?></td><td class="text-right">৳<?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
     </tbody></table>
     <div style="text-align:right;margin-bottom:30px"><div class="min-row"><span>Subtotal</span><span>৳<?=number_format($order['subtotal'])?></span></div><div class="min-row"><span>Shipping</span><span>৳<?=number_format($order['shipping_cost'])?></span></div><?php if($showDiscount&&$discount>0):?><div class="min-row"><span>Discount</span><span>-৳<?=number_format($discount)?></span></div><?php endif;?><div class="min-row min-grand"><span>Due</span><span>৳<?=number_format($due)?></span></div></div>
     <div style="text-align:center;font-size:11px;color:#aaa;margin-top:30px"><?php if($customFooter):?><?=e($customFooter)?><?php elseif($logoUrl):?><img src="<?=$logoUrl?>" style="max-height:24px;object-fit:contain"><?php else:?><?=e($siteName)?><?php endif;?></div>
@@ -456,34 +458,34 @@ $totalOrders = count($orders);
 <?php elseif($tpl==='stk_standard'):?>
 <div class="sticker"><div style="position:absolute;top:6px;right:8px;background:#000;color:#fff;padding:1px 8px;font-size:10px;font-weight:700"><?=$pay?></div>
 <div style="display:flex;justify-content:space-between;border-bottom:2px solid #000;padding-bottom:5px;margin-bottom:6px;font-size:10px"><?= logoOrName($logoUrl,$siteName,'28px') ?><span>#<?=e($order['order_number'])?></span></div>
-<div><p style="font-size:14px;font-weight:700"><?=e($order['customer_name'])?></p><p>📞 <?=e($order['customer_phone'])?></p><p>📍 <?=e(mb_strimwidth($addr,0,100,'...'))?></p>
+<div><p style="font-size:14px;font-weight:700"><?=e($order['customer_name'])?></p><p>📞 <?=e($order['customer_phone'])?></p><p>📍 <?=e($addr)?></p>
 <div style="font-size:10px;color:#444;margin-top:5px;border-top:1px dashed #999;padding-top:4px"><?php foreach($items as $it):?><?=e($it['product_name'])?> × <?=$it['quantity']?><?=$showVariant&&!empty($it['variant_name'])?' ('.e($it['variant_name']).')':''?><br><?php endforeach;?></div></div>
 <div style="font-size:18px;font-weight:900;text-align:right;margin-top:4px">৳<?=number_format($due)?></div>
-<?php if($showNotes&&$notes):?><div style="font-size:9px;color:#444;border-top:1px dashed #ccc;padding-top:3px;margin-top:4px"><strong>Note:</strong> <?=e(mb_strimwidth($notes,0,100,'...'))?></div><?php endif;?>
-<?php if($showShipNote&&$shippingNote):?><div style="font-size:9px;color:#444;margin-top:2px"><strong>Shipping:</strong> <?=e(mb_strimwidth($shippingNote,0,100,'...'))?></div><?php endif;?>
+<?php if($showNotes&&$notes):?><div style="font-size:9px;color:#444;border-top:1px dashed #ccc;padding-top:3px;margin-top:4px"><strong>Note:</strong> <?=e($notes)?></div><?php endif;?>
+<?php if($showShipNote&&$shippingNote):?><div style="font-size:9px;color:#444;margin-top:2px"><strong>Shipping:</strong> <?=e($shippingNote)?></div><?php endif;?>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?></div>
 
 <?php elseif($tpl==='stk_detailed'):?>
 <div class="sticker">
 <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:6px"><?= logoOrName($logoUrl,$siteName,'28px') ?><div style="text-align:right;font-size:9px;color:#555">Date: <?=$dt?><br>IV: <?=e($order['order_number'])?></div></div>
 <?=$showCourier&&$courier?"<span style='font-size:9px;background:#000;color:#fff;padding:1px 4px'>Courier: ".e($courier)."</span><br>":""?>
-<div style="font-size:13px;font-weight:700"><?=e($order['customer_name'])?></div><div style="font-size:11px;line-height:1.4">📞 <?=e($order['customer_phone'])?><br>📍 <?=e(mb_strimwidth($addr,0,80,'...'))?></div>
-<table class="stk-ptbl"><thead><tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody><?php foreach($items as $it):?><tr><td><?=e(mb_strimwidth($it['product_name'],0,22,'...'))?></td><td><?=$it['quantity']?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?></tbody></table>
+<div style="font-size:13px;font-weight:700"><?=e($order['customer_name'])?></div><div style="font-size:11px;line-height:1.4">📞 <?=e($order['customer_phone'])?><br>📍 <?=e($addr)?></div>
+<table class="stk-ptbl"><thead><tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody><?php foreach($items as $it):?><tr><td><?=e($it['product_name'])?></td><td><?=$it['quantity']?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?></tbody></table>
 <div style="display:flex;justify-content:space-between;border-top:2px solid #000;padding-top:5px;margin-top:4px"><div style="font-size:10px">Sub: ৳<?=number_format($order['subtotal'])?> | Del: ৳<?=number_format($order['shipping_cost'])?></div><div style="font-size:16px;font-weight:900">৳<?=number_format($due)?></div></div>
-<?php if($showNotes&&$notes):?><div style="font-size:9px;color:#444;border-top:1px dashed #ccc;padding-top:3px;margin-top:3px"><strong>Note:</strong> <?=e(mb_strimwidth($notes,0,100,'...'))?></div><?php endif;?>
-<?php if($showShipNote&&$shippingNote):?><div style="font-size:9px;color:#444;margin-top:2px"><strong>Shipping:</strong> <?=e(mb_strimwidth($shippingNote,0,100,'...'))?></div><?php endif;?>
+<?php if($showNotes&&$notes):?><div style="font-size:9px;color:#444;border-top:1px dashed #ccc;padding-top:3px;margin-top:3px"><strong>Note:</strong> <?=e($notes)?></div><?php endif;?>
+<?php if($showShipNote&&$shippingNote):?><div style="font-size:9px;color:#444;margin-top:2px"><strong>Shipping:</strong> <?=e($shippingNote)?></div><?php endif;?>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>d" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?></div>
 
 <?php elseif($tpl==='stk_courier'):?>
 <div class="sticker">
 <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:4px"><?= logoOrName($logoUrl,$siteName,'28px') ?><div style="text-align:right;font-size:9px"><?=$dt?><br><?=e($order['order_number'])?></div></div>
 <?=$showCourier&&$courier?"<div style='background:#000;color:#fff;padding:3px 8px;font-size:10px;font-weight:700;display:inline-block;margin-bottom:6px'>Courier: ".e($courier)."</div>":""?>
-<div style="margin:6px 0;line-height:1.4"><div style="font-size:14px;font-weight:800"><?=e($order['customer_name'])?></div>📞 <?=e($order['customer_phone'])?><br>📍 <?=e(mb_strimwidth($addr,0,80,'...'))?></div>
+<div style="margin:6px 0;line-height:1.4"><div style="font-size:14px;font-weight:800"><?=e($order['customer_name'])?></div>📞 <?=e($order['customer_phone'])?><br>📍 <?=e($addr)?></div>
 <?=$showParcel&&$parcel?"<div style='font-size:10px;color:#555'>Parcel ID: ".e($parcel)."</div>":""?>
 <div style="font-size:10px;border-top:1px dashed #999;padding-top:4px;margin-top:4px"><?php foreach($items as $it):?><?=e($it['product_name'])?> × <?=$it['quantity']?><br><?php endforeach;?></div>
 <div style="display:flex;justify-content:space-between;align-items:center;border-top:2px solid #000;padding-top:6px;margin-top:6px"><div style="font-size:10px"><?=$pay?></div><div style="font-size:20px;font-weight:900">৳<?=number_format($due)?></div></div>
-<?php if($showNotes&&$notes):?><div style="font-size:9px;color:#555;border-top:1px dashed #ccc;padding-top:3px;margin-top:3px"><strong>Note:</strong> <?=e(mb_strimwidth($notes,0,100,'...'))?></div><?php endif;?>
-<?php if($showShipNote&&$shippingNote):?><div style="font-size:9px;color:#555;margin-top:2px"><strong>Shipping:</strong> <?=e(mb_strimwidth($shippingNote,0,100,'...'))?></div><?php endif;?>
+<?php if($showNotes&&$notes):?><div style="font-size:9px;color:#555;border-top:1px dashed #ccc;padding-top:3px;margin-top:3px"><strong>Note:</strong> <?=e($notes)?></div><?php endif;?>
+<?php if($showShipNote&&$shippingNote):?><div style="font-size:9px;color:#555;margin-top:2px"><strong>Shipping:</strong> <?=e($shippingNote)?></div><?php endif;?>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?></div>
 
 <?php elseif($tpl==='stk_pos'):?>
@@ -491,54 +493,54 @@ $totalOrders = count($orders);
 <?= logoOrName($logoUrl,$siteName,'30px') ?><?php if($showPhone):?><div style="font-size:10px;color:#666"><?=e($sitePhone)?></div><?php endif;?>
 <div style="border-top:1px dashed #999;margin:6px 0"></div>
 <div style="display:flex;justify-content:space-between;font-size:10px;color:#555;margin-bottom:4px"><span>#<?=e($order['order_number'])?></span><span><?=$dt?></span></div>
-<div style="text-align:left;margin:6px 0;font-size:12px;line-height:1.5"><strong style="font-size:14px"><?=e($order['customer_name'])?></strong><br>📞 <?=e($order['customer_phone'])?><br>📍 <?=e(mb_strimwidth($addr,0,80,'...'))?></div>
+<div style="text-align:left;margin:6px 0;font-size:12px;line-height:1.5"><strong style="font-size:14px"><?=e($order['customer_name'])?></strong><br>📞 <?=e($order['customer_phone'])?><br>📍 <?=e($addr)?></div>
 <div style="border-top:1px dashed #999;margin:6px 0"></div>
-<table class="stk-pos-tbl"><thead><tr><th>Item</th><th class="text-right">Qty</th><th class="text-right">Total</th></tr></thead><tbody><?php foreach($items as $it):?><tr><td><?=e(mb_strimwidth($it['product_name'],0,22,'...'))?></td><td class="text-right"><?=$it['quantity']?></td><td class="text-right">৳<?=number_format($it['subtotal'])?></td></tr><?php endforeach;?></tbody></table>
+<table class="stk-pos-tbl"><thead><tr><th>Item</th><th class="text-right">Qty</th><th class="text-right">Total</th></tr></thead><tbody><?php foreach($items as $it):?><tr><td><?=e($it['product_name'])?></td><td class="text-right"><?=$it['quantity']?></td><td class="text-right">৳<?=number_format($it['subtotal'])?></td></tr><?php endforeach;?></tbody></table>
 <div style="border-top:1px dashed #999;margin:6px 0"></div>
 <div style="text-align:right;margin:6px 0;font-size:11px;line-height:1.6">Sub Total: ৳<?=number_format($order['subtotal'])?><br>Delivery: ৳<?=number_format($order['shipping_cost'])?><br><span style="font-size:18px;font-weight:900">Due: ৳<?=number_format($due)?></span></div>
-<?php if($showNotes&&$notes):?><div style="font-size:9px;color:#555;border-top:1px dashed #999;padding-top:3px;margin-top:4px"><strong>Note:</strong> <?=e(mb_strimwidth($notes,0,100,'...'))?></div><?php endif;?>
-<?php if($showShipNote&&$shippingNote):?><div style="font-size:9px;color:#555;margin-top:2px"><strong>Shipping:</strong> <?=e(mb_strimwidth($shippingNote,0,100,'...'))?></div><?php endif;?>
+<?php if($showNotes&&$notes):?><div style="font-size:9px;color:#555;border-top:1px dashed #999;padding-top:3px;margin-top:4px"><strong>Note:</strong> <?=e($notes)?></div><?php endif;?>
+<?php if($showShipNote&&$shippingNote):?><div style="font-size:9px;color:#555;margin-top:2px"><strong>Shipping:</strong> <?=e($shippingNote)?></div><?php endif;?>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?></div>
 
 <?php elseif($tpl==='stk_cod'):?>
 <div class="sticker">
 <div style="background:#000;color:#fff;padding:6px 0;text-align:center;font-size:16px;font-weight:900;letter-spacing:2px;margin:-12px -12px 10px;border-bottom:3px solid #000"><?=$pay?> - ৳<?=number_format($due)?></div>
-<div style="line-height:1.5;font-size:12px"><p style="font-size:15px;font-weight:700"><?=e($order['customer_name'])?></p><p>📞 <?=e($order['customer_phone'])?></p><p>📍 <?=e(mb_strimwidth($addr,0,90,'...'))?></p>
+<div style="line-height:1.5;font-size:12px"><p style="font-size:15px;font-weight:700"><?=e($order['customer_name'])?></p><p>📞 <?=e($order['customer_phone'])?></p><p>📍 <?=e($addr)?></p>
 <div style="font-size:10px;border-top:1px dashed #aaa;padding-top:5px;margin-top:6px"><?php foreach($items as $it):?><?=e($it['product_name'])?> × <?=$it['quantity']?><br><?php endforeach;?></div></div>
 <div style="text-align:center;font-size:22px;font-weight:900;margin-top:8px;padding-top:6px;border-top:2px solid #000">৳<?=number_format($due)?></div>
-<?php if($showNotes&&$notes):?><div style="font-size:9px;color:#555;border-top:1px dashed #ccc;padding-top:3px;margin-top:4px"><strong>Note:</strong> <?=e(mb_strimwidth($notes,0,100,'...'))?></div><?php endif;?>
-<?php if($showShipNote&&$shippingNote):?><div style="font-size:9px;color:#555;margin-top:2px"><strong>Shipping:</strong> <?=e(mb_strimwidth($shippingNote,0,100,'...'))?></div><?php endif;?>
+<?php if($showNotes&&$notes):?><div style="font-size:9px;color:#555;border-top:1px dashed #ccc;padding-top:3px;margin-top:4px"><strong>Note:</strong> <?=e($notes)?></div><?php endif;?>
+<?php if($showShipNote&&$shippingNote):?><div style="font-size:9px;color:#555;margin-top:2px"><strong>Shipping:</strong> <?=e($shippingNote)?></div><?php endif;?>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?></div>
 
 <?php elseif($tpl==='stk_wide'):?>
 <div class="sticker">
 <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:8px"><?= logoOrName($logoUrl,$siteName,'30px') ?><div style="font-size:12px;font-weight:700;text-align:right"><?=e($order['order_number'])?><br><span style="font-size:9px;color:#555;font-weight:400"><?=$dt?></span></div></div>
-<div style="display:flex;gap:12px;margin-bottom:8px"><div style="flex:1"><div style="font-size:14px;font-weight:700;margin-bottom:2px"><?=e($order['customer_name'])?></div><p style="font-size:11px;line-height:1.4">📞 <?=e($order['customer_phone'])?><br>📍 <?=e(mb_strimwidth($addr,0,80,'...'))?></p></div>
+<div style="display:flex;gap:12px;margin-bottom:8px"><div style="flex:1"><div style="font-size:14px;font-weight:700;margin-bottom:2px"><?=e($order['customer_name'])?></div><p style="font-size:11px;line-height:1.4">📞 <?=e($order['customer_phone'])?><br>📍 <?=e($addr)?></p></div>
 <div style="text-align:right;min-width:80px;display:flex;flex-direction:column;justify-content:center;align-items:flex-end"><div style="font-size:22px;font-weight:900">৳<?=number_format($due)?></div><div style="font-size:9px;background:#000;color:#fff;padding:1px 6px;margin-top:2px"><?=$pay?></div></div></div>
 <div style="font-size:10px;border-top:1px dashed #999;padding-top:4px"><?php foreach($items as $it):?><?=e($it['product_name'])?> × <?=$it['quantity']?> — ৳<?=number_format($it['subtotal'])?><br><?php endforeach;?><div style="text-align:right;margin-top:2px">Sub: ৳<?=number_format($order['subtotal'])?> | Del: ৳<?=number_format($order['shipping_cost'])?></div></div>
-<?php if($showNotes&&$notes):?><div style="font-size:9px;color:#555;border-top:1px solid #ddd;padding-top:4px;margin-top:4px"><strong>Note:</strong> <?=e(mb_strimwidth($notes,0,80,'...'))?></div><?php endif;?>
+<?php if($showNotes&&$notes):?><div style="font-size:9px;color:#555;border-top:1px solid #ddd;padding-top:4px;margin-top:4px"><strong>Note:</strong> <?=e($notes)?></div><?php endif;?>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?></div>
 
 <?php elseif($tpl==='stk_sku'):?>
 <div class="sticker">
 <div style="display:flex;justify-content:space-between;border-bottom:2px solid #000;padding-bottom:5px;margin-bottom:6px"><?= logoOrName($logoUrl,$siteName,'28px') ?><div style="font-size:10px">IV: <?=e($order['order_number'])?><br><?=$dt?></div></div>
-<?=$showCourier&&$courier?"<span style='font-size:9px;background:#000;color:#fff;padding:0 4px'>".e($courier)."</span> ":""?><span style="font-size:13px;font-weight:700"><?=e($order['customer_name'])?></span><br><span style="font-size:11px">📞 <?=e($order['customer_phone'])?></span><br><span style="font-size:10px">📍 <?=e(mb_strimwidth($addr,0,70,'...'))?></span>
-<table class="sku-tbl"><thead><tr><th>SKU</th><th>Price</th><th>Total</th></tr></thead><tbody><?php foreach($items as $it):?><tr><td><?=e($it['sku']??mb_strimwidth($it['product_name'],0,18,'...'))?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?></tbody></table>
+<?=$showCourier&&$courier?"<span style='font-size:9px;background:#000;color:#fff;padding:0 4px'>".e($courier)."</span> ":""?><span style="font-size:13px;font-weight:700"><?=e($order['customer_name'])?></span><br><span style="font-size:11px">📞 <?=e($order['customer_phone'])?></span><br><span style="font-size:10px">📍 <?=e($addr)?></span>
+<table class="sku-tbl"><thead><tr><th>SKU</th><th>Price</th><th>Total</th></tr></thead><tbody><?php foreach($items as $it):?><tr><td><?=e($it['sku']??$it['product_name'])?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?></tbody></table>
 <div style="display:flex;justify-content:space-between;border-top:2px solid #000;padding-top:5px;margin-top:4px;font-size:10px"><div>Sub: ৳<?=number_format($order['subtotal'])?><br>Del: ৳<?=number_format($order['shipping_cost'])?></div><div style="font-size:16px;font-weight:900">৳<?=number_format($due)?></div></div>
-<?php if($showNotes&&$notes):?><div style="font-size:9px;color:#444;border-top:1px dashed #ccc;padding-top:3px;margin-top:3px"><strong>Note:</strong> <?=e(mb_strimwidth($notes,0,100,'...'))?></div><?php endif;?>
-<?php if($showShipNote&&$shippingNote):?><div style="font-size:9px;color:#444;margin-top:2px"><strong>Shipping:</strong> <?=e(mb_strimwidth($shippingNote,0,100,'...'))?></div><?php endif;?>
+<?php if($showNotes&&$notes):?><div style="font-size:9px;color:#444;border-top:1px dashed #ccc;padding-top:3px;margin-top:3px"><strong>Note:</strong> <?=e($notes)?></div><?php endif;?>
+<?php if($showShipNote&&$shippingNote):?><div style="font-size:9px;color:#444;margin-top:2px"><strong>Shipping:</strong> <?=e($shippingNote)?></div><?php endif;?>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?></div>
 
 <?php elseif($tpl==='stk_note'):?>
 <div class="sticker">
 <div style="display:flex;justify-content:space-between;border-bottom:2px solid #000;padding-bottom:5px;margin-bottom:6px"><?= logoOrName($logoUrl,$siteName,'26px') ?><div style="font-size:10px"><?=e($order['order_number'])?><br><?=$dt?></div></div>
 <div style="font-size:14px;font-weight:700"><?=e($order['customer_name'])?></div>
-<div style="font-size:11px;line-height:1.4">📞 <?=e($order['customer_phone'])?><br>📍 <?=e(mb_strimwidth($addr,0,70,'...'))?></div>
+<div style="font-size:11px;line-height:1.4">📞 <?=e($order['customer_phone'])?><br>📍 <?=e($addr)?></div>
 <div style="font-size:10px;border-top:1px dashed #999;padding-top:4px;margin:5px 0"><?php foreach($items as $it):?><?=e($it['product_name'])?> × <?=$it['quantity']?> — ৳<?=number_format($it['subtotal'])?><br><?php endforeach;?></div>
 <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:5px"><div>Sub: ৳<?=number_format($order['subtotal'])?> | Del: ৳<?=number_format($order['shipping_cost'])?></div><div style="font-size:16px;font-weight:900">৳<?=number_format($due)?></div></div>
 <div style="border-top:1px solid #ccc;padding-top:5px">
-<?php if($showNotes&&$notes):?><p style="font-size:8px;text-transform:uppercase;color:#666;font-weight:700;margin-bottom:1px">Order Note:</p><p style="font-size:9px;line-height:1.3"><?=e(mb_strimwidth($notes,0,120,'...'))?></p><?php endif;?>
-<?php if($showShipNote&&$shippingNote):?><p style="font-size:8px;text-transform:uppercase;color:#666;font-weight:700;margin-top:3px;margin-bottom:1px">Shipping Note:</p><p style="font-size:9px;line-height:1.3"><?=e(mb_strimwidth($shippingNote,0,120,'...'))?></p><?php endif;?>
+<?php if($showNotes&&$notes):?><p style="font-size:8px;text-transform:uppercase;color:#666;font-weight:700;margin-bottom:1px">Order Note:</p><p style="font-size:9px;line-height:1.3"><?=e($notes)?></p><?php endif;?>
+<?php if($showShipNote&&$shippingNote):?><p style="font-size:8px;text-transform:uppercase;color:#666;font-weight:700;margin-top:3px;margin-bottom:1px">Shipping Note:</p><p style="font-size:9px;line-height:1.3"><?=e($shippingNote)?></p><?php endif;?>
 </div>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?></div>
 
@@ -547,13 +549,13 @@ $totalOrders = count($orders);
 <div style="display:flex;justify-content:space-between;border-bottom:1px solid #000;padding-bottom:3px;margin-bottom:4px"><?= logoOrName($logoUrl,$siteName,'22px') ?><span style="font-size:9px"><?=e($order['order_number'])?></span></div>
 <div style="font-size:12px;font-weight:700"><?=e($order['customer_name'])?></div>
 <div style="font-size:10px">📞 <?=e($order['customer_phone'])?></div>
-<div style="font-size:9px;margin-top:2px">📍 <?=e(mb_strimwidth($addr,0,55,'...'))?></div>
+<div style="font-size:9px;margin-top:2px">📍 <?=e($addr)?></div>
 <?=$showCourier&&$courier?"<div style='font-size:8px;background:#000;color:#fff;display:inline-block;padding:1px 4px;margin-top:2px'>".e($courier)."</div>":"" ?>
 <?=$showParcel&&$parcel?"<div style='font-size:8px;color:#555;margin-top:2px'>ID: ".e($parcel)."</div>":"" ?>
-<div style="font-size:9px;border-top:1px dashed #999;margin-top:3px;padding-top:2px"><?php foreach($items as $it):?><?=e(mb_strimwidth($it['product_name'],0,18,'...'))?> ×<?=$it['quantity']?><br><?php endforeach;?></div>
+<div style="font-size:9px;border-top:1px dashed #999;margin-top:3px;padding-top:2px"><?php foreach($items as $it):?><?=e($it['product_name'])?> ×<?=$it['quantity']?><br><?php endforeach;?></div>
 <div style="font-size:14px;font-weight:900;text-align:right;margin-top:3px">৳<?=number_format($due)?></div>
-<?php if($showNotes&&$notes):?><div style="font-size:8px;color:#444;border-top:1px dashed #ccc;padding-top:2px;margin-top:3px"><strong>Note:</strong> <?=e(mb_strimwidth($notes,0,80,'...'))?></div><?php endif;?>
-<?php if($showShipNote&&$shippingNote):?><div style="font-size:8px;color:#444;margin-top:1px"><strong>Ship:</strong> <?=e(mb_strimwidth($shippingNote,0,80,'...'))?></div><?php endif;?>
+<?php if($showNotes&&$notes):?><div style="font-size:8px;color:#444;border-top:1px dashed #ccc;padding-top:2px;margin-top:3px"><strong>Note:</strong> <?=e($notes)?></div><?php endif;?>
+<?php if($showShipNote&&$shippingNote):?><div style="font-size:8px;color:#444;margin-top:1px"><strong>Ship:</strong> <?=e($shippingNote)?></div><?php endif;?>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?>
 </div>
 
@@ -565,10 +567,10 @@ $totalOrders = count($orders);
 </div>
 <?=$showCourier&&$courier?"<span style='font-size:9px;background:#000;color:#fff;padding:1px 5px;font-weight:700'>Courier: ".e($courier)."</span>&nbsp;":"" ?>
 <div style="font-size:13px;font-weight:700;margin-top:4px"><?=e($order['customer_name'])?></div>
-<div style="font-size:10px;line-height:1.4">📞 <?=e($order['customer_phone'])?><br>📍 <?=e(mb_strimwidth($addr,0,70,'...'))?></div>
+<div style="font-size:10px;line-height:1.4">📞 <?=e($order['customer_phone'])?><br>📍 <?=e($addr)?></div>
 <?=$showParcel&&$parcel?"<div style='font-size:9px;color:#555;margin-top:2px'>Parcel ID: ".e($parcel)."</div>":"" ?>
 <table class="thm-ptbl"><thead><tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>
-<?php foreach($items as $it):?><tr><td><?=e(mb_strimwidth($it['product_name'],0,20,'...'))?></td><td><?=$it['quantity']?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
+<?php foreach($items as $it):?><tr><td><?=e($it['product_name'])?></td><td><?=$it['quantity']?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
 </tbody></table>
 <div style="display:flex;justify-content:space-between;border-top:1px solid #999;padding-top:3px;font-size:9px"><span>Sub: ৳<?=number_format($order['subtotal'])?></span><span>Del: ৳<?=number_format($order['shipping_cost'])?></span><strong style="font-size:13px">৳<?=number_format($due)?></strong></div>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?>
@@ -582,13 +584,13 @@ $totalOrders = count($orders);
 </div>
 <?=$showCourier&&$courier?"<span style='font-size:9px;background:#000;color:#fff;padding:1px 5px;font-weight:700'>Courier: ".e($courier)."</span>&nbsp;":"" ?>
 <div style="font-size:13px;font-weight:700;margin-top:4px"><?=e($order['customer_name'])?></div>
-<div style="font-size:10px;line-height:1.4">📞 <?=e($order['customer_phone'])?><br>📍 <?=e(mb_strimwidth($addr,0,70,'...'))?></div>
+<div style="font-size:10px;line-height:1.4">📞 <?=e($order['customer_phone'])?><br>📍 <?=e($addr)?></div>
 <?=$showParcel&&$parcel?"<div style='font-size:9px;color:#555;margin-top:2px'>Parcel ID: ".e($parcel)."</div>":"" ?>
 <table class="thm-ptbl"><thead><tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>
-<?php foreach($items as $it):?><tr><td><?=e(mb_strimwidth($it['product_name'],0,20,'...'))?></td><td><?=$it['quantity']?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
+<?php foreach($items as $it):?><tr><td><?=e($it['product_name'])?></td><td><?=$it['quantity']?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
 </tbody></table>
 <div style="display:flex;justify-content:space-between;border-top:1px solid #999;padding-top:3px;font-size:9px"><span>Sub: ৳<?=number_format($order['subtotal'])?></span><span>Del: ৳<?=number_format($order['shipping_cost'])?></span><strong style="font-size:13px">৳<?=number_format($due)?></strong></div>
-<?php if($showShipNote&&$shippingNote):?><div style="font-size:8px;border-top:1px solid #ccc;padding-top:3px;margin-top:3px;color:#444"><?=e(mb_strimwidth($shippingNote,0,100,'...'))?></div><?php endif;?>
+<?php if($showShipNote&&$shippingNote):?><div style="font-size:8px;border-top:1px solid #ccc;padding-top:3px;margin-top:3px;color:#444"><?=e($shippingNote)?></div><?php endif;?>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?>
 </div>
 
@@ -600,13 +602,13 @@ $totalOrders = count($orders);
 </div>
 <?=$showCourier&&$courier?"<span style='font-size:9px;background:#000;color:#fff;padding:1px 5px;font-weight:700'>".e($courier)."</span>&nbsp;":"" ?>
 <div style="font-size:13px;font-weight:700;margin-top:4px"><?=e($order['customer_name'])?></div>
-<div style="font-size:10px;line-height:1.4">📞 <?=e($order['customer_phone'])?><br>📍 <?=e(mb_strimwidth($addr,0,70,'...'))?></div>
+<div style="font-size:10px;line-height:1.4">📞 <?=e($order['customer_phone'])?><br>📍 <?=e($addr)?></div>
 <?=$showParcel&&$parcel?"<div style='font-size:9px;color:#555;margin-top:2px'>Parcel ID: ".e($parcel)."</div>":"" ?>
 <table class="tsku-tbl"><thead><tr><th>SKU</th><th>Price</th><th>Total</th></tr></thead><tbody>
-<?php foreach($items as $it):?><tr><td><?=e($it['sku']??mb_strimwidth($it['product_name'],0,14,'...'))?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
+<?php foreach($items as $it):?><tr><td><?=e($it['sku']??$it['product_name'])?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
 </tbody></table>
 <div style="display:flex;justify-content:space-between;border-top:2px solid #000;padding-top:3px;font-size:9px"><span>Sub: ৳<?=number_format($order['subtotal'])?><br>Del: ৳<?=number_format($order['shipping_cost'])?></span><strong style="font-size:13px">৳<?=number_format($due)?></strong></div>
-<?php if($showShipNote&&$shippingNote):?><div style="font-size:8px;border-top:1px solid #ccc;padding-top:3px;margin-top:3px"><strong>Shipping Note:</strong> <?=e(mb_strimwidth($shippingNote,0,80,'...'))?></div><?php endif;?>
+<?php if($showShipNote&&$shippingNote):?><div style="font-size:8px;border-top:1px solid #ccc;padding-top:3px;margin-top:3px"><strong>Shipping Note:</strong> <?=e($shippingNote)?></div><?php endif;?>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?>
 </div>
 
@@ -615,14 +617,14 @@ $totalOrders = count($orders);
 <div style="display:flex;justify-content:space-between;border-bottom:1px solid #000;padding-bottom:4px;margin-bottom:5px"><?= logoOrName($logoUrl,$siteName,'22px') ?><span style="font-size:8px"><?=e($order['order_number'])?></span></div>
 <?=$showCourier&&$courier?"<div style='font-size:8px;background:#000;color:#fff;padding:1px 5px;display:inline-block;margin-bottom:3px'>".e($courier)."</div><br>":"" ?>
 <div style="font-size:12px;font-weight:700"><?=e($order['customer_name'])?></div>
-<div style="font-size:10px;line-height:1.4">📞 <?=e($order['customer_phone'])?><br>📍 <?=e(mb_strimwidth($addr,0,50,'...'))?></div>
+<div style="font-size:10px;line-height:1.4">📞 <?=e($order['customer_phone'])?><br>📍 <?=e($addr)?></div>
 <?=$showParcel&&$parcel?"<div style='font-size:8px;color:#555;margin-top:2px'>Parcel: ".e($parcel)."</div>":"" ?>
 <table class="s2in-ptbl"><thead><tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>
-<?php foreach($items as $it):?><tr><td><?=e(mb_strimwidth($it['product_name'],0,16,'...'))?></td><td><?=$it['quantity']?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
+<?php foreach($items as $it):?><tr><td><?=e($it['product_name'])?></td><td><?=$it['quantity']?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
 </tbody></table>
 <div style="display:flex;justify-content:space-between;border-top:1px solid #999;padding-top:2px;font-size:8px"><span>Sub: ৳<?=number_format($order['subtotal'])?><br>Del: ৳<?=number_format($order['shipping_cost'])?></span><strong style="font-size:12px">৳<?=number_format($due)?></strong></div>
-<?php if($showNotes&&$notes):?><div style="font-size:8px;color:#444;border-top:1px dashed #ccc;padding-top:2px;margin-top:3px"><strong>Note:</strong> <?=e(mb_strimwidth($notes,0,70,'...'))?></div><?php endif;?>
-<?php if($showShipNote&&$shippingNote):?><div style="font-size:8px;color:#444;margin-top:1px"><strong>Ship:</strong> <?=e(mb_strimwidth($shippingNote,0,70,'...'))?></div><?php endif;?>
+<?php if($showNotes&&$notes):?><div style="font-size:8px;color:#444;border-top:1px dashed #ccc;padding-top:2px;margin-top:3px"><strong>Note:</strong> <?=e($notes)?></div><?php endif;?>
+<?php if($showShipNote&&$shippingNote):?><div style="font-size:8px;color:#444;margin-top:1px"><strong>Ship:</strong> <?=e($shippingNote)?></div><?php endif;?>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?>
 </div>
 
@@ -631,13 +633,13 @@ $totalOrders = count($orders);
 <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:6px"><?= logoOrName($logoUrl,$siteName,'28px') ?><div style="text-align:right;font-size:9px;color:#555"><?=$dt?><br>IV: <?=e($order['order_number'])?></div></div>
 <?=$showCourier&&$courier?"<div style='font-size:10px;background:#000;color:#fff;padding:2px 7px;display:inline-block;margin-bottom:5px'>Courier: ".e($courier)."</div><br>":"" ?>
 <div style="font-size:14px;font-weight:700"><?=e($order['customer_name'])?></div>
-<div style="font-size:11px;line-height:1.5">📞 <?=e($order['customer_phone'])?><br>📍 <?=e(mb_strimwidth($addr,0,75,'...'))?></div>
+<div style="font-size:11px;line-height:1.5">📞 <?=e($order['customer_phone'])?><br>📍 <?=e($addr)?></div>
 <?=$showParcel&&$parcel?"<div style='font-size:9px;color:#555;margin-top:2px'>Parcel ID: ".e($parcel)."</div>":"" ?>
 <table class="s3in-ptbl"><thead><tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>
-<?php foreach($items as $it):?><tr><td><?=e(mb_strimwidth($it['product_name'],0,22,'...'))?><?=$showVariant&&!empty($it['variant_name'])?"<br><small style='color:#666'>".e($it['variant_name'])."</small>":""?></td><td><?=$it['quantity']?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
+<?php foreach($items as $it):?><tr><td><?=e($it['product_name'])?><?=$showVariant&&!empty($it['variant_name'])?"<br><small style='color:#666'>".e($it['variant_name'])."</small>":""?></td><td><?=$it['quantity']?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
 </tbody></table>
 <div style="display:flex;justify-content:space-between;border-top:2px solid #000;padding-top:5px;margin-top:4px"><div style="font-size:10px">Sub Total: ৳<?=number_format($order['subtotal'])?><br>Delivery: ৳<?=number_format($order['shipping_cost'])?></div><div style="font-size:16px;font-weight:900">Due: ৳<?=number_format($due)?></div></div>
-<?php if($showShipNote&&$shippingNote):?><div style="font-size:9px;border-top:1px solid #ccc;padding-top:4px;margin-top:4px"><strong>Shipping Note:</strong><br><?=e(mb_strimwidth($shippingNote,0,100,'...'))?></div><?php endif;?>
+<?php if($showShipNote&&$shippingNote):?><div style="font-size:9px;border-top:1px solid #ccc;padding-top:4px;margin-top:4px"><strong>Shipping Note:</strong><br><?=e($shippingNote)?></div><?php endif;?>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?>
 </div>
 
@@ -646,7 +648,7 @@ $totalOrders = count($orders);
 <?= logoOrName($logoUrl,$siteName,'26px','margin:0 auto;display:block') ?>
 <div style="font-size:13px;font-weight:700"><?=e($order['customer_name'])?></div>
 <div style="font-size:10px;margin-top:2px">📞 <?=e($order['customer_phone'])?></div>
-<div style="font-size:9px;margin-top:2px">📍 <?=e(mb_strimwidth($addr,0,70,'...'))?></div>
+<div style="font-size:9px;margin-top:2px">📍 <?=e($addr)?></div>
 <?=$showCourier&&$courier?"<div style='font-size:9px;margin-top:3px'>Courier: <strong>".e($courier)."</strong></div>":"" ?>
 <?=$showParcel&&$parcel?"<div style='font-size:9px;margin-top:1px'>Parcel: ".e($parcel)."</div>":"" ?>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?>
@@ -662,14 +664,14 @@ $totalOrders = count($orders);
 <?=$showCourier&&$courier?"<div style='font-size:10px;background:#000;color:#fff;padding:2px 7px;display:inline-block;margin-bottom:4px'>".e($courier)."</div><br>":"" ?>
 <div style="font-size:16px;font-weight:900"><?=e($order['customer_name'])?></div>
 <div style="font-size:14px;font-weight:700;margin-top:1px">📞 <?=e($order['customer_phone'])?></div>
-<div style="font-size:10px;margin-top:2px">📍 <?=e(mb_strimwidth($addr,0,75,'...'))?></div>
+<div style="font-size:10px;margin-top:2px">📍 <?=e($addr)?></div>
 <?=$showParcel&&$parcel?"<div style='font-size:9px;color:#555;margin-top:3px'>Parcel ID: ".e($parcel)."</div>":"" ?>
 <table class="s4x3-tbl"><thead><tr><th>SKU</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>
-<?php foreach($items as $it):?><tr><td style="font-weight:700"><?=e($it['sku']??mb_strimwidth($it['product_name'],0,14,'...'))?></td><td style="font-weight:700;font-size:13px"><?=$it['quantity']?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
+<?php foreach($items as $it):?><tr><td style="font-weight:700"><?=e($it['sku']??$it['product_name'])?></td><td style="font-weight:700;font-size:13px"><?=$it['quantity']?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
 </tbody></table>
 <div style="display:flex;justify-content:space-between;border-top:2px solid #000;padding-top:6px;margin-top:4px"><div style="font-size:10px">Sub: ৳<?=number_format($order['subtotal'])?><br>Del: ৳<?=number_format($order['shipping_cost'])?></div><div style="font-size:18px;font-weight:900">৳<?=number_format($due)?></div></div>
-<?php if($showNotes&&$notes):?><div style="font-size:9px;color:#444;border-top:1px dashed #ccc;padding-top:3px;margin-top:3px"><strong>Note:</strong> <?=e(mb_strimwidth($notes,0,90,'...'))?></div><?php endif;?>
-<?php if($showShipNote&&$shippingNote):?><div style="font-size:9px;color:#444;margin-top:2px"><strong>Shipping:</strong> <?=e(mb_strimwidth($shippingNote,0,90,'...'))?></div><?php endif;?>
+<?php if($showNotes&&$notes):?><div style="font-size:9px;color:#444;border-top:1px dashed #ccc;padding-top:3px;margin-top:3px"><strong>Note:</strong> <?=e($notes)?></div><?php endif;?>
+<?php if($showShipNote&&$shippingNote):?><div style="font-size:9px;color:#444;margin-top:2px"><strong>Shipping:</strong> <?=e($shippingNote)?></div><?php endif;?>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?>
 </div>
 
@@ -678,14 +680,14 @@ $totalOrders = count($orders);
 <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:6px"><?= logoOrName($logoUrl,$siteName,'28px') ?><div style="text-align:right;font-size:9px;color:#555"><?=$dt?><br>IV: <?=e($order['order_number'])?></div></div>
 <?=$showCourier&&$courier?"<div style='font-size:10px;background:#000;color:#fff;padding:2px 7px;display:inline-block;margin-bottom:5px'>Courier: ".e($courier)."</div><br>":"" ?>
 <div style="font-size:14px;font-weight:700"><?=e($order['customer_name'])?></div>
-<div style="font-size:11px;line-height:1.5">📞 <?=e($order['customer_phone'])?><br>📍 <?=e(mb_strimwidth($addr,0,75,'...'))?></div>
+<div style="font-size:11px;line-height:1.5">📞 <?=e($order['customer_phone'])?><br>📍 <?=e($addr)?></div>
 <?=$showParcel&&$parcel?"<div style='font-size:9px;color:#555;margin-top:2px'>Parcel ID: ".e($parcel)."</div>":"" ?>
 <table class="s3n-ptbl"><thead><tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>
-<?php foreach($items as $it):?><tr><td><?=e(mb_strimwidth($it['product_name'],0,22,'...'))?></td><td><?=$it['quantity']?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
+<?php foreach($items as $it):?><tr><td><?=e($it['product_name'])?></td><td><?=$it['quantity']?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
 </tbody></table>
 <div style="display:flex;justify-content:space-between;border-top:2px solid #000;padding-top:5px;margin-top:4px;font-size:10px"><div>Sub Total: ৳<?=number_format($order['subtotal'])?><br>Delivery: ৳<?=number_format($order['shipping_cost'])?></div><div style="font-size:16px;font-weight:900">৳<?=number_format($due)?></div></div>
-<?php if($showShipNote&&$shippingNote):?><div style="font-size:9px;border-top:1px dashed #ccc;padding-top:4px;margin-top:4px"><strong style="font-size:8px;text-transform:uppercase;color:#555">Shipping Note:</strong><br><?=e(mb_strimwidth($shippingNote,0,100,'...'))?></div><?php endif;?>
-<?php if($showNotes&&$notes):?><div style="font-size:9px;border-top:1px dashed #ccc;padding-top:4px;margin-top:4px"><strong style="font-size:8px;text-transform:uppercase;color:#555">Order Note:</strong><br><?=e(mb_strimwidth($notes,0,100,'...'))?></div><?php endif;?>
+<?php if($showShipNote&&$shippingNote):?><div style="font-size:9px;border-top:1px dashed #ccc;padding-top:4px;margin-top:4px"><strong style="font-size:8px;text-transform:uppercase;color:#555">Shipping Note:</strong><br><?=e($shippingNote)?></div><?php endif;?>
+<?php if($showNotes&&$notes):?><div style="font-size:9px;border-top:1px dashed #ccc;padding-top:4px;margin-top:4px"><strong style="font-size:8px;text-transform:uppercase;color:#555">Order Note:</strong><br><?=e($notes)?></div><?php endif;?>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?>
 </div>
 
@@ -694,9 +696,9 @@ $totalOrders = count($orders);
 <div style="display:flex;justify-content:space-between;border-bottom:2px solid #000;padding-bottom:5px;margin-bottom:5px"><?= logoOrName($logoUrl,$siteName,'28px') ?><div style="font-size:9px"><?=e($order['order_number'])?><br><?=$dt?></div></div>
 <?=$showCourier&&$courier?"<div style='font-size:9px;background:#000;color:#fff;padding:1px 5px;display:inline-block;margin-bottom:3px'>".e($courier)."</div>":"" ?>
 <div style="font-size:13px;font-weight:700"><?=e($order['customer_name'])?></div>
-<div style="font-size:10px;line-height:1.4">📞 <?=e($order['customer_phone'])?><br>📍 <?=e(mb_strimwidth($addr,0,60,'...'))?></div>
+<div style="font-size:10px;line-height:1.4">📞 <?=e($order['customer_phone'])?><br>📍 <?=e($addr)?></div>
 <table class="s3sq-tbl"><thead><tr><th>SKU</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>
-<?php foreach($items as $it):?><tr><td><?=e($it['sku']??mb_strimwidth($it['product_name'],0,12,'...'))?></td><td><?=$it['quantity']?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
+<?php foreach($items as $it):?><tr><td><?=e($it['sku']??$it['product_name'])?></td><td><?=$it['quantity']?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
 </tbody></table>
 <div style="display:flex;justify-content:space-between;border-top:1px solid #999;padding-top:3px;margin-top:3px;font-size:9px"><span>Sub: ৳<?=number_format($order['subtotal'])?> | Del: ৳<?=number_format($order['shipping_cost'])?></span><strong style="font-size:13px">৳<?=number_format($due)?></strong></div>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?>
