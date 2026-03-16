@@ -307,20 +307,34 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
     <button onclick="window.print()" style="background:var(--primary);color:white;border-color:var(--primary)">🖨 Print</button>
     <a href="<?=adminUrl('pages/order-management.php')?>">← Back</a>
     <span style="color:#aaa">|</span>
+    <?php if ($isSticker): ?>
     <?php
-    $allTpls=['inv_standard'=>'📄Standard','inv_compact'=>'📋Compact','inv_modern'=>'🎨Modern','inv_branded'=>'🏷Branded','inv_detailed'=>'📸Detailed','inv_minimal'=>'✨Minimal','inv_picking'=>'📦Picking','stk_standard'=>'🏷Sticker','stk_detailed'=>'📋Detail-Stk','stk_courier'=>'🚚Courier','stk_pos'=>'🧾POS','stk_cod'=>'💵COD','stk_wide'=>'↔Wide','stk_sku'=>'🔖SKU','stk_note'=>'📝Note','stk_compact'=>'🔹Compact','stk_thermal'=>'🖨Thermal','stk_thermal_m'=>'🖨Multi-Pg','stk_thermal_sku'=>'🖨SKU-Thm','stk_2in'=>'📐2-inch','stk_3in'=>'📐3-inch','stk_cod_t'=>'💵COD-T','stk_4x3'=>'🗒4×3','stk_3in_note'=>'📝3in+Note','stk_3sq'=>'⬜3×3Sq','stk_mini'=>'🔸Mini'];
-    foreach($allTpls as $t=>$l):?><a href="?<?=$idParam?>&template=<?=$t?>&layout=<?=$layout?>" class="<?=$template===$t?'active':''?>"><?=$l?></a><?php endforeach;?>
+    $stkTpls=['stk_standard'=>'Standard','stk_compact'=>'Compact','stk_detailed'=>'Detail-Stk',
+              'stk_courier'=>'Courier','stk_pos'=>'POS','stk_cod'=>'COD','stk_wide'=>'Wide',
+              'stk_sku'=>'SKU','stk_note'=>'Note','stk_thermal'=>'Thermal','stk_thermal_m'=>'Multi-Pg',
+              'stk_thermal_sku'=>'SKU-Thm','stk_2in'=>'2-inch','stk_3in'=>'3-inch','stk_cod_t'=>'COD-T',
+              'stk_4x3'=>'4×3','stk_3in_note'=>'3in+Note','stk_3sq'=>'3×3Sq','stk_mini'=>'Mini'];
+    foreach($stkTpls as $t=>$l):?><a href="?<?=$idParam?>&template=<?=$t?>" class="<?=$template===$t?'active':''?>"><?=$l?></a><?php endforeach;?>
+    <span style="margin-left:auto;font-size:12px;color:#888"><?=count($orders)?> order(s) · Sticker</span>
+    <?php else: ?>
+    <?php
+    $invTpls=['inv_standard'=>'📄Standard','inv_compact'=>'📋Compact','inv_modern'=>'🎨Modern',
+              'inv_branded'=>'🏷Branded','inv_detailed'=>'📸Detailed','inv_minimal'=>'✨Minimal','inv_picking'=>'📦Picking'];
+    foreach($invTpls as $t=>$l):?><a href="?<?=$idParam?>&template=<?=$t?>&layout=<?=$layout?>" class="<?=$template===$t?'active':''?>"><?=$l?></a><?php endforeach;?>
     <span style="color:#aaa">|</span>
     <span style="font-size:11px;color:#666;font-weight:600">Page:</span>
-    <a href="?<?=$idParam?>&template=<?=$template?>&layout=a4_1" class="<?=$layout==='a4_1'?'active':''?>" style="font-size:11px" title="A4 Portrait — 1 invoice per page">A4×1</a>
-    <a href="?<?=$idParam?>&template=<?=$template?>&layout=a3_2" class="<?=$layout==='a3_2'?'active':''?>" style="font-size:11px" title="A3 Landscape — 2 invoices side by side">A3×2</a>
-    <a href="?<?=$idParam?>&template=<?=$template?>&layout=a4_3" class="<?=$layout==='a4_3'?'active':''?>" style="font-size:11px" title="A4 Portrait — 3 invoices stacked per page">A4×3</a>
+    <a href="?<?=$idParam?>&template=<?=$template?>&layout=a4_1" class="<?=$layout==='a4_1'?'active':''?>" style="font-size:11px">A4×1</a>
+    <a href="?<?=$idParam?>&template=<?=$template?>&layout=a3_2" class="<?=$layout==='a3_2'?'active':''?>" style="font-size:11px">A3×2</a>
+    <a href="?<?=$idParam?>&template=<?=$template?>&layout=a4_3" class="<?=$layout==='a4_3'?'active':''?>" style="font-size:11px">A4×3</a>
     <span style="margin-left:auto;font-size:12px;color:#888"><?=count($orders)?> order(s) · <?=strtoupper(str_replace('_','×',$layout))?></span>
+    <?php endif; ?>
 </div>
 <?php endif; ?>
 
 <?php
 $isSticker = (strpos($tpl, 'stk_') === 0);
+// Stickers never use page layouts — force single-label mode
+if ($isSticker) { $layout = 'sticker'; }
 $perPage   = ($layout==='a3_2') ? 2 : (($layout==='a4_3') ? 3 : 1);
 $useLayout = (!$isSticker && $perPage > 1);
 $totalOrders = count($orders);
