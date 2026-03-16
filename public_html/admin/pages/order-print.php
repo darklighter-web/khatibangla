@@ -158,24 +158,48 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
 .text-right{text-align:right}.text-center{text-align:center}
 .barcode-wrap{margin-top:8px;text-align:center}.barcode-wrap svg{max-width:100%}
 .barcode-wrap-sm{margin-top:5px;text-align:center}.barcode-wrap-sm svg{max-width:100%;height:auto}
-
-/* ===== LAYOUT ===== */
-<?php if($isSticker): ?>
+<?php if ($isSticker): ?>
+/* ── STICKER PRINT CSS ──────────────────────────────── */
 @media print{
   .no-print{display:none!important}
   body{padding:0;margin:0;background:#fff}
-  @page{size:<?=$pgW?> <?=$pgH?>;margin:2mm}
-  .sticker{display:block;margin:0 auto!important;page-break-inside:avoid;box-shadow:none!important;border:1px solid #000!important}
-  body>div+.sticker{page-break-before:always}
+  @page{size:<?= $pgW ?> <?= $pgH ?>;margin:2mm}
+  .sticker{display:block;margin:0 auto!important;page-break-inside:avoid}
 }
 @media screen{
   body{background:#d1d5db;padding:16px;min-height:100vh}
   .sticker{display:block;margin:12px auto!important;box-shadow:0 4px 16px rgba(0,0,0,.15)}
 }
-<?php elseif($layout==='a4_1'): ?>
+.sticker{width:var(--stk-w);border:2px solid #000;padding:10px;position:relative;box-sizing:border-box}
+<?php if ($tpl==='stk_pos'): ?>
+.sticker{border:none;border-bottom:2px dashed #ccc;border-radius:0;text-align:center;margin:0 auto!important}
+.stk-pos-tbl{width:100%;font-size:10px;border-collapse:collapse}.stk-pos-tbl th{border-bottom:1px dashed #999;padding:3px 2px;font-size:9px;color:#777}.stk-pos-tbl td{padding:3px 2px;border-bottom:1px dotted #eee}
+<?php elseif ($tpl==='stk_cod'): ?>
+.sticker{border:3px solid #000;border-radius:10px;padding:12px;overflow:hidden}
+<?php elseif ($tpl==='stk_cod_t'): ?>
+.sticker{border:3px solid #111;border-radius:8px;padding:8px;overflow:hidden}
+<?php elseif ($tpl==='stk_mini'): ?>
+.sticker{padding:5px;font-size:9px;text-align:center}
+<?php elseif ($tpl==='stk_detailed'): ?>
+.stk-ptbl{width:100%;border-collapse:collapse;font-size:10px;margin:5px 0}.stk-ptbl th{text-align:left;border-bottom:1px solid #999;padding:2px 4px;font-size:9px;color:#666}.stk-ptbl td{padding:2px 4px;border-bottom:1px solid #eee}
+<?php elseif ($tpl==='stk_sku' || $tpl==='stk_thermal_sku' || $tpl==='stk_3sq'): ?>
+.sku-tbl,.tsku-tbl,.s3sq-tbl{width:100%;border-collapse:collapse;font-size:9px;margin:3px 0}
+.sku-tbl th,.tsku-tbl th,.s3sq-tbl th{background:#f0f0f0;border:1px solid #ccc;padding:2px 4px;font-size:8px}
+.sku-tbl td,.tsku-tbl td,.s3sq-tbl td{border:1px solid #ddd;padding:2px 4px}
+<?php elseif ($tpl==='stk_thermal' || $tpl==='stk_thermal_m' || $tpl==='stk_2in' || $tpl==='stk_3in' || $tpl==='stk_3in_note' || $tpl==='stk_compact'): ?>
+.thm-ptbl,.s2in-ptbl,.s3in-ptbl,.s3n-ptbl{width:100%;border-collapse:collapse;font-size:9px;margin:3px 0}
+.thm-ptbl th,.s2in-ptbl th,.s3in-ptbl th,.s3n-ptbl th{border-bottom:1px solid #999;padding:1px 3px;font-size:8px;color:#555}
+.thm-ptbl td,.s2in-ptbl td,.s3in-ptbl td,.s3n-ptbl td{padding:1px 3px;border-bottom:1px solid #eee}
+<?php elseif ($tpl==='stk_4x3'): ?>
+.s4x3-tbl{width:100%;border-collapse:collapse;font-size:10px;margin:4px 0}
+.s4x3-tbl th{background:#111;color:#fff;padding:3px 5px;font-size:8px;text-transform:uppercase}
+.s4x3-tbl td{border-bottom:1px solid #ddd;padding:3px 5px}
+<?php endif; ?>
+<?php else: ?>
+/* ── INVOICE / LAYOUT CSS ──────────────────────────── */
+<?php if ($layout==='a4_1'): ?>
 @media print{.no-print{display:none!important}.page-break{page-break-after:always}body{padding:0;background:#fff}@page{size:A4 portrait;margin:10mm}}
-<?php elseif($layout==='a3_2'): ?>
-/* ===== LAYOUT: A3 × 2 (landscape, side by side) ===== */
+<?php elseif ($layout==='a3_2'): ?>
 .layout-a3-row{display:flex;gap:0;page-break-after:always;align-items:flex-start}
 .layout-a3-row>.layout-cell{flex:1;min-width:0;border-right:1px dashed #ccc;padding-right:8px}
 .layout-a3-row>.layout-cell:last-child{border-right:none;padding-right:0;padding-left:8px}
@@ -186,25 +210,23 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
 .layout-a3-row .inv-tots table{width:220px}
 .layout-a3-row .mod-meta{gap:15px;padding:12px}
 .layout-a3-row .brd-hdr{padding:15px 20px}
-.layout-a3-row .barcode-wrap svg,.layout-a3-row .barcode-wrap-sm svg{transform:scale(.85);transform-origin:center}
+.layout-a3-row .det-grid{gap:12px}
+.layout-a3-row .barcode-wrap svg{transform:scale(.75);transform-origin:right}
 @media print{.no-print{display:none!important}body{padding:0;background:#fff}@page{size:A3 landscape;margin:8mm}.layout-a3-row:last-child{page-break-after:auto}}
-@media screen{.layout-a3-row{max-width:1200px;margin:10px auto;background:#fff;padding:20px;box-shadow:0 2px 12px rgba(0,0,0,.08);border-radius:8px}}
-<?php elseif($layout==='a4_3'): ?>
-/* ===== LAYOUT: A4 × 3 (portrait, 3 stacked) ===== */
-.layout-a4-triple{page-break-after:always;display:flex;flex-direction:column;height:277mm;overflow:hidden}
-.layout-a4-triple>.layout-cell-3{flex:1;min-height:0;overflow:hidden;border-bottom:1px dashed #ccc;position:relative}
-.layout-a4-triple>.layout-cell-3:last-child{border-bottom:none}
-.layout-a4-triple .invoice,.layout-a4-triple .picking{max-width:100%!important;padding:8px 15px!important;margin:0!important}
-.layout-a4-triple .invoice *,.layout-a4-triple .picking *{font-size:78%}
-.layout-a4-triple .inv-hdr{margin-bottom:10px!important;padding-bottom:8px!important}
-.layout-a4-triple .inv-hdr .logo h1{font-size:15px!important}
-.layout-a4-triple .inv-hdr .info h2{font-size:13px!important}
-.layout-a4-triple .inv-addr{margin-bottom:8px!important}
-.layout-a4-triple .inv-tbl thead th,.layout-a4-triple .mod-tbl thead th,.layout-a4-triple .brd-tbl thead th,.layout-a4-triple .det-tbl th{padding:4px 8px!important;font-size:9px!important}
-.layout-a4-triple .inv-tbl tbody td,.layout-a4-triple .mod-tbl tbody td,.layout-a4-triple .brd-tbl tbody td,.layout-a4-triple .det-tbl td{padding:3px 8px!important}
-.layout-a4-triple .inv-tots table,.layout-a4-triple .mod-tots,.layout-a4-triple .brd-tots table,.layout-a4-triple .det-tots{width:200px}
-.layout-a4-triple .inv-tots td,.layout-a4-triple .mod-tots td,.layout-a4-triple .brd-tots td,.layout-a4-triple .det-tots td{padding:2px 8px!important}
-.layout-a4-triple .inv-tots .grand td,.layout-a4-triple .mod-tots .grand td{font-size:13px!important}
+<?php elseif ($layout==='a4_3'): ?>
+.layout-a4-triple{display:flex;page-break-after:always;align-items:flex-start;gap:0}
+.layout-cell-3{flex:1;min-width:0;border-right:1px dashed #ccc;padding:8px}
+.layout-cell-3:last-child{border-right:none}
+.layout-a4-triple .invoice{max-width:100%!important;padding:8px!important;margin:0!important}
+.layout-a4-triple .invoice *{font-size:85%}
+.layout-a4-triple .inv-hdr .logo h1{font-size:14px!important}
+.layout-a4-triple .inv-hdr .info h2{font-size:12px!important}
+.layout-a4-triple .inv-addr{margin-bottom:8px!important;padding:8px}
+.layout-a4-triple .inv-tbl thead th,.layout-a4-triple .mod-tbl thead th{padding:4px 8px!important;font-size:9px!important}
+.layout-a4-triple .inv-tbl tbody td,.layout-a4-triple .mod-tbl tbody td{padding:3px 8px!important}
+.layout-a4-triple .inv-tots table{width:200px}
+.layout-a4-triple .inv-tots td{padding:2px 8px!important}
+.layout-a4-triple .inv-tots .grand td{font-size:13px!important}
 .layout-a4-triple .inv-note{margin-top:6px!important;padding:5px 8px!important;font-size:10px!important}
 .layout-a4-triple .inv-foot{margin-top:8px!important;padding-top:6px!important;font-size:9px!important}
 .layout-a4-triple .mod-meta{gap:12px;padding:8px;margin-bottom:10px!important}
@@ -216,8 +238,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
 @media print{.no-print{display:none!important}body{padding:0;background:#fff}@page{size:A4 portrait;margin:5mm}.layout-a4-triple:last-child{page-break-after:auto}}
 @media screen{.layout-a4-triple{max-width:800px;margin:10px auto;background:#fff;padding:10px;box-shadow:0 2px 12px rgba(0,0,0,.08);border-radius:8px;height:auto}}
 <?php endif; ?>
-
-<?php if($tpl==='inv_standard'):?>
+<?php if ($tpl==='inv_standard'): ?>
 .invoice{max-width:800px;margin:0 auto;padding:30px}
 .inv-hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:25px;border-bottom:3px solid var(--primary);padding-bottom:18px}
 .inv-hdr .logo h1{font-size:22px;color:var(--primary)}.inv-hdr .logo p{font-size:11px;color:#666;margin-top:3px}.inv-hdr .logo img{max-height:50px;margin-bottom:6px}
@@ -227,58 +248,38 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
 .inv-tots{display:flex;justify-content:flex-end}.inv-tots table{width:280px}.inv-tots td{padding:5px 12px}.inv-tots .grand td{font-weight:bold;font-size:16px;border-top:2px solid #333;padding-top:10px}
 .inv-foot{margin-top:30px;text-align:center;font-size:11px;color:#999;border-top:1px solid #eee;padding-top:15px}
 .inv-note{margin-top:15px;background:#f9fafb;padding:10px 14px;border-radius:6px;font-size:12px}
-<?php elseif($tpl==='inv_compact'):?>
+<?php elseif ($tpl==='inv_compact'): ?>
 .invoice{max-width:400px;margin:10px auto;padding:15px;border:1px solid #ddd;font-size:12px}
 .cmp-hdr{text-align:center;border-bottom:2px dashed #999;padding-bottom:10px;margin-bottom:10px}.cmp-hdr h2{font-size:16px;color:var(--primary)}.cmp-hdr p{font-size:11px;color:#666}
 .cmp-tbl{width:100%;border-collapse:collapse;margin-bottom:10px;font-size:12px}.cmp-tbl th{text-align:left;border-bottom:1px solid #ccc;padding:4px 6px;font-size:10px;color:#666}.cmp-tbl td{padding:4px 6px;border-bottom:1px solid #f0f0f0}
-<?php elseif($tpl==='inv_modern'):?>
+<?php elseif ($tpl==='inv_modern'): ?>
 .invoice{max-width:800px;margin:0 auto;padding:40px}
 .mod-badge{background:#111;color:#fff;padding:6px 18px;border-radius:4px;font-size:14px;font-weight:700;letter-spacing:2px}
 .mod-meta{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-bottom:25px;padding:20px;background:#f8f9fa;border-radius:10px}.mod-meta h4{font-size:10px;text-transform:uppercase;color:#999;letter-spacing:1px;margin-bottom:6px}.mod-meta p{font-size:var(--font-size);line-height:1.6}
 .mod-tbl{width:100%;border-collapse:collapse;margin-bottom:25px}.mod-tbl thead{background:#111}.mod-tbl thead th{color:#fff;padding:12px 14px;font-size:11px;text-transform:uppercase;letter-spacing:.5px}.mod-tbl tbody td{padding:12px 14px;border-bottom:1px solid #eee}.mod-tbl tbody tr:nth-child(even){background:#fafafa}
 .mod-tots{margin-left:auto;width:280px}.mod-tots tr td{padding:6px 14px}.mod-tots .grand{background:#111;color:#fff}.mod-tots .grand td{padding:12px 14px;font-size:16px;font-weight:700}
-<?php elseif($tpl==='inv_branded'):?>
+<?php elseif ($tpl==='inv_branded'): ?>
 .invoice{max-width:800px;margin:0 auto;padding:30px}
-.brd-hdr{background:linear-gradient(135deg,<?=$headerBg?:$primaryColor?> 0%,<?=$primaryColor?> 100%);color:white;padding:25px 30px;border-radius:12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:25px}.brd-hdr h1{font-size:22px;font-weight:800}.brd-hdr img{max-height:45px;filter:brightness(10)}.brd-hdr .right{text-align:right}.brd-hdr .right p{font-size:12px;opacity:.85}
-.brd-addr{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;padding:15px;background:<?=$primaryColor?>08;border-radius:8px;border-left:4px solid var(--primary)}.brd-addr h4{font-size:10px;text-transform:uppercase;color:var(--primary);margin-bottom:4px;font-weight:700;letter-spacing:1px}
-.brd-tbl{width:100%;border-collapse:collapse;margin-bottom:20px;border-radius:8px;overflow:hidden}.brd-tbl thead th{background:<?=$primaryColor?>15;color:var(--primary);padding:10px 14px;font-size:11px;text-transform:uppercase}.brd-tbl tbody td{padding:10px 14px;border-bottom:1px solid <?=$primaryColor?>15}
+.brd-hdr{background:linear-gradient(135deg,<?= $headerBg ?: $primaryColor ?> 0%,<?= $primaryColor ?> 100%);color:white;padding:25px 30px;border-radius:12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:25px}.brd-hdr h1{font-size:22px;font-weight:800}.brd-hdr img{max-height:45px;filter:brightness(10)}.brd-hdr .right{text-align:right}.brd-hdr .right p{font-size:12px;opacity:.85}
+.brd-addr{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;padding:15px;background:<?= $primaryColor ?>08;border-radius:8px;border-left:4px solid var(--primary)}.brd-addr h4{font-size:10px;text-transform:uppercase;color:var(--primary);margin-bottom:4px;font-weight:700;letter-spacing:1px}
+.brd-tbl{width:100%;border-collapse:collapse;margin-bottom:20px;border-radius:8px;overflow:hidden}.brd-tbl thead th{background:<?= $primaryColor ?>15;color:var(--primary);padding:10px 14px;font-size:11px;text-transform:uppercase}.brd-tbl tbody td{padding:10px 14px;border-bottom:1px solid <?= $primaryColor ?>15}
 .brd-tots{display:flex;justify-content:flex-end}.brd-tots table{width:260px}.brd-tots td{padding:5px 12px}.brd-tots .grand td{font-weight:bold;font-size:16px;color:var(--primary);border-top:2px solid var(--primary);padding-top:10px}
-<?php elseif($tpl==='inv_detailed'):?>
+<?php elseif ($tpl==='inv_detailed'): ?>
 .invoice{max-width:800px;margin:0 auto;padding:30px}
 .det-hdr{display:flex;justify-content:space-between;border-bottom:2px solid #e5e7eb;padding-bottom:15px;margin-bottom:20px}.det-hdr img{max-height:50px}.det-hdr h1{font-size:20px;color:#111}
 .det-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}.det-box{padding:12px;border:1px solid #e5e7eb;border-radius:8px}.det-box h4{font-size:10px;text-transform:uppercase;color:#999;margin-bottom:5px;font-weight:700}
 .det-tbl{width:100%;border-collapse:collapse;margin-bottom:20px}.det-tbl th{padding:10px;text-align:left;font-size:10px;text-transform:uppercase;color:#666;border-bottom:2px solid #e5e7eb}.det-tbl td{padding:10px;border-bottom:1px solid #f3f4f6;vertical-align:middle}.det-tbl .pi{width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb}
 .det-tots{margin-left:auto;width:280px}.det-tots td{padding:5px 10px}.det-tots .grand td{font-weight:bold;font-size:16px;border-top:2px solid #111;padding-top:10px}
-<?php elseif($tpl==='inv_minimal'):?>
+<?php elseif ($tpl==='inv_minimal'): ?>
 .invoice{max-width:700px;margin:0 auto;padding:40px 30px}
 .min-tbl{width:100%;border-collapse:collapse;margin-bottom:25px}.min-tbl th{padding:8px 0;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#aaa;border-bottom:1px solid #ddd}.min-tbl td{padding:10px 0;border-bottom:1px solid #f0f0f0}
 .min-row{display:flex;justify-content:flex-end;gap:40px;padding:4px 0;color:#666}.min-grand{font-size:20px;font-weight:700;color:#111;border-top:1px solid #111;padding-top:8px;margin-top:4px}
-<?php elseif($tpl==='inv_picking'):?>
+<?php elseif ($tpl==='inv_picking'): ?>
 .picking{max-width:800px;margin:0 auto;padding:20px}
 .pick-tbl{width:100%;border-collapse:collapse;margin-bottom:20px}.pick-tbl th,.pick-tbl td{border:1px solid #ccc;padding:8px 10px;font-size:12px}.pick-tbl th{background:#f3f4f6;font-size:11px;text-transform:uppercase}
 .pick-chk{width:30px;height:30px;border:2px solid #999;display:inline-block}
-<?php else: /* STICKER BASE STYLES */ ?>
-.sticker{page-break-inside:avoid;display:inline-block;vertical-align:top;margin:6px;font-size:var(--font-size)}
-<?php if($isSticker): ?>
-/* All stickers use --stk-w CSS variable — set from PHP $stickerWidth */
-.sticker{width:var(--stk-w);border:2px solid #000;padding:10px;display:block;position:relative;box-sizing:border-box}
-<?php if($tpl==='stk_standard'):?>.sticker{padding:10px;position:relative}
-<?php elseif($tpl==='stk_pos'):?>.sticker{border:none;border-bottom:2px dashed #ccc;border-radius:0;text-align:center;margin:0 auto}
-.stk-pos-tbl{width:100%;font-size:10px;border-collapse:collapse;text-align:left}.stk-pos-tbl th{border-bottom:1px dashed #999;padding:3px 2px;font-size:9px;color:#777}.stk-pos-tbl td{padding:3px 2px;border-bottom:1px dotted #eee}
-<?php elseif($tpl==='stk_cod'):?>.sticker{border:3px solid #000;border-radius:10px;padding:12px;overflow:hidden}
-<?php elseif($tpl==='stk_detailed'):?>
-.stk-ptbl{width:100%;border-collapse:collapse;font-size:10px;margin:5px 0}.stk-ptbl th{text-align:left;border-bottom:1px solid #999;padding:2px 4px;font-size:9px;color:#666}.stk-ptbl td{padding:2px 4px;border-bottom:1px solid #eee}
-<?php elseif($tpl==='stk_sku'||$tpl==='stk_thermal_sku'||$tpl==='stk_3sq'):?>
-.sku-tbl,.tsku-tbl,.s3sq-tbl{width:100%;border-collapse:collapse;font-size:9px;margin:3px 0}.sku-tbl th,.tsku-tbl th,.s3sq-tbl th{background:#f0f0f0;border:1px solid #ccc;padding:2px 4px;font-size:8px}.sku-tbl td,.tsku-tbl td,.s3sq-tbl td{border:1px solid #ddd;padding:2px 4px}
-<?php elseif($tpl==='stk_thermal'||$tpl==='stk_thermal_m'||$tpl==='stk_2in'||$tpl==='stk_3in'||$tpl==='stk_3in_note'||$tpl==='stk_compact'):?>
-.thm-ptbl,.s2in-ptbl,.s3in-ptbl,.s3n-ptbl{width:100%;border-collapse:collapse;font-size:9px;margin:3px 0}.thm-ptbl th,.s2in-ptbl th,.s3in-ptbl th,.s3n-ptbl th{border-bottom:1px solid #999;padding:1px 3px;font-size:8px;color:#555}.thm-ptbl td,.s2in-ptbl td,.s3in-ptbl td,.s3n-ptbl td{padding:1px 3px;border-bottom:1px solid #eee}
-<?php elseif($tpl==='stk_4x3'):?>
-.s4x3-tbl{width:100%;border-collapse:collapse;font-size:10px;margin:4px 0}.s4x3-tbl th{background:#111;color:#fff;padding:3px 5px;font-size:8px;text-transform:uppercase}.s4x3-tbl td{border-bottom:1px solid #ddd;padding:3px 5px}
-<?php elseif($tpl==='stk_cod_t'):?>.sticker{border:3px solid #111;border-radius:8px;padding:8px;overflow:hidden}
-<?php elseif($tpl==='stk_mini'):?>.sticker{padding:5px;font-size:9px;text-align:center}
 <?php endif; ?>
-<?php else: /* invoice only */ ?>
-<?php endif;?>
+<?php endif; /* end isSticker/invoice CSS */ ?>
 </style>
 </head>
 <body>
