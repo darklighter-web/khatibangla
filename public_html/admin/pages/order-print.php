@@ -694,10 +694,10 @@ foreach($orders as $idx=>$order):
 
 <?php
     // Close layout cell (invoice layouts only)
-    if ($useLayout): ?></div><!-- /layout-cell --><?php endif;
+    if ($useLayout): ?></div><!-- /layout-cell --><?php endif; ?>
 
     // Close layout group wrapper at group end (invoice layouts only)
-    if ($useLayout && $isGroupEnd): ?></div><!-- /layout-row --><?php endif;
+    if ($useLayout && $isGroupEnd): ?></div><!-- /layout-row --><?php endif; ?>
 
 
 <?php endforeach;?>
