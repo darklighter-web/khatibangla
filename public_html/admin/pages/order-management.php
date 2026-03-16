@@ -1346,6 +1346,23 @@ function reloadStkPreview() {
         .then(function(html){
             content.innerHTML = html;
             loading.style.display = 'none';
+            // Re-run barcode rendering (script tags don't execute via innerHTML)
+            if (typeof JsBarcode !== 'undefined') {
+                content.querySelectorAll('svg[data-value]').forEach(function(svg){
+                    var v = svg.getAttribute('data-value');
+                    if (v) try { JsBarcode(svg, v, {format:'CODE128',width:1.2,height:32,displayValue:true,fontSize:9}); } catch(e){}
+                });
+            } else {
+                var s = document.createElement('script');
+                s.src = 'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js';
+                s.onload = function() {
+                    content.querySelectorAll('svg[data-value]').forEach(function(svg){
+                        var v = svg.getAttribute('data-value');
+                        if (v) try { JsBarcode(svg, v, {format:'CODE128',width:1.2,height:32,displayValue:true,fontSize:9}); } catch(e){}
+                    });
+                };
+                document.head.appendChild(s);
+            }
         })
         .catch(function(){ loading.style.display = 'none'; });
 }
