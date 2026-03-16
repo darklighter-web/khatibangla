@@ -476,7 +476,8 @@ function sortIcon($col) {
         <div id="actionsMenu" class="hidden absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-xl border z-50 py-1 max-h-[70vh] overflow-y-auto">
             <div class="px-3 py-1.5 flex items-center justify-between"><span id="selC" class="text-[10px] text-gray-400">0 selected</span><button type="button" onclick="document.getElementById('selectAll').checked=true;toggleAll(document.getElementById('selectAll'))" class="text-[10px] text-blue-600">Select All</button></div><hr class="my-0.5">
             <p class="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase">Print</p>
-            <button type="button" onclick="openInvPrint()" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 font-medium">🖨 Print Selected...</button>
+            <button type="button" onclick="openInvPrint()" class="w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 text-blue-700 font-medium">📄 Print Invoice</button>
+            <button type="button" onclick="openStkPrint()" class="w-full text-left px-3 py-1.5 text-xs hover:bg-orange-50 text-orange-700 font-medium">🏷 Print Sticker</button>
             <hr class="my-0.5"><p class="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase">Status</p>
             <button type="button" onclick="bStatus('confirmed')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">✅ Confirm</button>
             <button type="button" onclick="bStatus('ready_to_ship')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">📦 Ready to Ship</button>

@@ -124,6 +124,8 @@ if ($isPreview) {
 $tpl = $baseTemplate;
 // Detect sticker vs invoice
 $isSticker = strpos($tpl, 'stk_') === 0;
+// Each sticker is its own page — printer must eject after each label
+$stkPb = $isSticker ? ' stk-page' : '';
 // Sticker physical dimensions (mm) per template key
 $stickerDims = [
     'stk_standard'   => ['w'=>76, 'h'=>'auto'],
@@ -173,11 +175,12 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
   .no-print{display:none!important}
   body{padding:0;margin:0;background:#fff}
   @page{size:<?= $pgW ?> <?= $pgH ?>;margin:2mm}
-  .sticker{display:block;margin:0 auto!important;page-break-inside:avoid}
+  .sticker{display:block;margin:0 auto!important;page-break-inside:avoid;page-break-after:always}
+  .sticker:last-child{page-break-after:auto}
 }
 @media screen{
   body{background:#d1d5db;padding:16px;min-height:100vh}
-  .sticker{display:block;margin:12px auto!important;box-shadow:0 4px 16px rgba(0,0,0,.15)}
+  .sticker{display:block;margin:12px auto!important;box-shadow:0 4px 16px rgba(0,0,0,.15);max-width:var(--stk-w)}
 }
 .sticker{width:var(--stk-w);border:2px solid #000;padding:10px;position:relative;box-sizing:border-box}
 <?php if ($tpl==='stk_pos'): ?>
