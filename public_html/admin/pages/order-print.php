@@ -210,7 +210,14 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
 <?php else: ?>
 /* ── INVOICE / LAYOUT CSS ──────────────────────────── */
 <?php if ($layout==='a4_1'): ?>
-@media print{.no-print{display:none!important}.page-break{page-break-after:always}body{padding:0;background:#fff}@page{size:A4 portrait;margin:10mm}}
+@media print{
+  .no-print{display:none!important}
+  body{padding:0;background:#fff}
+  @page{size:A4 portrait;margin:10mm}
+  .invoice,.picking{page-break-after:always;break-after:page}
+  .invoice:last-of-type,.picking:last-of-type{page-break-after:auto;break-after:auto}
+  .page-break{page-break-after:always;break-after:page}
+}
 <?php elseif ($layout==='a3_2'): ?>
 .layout-a3-row{display:flex;gap:0;page-break-after:always;align-items:flex-start}
 .layout-a3-row>.layout-cell{flex:1;min-width:0;border-right:1px dashed #ccc;padding-right:8px}
@@ -224,7 +231,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
 .layout-a3-row .brd-hdr{padding:15px 20px}
 .layout-a3-row .det-grid{gap:12px}
 .layout-a3-row .barcode-wrap svg{transform:scale(.75);transform-origin:right}
-@media print{.no-print{display:none!important}body{padding:0;background:#fff}@page{size:A3 landscape;margin:8mm}.layout-a3-row:last-child{page-break-after:auto}}
+@media print{.no-print{display:none!important}body{padding:0;background:#fff}@page{size:A3 landscape;margin:8mm}.layout-a3-row{page-break-after:always;break-after:page}.layout-a3-row:last-of-type{page-break-after:auto;break-after:auto}}
 <?php elseif ($layout==='a4_3'): ?>
 .layout-a4-triple{display:flex;page-break-after:always;align-items:flex-start;gap:0}
 .layout-cell-3{flex:1;min-width:0;border-right:1px dashed #ccc;padding:8px}
@@ -247,7 +254,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
 .layout-a4-triple .det-grid{gap:10px;margin-bottom:8px!important}
 .layout-a4-triple .barcode-wrap svg{transform:scale(.7);transform-origin:center}
 .layout-a4-triple .barcode-wrap-sm svg{transform:scale(.65);transform-origin:center}
-@media print{.no-print{display:none!important}body{padding:0;background:#fff}@page{size:A4 portrait;margin:5mm}.layout-a4-triple:last-child{page-break-after:auto}}
+@media print{.no-print{display:none!important}body{padding:0;background:#fff}@page{size:A4 portrait;margin:5mm}.layout-a4-triple{page-break-after:always;break-after:page}.layout-a4-triple:last-of-type{page-break-after:auto;break-after:auto}}
 @media screen{.layout-a4-triple{max-width:800px;margin:10px auto;background:#fff;padding:10px;box-shadow:0 2px 12px rgba(0,0,0,.08);border-radius:8px;height:auto}}
 <?php endif; ?>
 <?php if ($tpl==='inv_standard'): ?>
