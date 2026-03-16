@@ -1191,38 +1191,39 @@ $defLayout = getSetting('print_default_layout', 'a4_1');
         </div>
       </div>
       <div class="flex items-center gap-2 flex-wrap">
-        <!-- Sticker Size Selector -->
-        <select id="stkSizeSelect" onchange="reloadStkPreview()" class="border rounded-lg px-2 py-1.5 text-xs bg-white focus:ring-2 focus:ring-orange-300 font-medium" title="Label size — match your physical sticker roll">
-          <optgroup label="3×4 inch (76×102mm) — Most common">
-            <option value="288" data-w="76.2mm" data-h="101.6mm" selected>3×4 inch (76×102mm)</option>
+        <!-- Sticker Size Selector — sizes must match your printer driver label settings -->
+        <select id="stkSizeSelect" onchange="reloadStkPreview()" class="border border-orange-300 rounded-lg px-2 py-1.5 text-xs bg-white focus:ring-2 focus:ring-orange-300 font-semibold text-orange-700" title="MUST match Paper size in Chrome print dialog">
+          <optgroup label="── 3 inch wide (most common) ──">
+            <option value="272" data-w="72mm"  data-h="100mm" selected>72×100mm  ← 3×4 inch ★</option>
+            <option value="272" data-w="72mm"  data-h="150mm">72×150mm  — 3×6 inch</option>
+            <option value="272" data-w="72mm"  data-h="180mm">72×180mm  — 3×7 inch</option>
+            <option value="288" data-w="76mm"  data-h="100mm">76×100mm  — 3×4 inch</option>
+            <option value="288" data-w="76mm"  data-h="130mm">76×130mm  — 3×5 inch</option>
+            <option value="288" data-w="76mm"  data-h="152mm">76×152mm  — 3×6 inch</option>
           </optgroup>
-          <optgroup label="Thermal 75mm wide">
-            <option value="280" data-w="75mm" data-h="50mm">75×50mm thermal</option>
-            <option value="280" data-w="75mm" data-h="40mm">75×40mm thermal</option>
+          <optgroup label="── 4 inch wide (shipping labels) ──">
+            <option value="378" data-w="100mm" data-h="150mm">100×150mm — 4×6 inch</option>
+            <option value="378" data-w="100mm" data-h="100mm">100×100mm — 4×4 inch</option>
           </optgroup>
-          <optgroup label="2 inch wide">
-            <option value="192" data-w="50.8mm" data-h="76.2mm">2×3 inch (50×76mm)</option>
-            <option value="192" data-w="50.8mm" data-h="101.6mm">2×4 inch (50×102mm)</option>
+          <optgroup label="── 75mm thermal ──">
+            <option value="280" data-w="75mm"  data-h="50mm">75×50mm   — standard thermal</option>
+            <option value="280" data-w="75mm"  data-h="40mm">75×40mm   — small thermal</option>
           </optgroup>
-          <optgroup label="3 inch wide">
-            <option value="288" data-w="76.2mm" data-h="50.8mm">3×2 inch (76×51mm)</option>
-            <option value="288" data-w="76.2mm" data-h="76.2mm">3×3 inch (76×76mm)</option>
-            <option value="288" data-w="76.2mm" data-h="152.4mm">3×6 inch (76×152mm)</option>
+          <optgroup label="── 2 inch wide ──">
+            <option value="192" data-w="50mm"  data-h="80mm">50×80mm   — 2×3 inch</option>
+            <option value="192" data-w="50mm"  data-h="30mm">50×30mm   — 2×1 inch</option>
           </optgroup>
-          <optgroup label="4 inch wide">
-            <option value="384" data-w="101.6mm" data-h="76.2mm">4×3 inch (102×76mm)</option>
-            <option value="384" data-w="101.6mm" data-h="152.4mm">4×6 inch (102×152mm)</option>
+          <optgroup label="── Small labels ──">
+            <option value="144" data-w="40mm"  data-h="30mm">40×30mm   — mini label</option>
+            <option value="152" data-w="40mm"  data-h="60mm">40×60mm</option>
+            <option value="208" data-w="55mm"  data-h="45mm">55×45mm</option>
           </optgroup>
-          <optgroup label="Small labels">
-            <option value="144" data-w="38mm" data-h="25mm">38×25mm mini</option>
-            <option value="192" data-w="50mm" data-h="30mm">50×30mm</option>
-            <option value="224" data-w="57mm" data-h="32mm">57×32mm receipt</option>
-          </optgroup>
-          <optgroup label="Wide format">
-            <option value="302" data-w="80mm" data-h="auto">80mm continuous</option>
-            <option value="360" data-w="100mm" data-h="150mm">100×150mm (4×6 shipping)</option>
+          <optgroup label="── Square ──">
+            <option value="272" data-w="72mm"  data-h="72mm">72×72mm   — 3×3 square</option>
+            <option value="288" data-w="76mm"  data-h="76mm">76×76mm   — 3×3 square</option>
           </optgroup>
         </select>
+        <span class="text-[10px] text-orange-600 font-semibold hidden sm:inline">↑ match Chrome Paper size</span>
         <select id="stkTplSelect" onchange="reloadStkPreview()" class="border rounded-lg px-3 py-1.5 text-xs bg-white focus:ring-2 focus:ring-orange-300 min-w-[200px]">
           <optgroup label="🏷 Sticker Templates">
             <option value="stk_standard"    <?=($selStk==='stk_standard')?'selected':''?>>Standard Sticker</option>
@@ -1264,10 +1265,10 @@ $defLayout = getSetting('print_default_layout', 'a4_1');
         </button>
       </div>
     </div>
-    <div id="stkPrintTip" class="shrink-0 px-4 py-2 bg-amber-50 border-b border-amber-200 text-xs text-amber-800 flex items-center gap-2">
+    <divid="stkPrintTip" class="shrink-0 px-4 py-2 bg-amber-50 border-b border-amber-200 text-xs text-amber-800 flex items-center gap-2 flex-wrap">
         <svg class="w-3.5 h-3.5 flex-shrink-0 text-amber-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/></svg>
-        <span><strong>Chrome print settings:</strong> Destination = HOIN printer · More settings → Paper size = match label · Margins = <strong>None</strong> · Scale = <strong>100%</strong> · Fit to page = <strong>OFF</strong></span>
-    </div>
+        <span><strong>Chrome print:</strong> Select label size above → Chrome auto-sets paper size · Margins = <strong>None</strong> · Scale = <strong>100%</strong> · Pages per sheet = <strong>1</strong></span>
+      </div>
     <div class="flex-1 bg-gray-100 relative">
       <div id="stkPrintLoading" class="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
         <div class="text-center"><div class="text-2xl mb-2">⏳</div><p class="text-sm text-gray-500">Loading preview…</p></div>

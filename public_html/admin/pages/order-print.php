@@ -180,30 +180,33 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
 @media print{
   .no-print{display:none!important}
   html,body{padding:0;margin:0;background:#fff}
-  /* NO @page size — let the printer driver use its own configured label size.
-     Adding @page{size} overrides the driver and stops the printer after 1 label. */
-  @page{margin:0}
+  /* @page size MUST match the label size selected in printer driver.
+     User must select the same size in Chrome print dialog → Paper size. */
+  @page{
+    size: <?= $labelW ?> <?= $labelH ?>;
+    margin: 0;
+  }
   .sticker{
-    display:block;
-    width:var(--stk-w);
-    padding:4mm;
-    margin:0 auto!important;
-    box-sizing:border-box;
-    page-break-inside:avoid;
-    break-inside:avoid;
-    page-break-after:avoid;
-    break-after:avoid;
+    display: block;
+    width: <?= $labelW ?>!important;
+    <?php if ($labelH !== 'auto'): ?>
+    height: <?= $labelH ?>!important;
+    overflow: hidden;
+    <?php endif; ?>
+    padding: 3mm;
+    margin: 0!important;
+    box-sizing: border-box;
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
   .stk-sep{
-    display:block;
-    width:100%;
-    height:0;
-    margin:0;
-    padding:0;
-    page-break-before:always;
-    break-before:page;
-    page-break-after:avoid;
-    break-after:avoid;
+    display: block;
+    width: 0;
+    height: 0;
+    margin: 0;
+    padding: 0;
+    page-break-before: always;
+    break-before: page;
   }
 }
 @media screen{
