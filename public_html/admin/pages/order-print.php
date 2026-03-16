@@ -11,6 +11,7 @@ try { $db->query("CREATE TABLE IF NOT EXISTS print_templates (id INT AUTO_INCREM
 
 $isPreview  = !empty($_GET['preview']);
 $isExtract  = !empty($_GET['extract']); // output sticker HTML fragment only (for modal fetch preview)
+if ($isExtract) ob_start(); // capture ALL output from this point
 $template = $_GET['template'] ?? getSetting('selected_invoice_template', 'inv_standard');
 $layout = $_GET['layout'] ?? getSetting('print_default_layout', 'a4_1'); // a4_1 | a3_2 | a4_3
 if (!in_array($layout, ['a4_1','a3_2','a4_3'])) $layout = 'a4_1';
@@ -353,10 +354,10 @@ if ($isSticker) { $layout = 'sticker'; }
 $perPage   = ($layout==='a3_2') ? 2 : (($layout==='a4_3') ? 3 : 1);
 $useLayout = (!$isSticker && $perPage > 1);
 $totalOrders = count($orders);
-// Extract mode: buffer sticker output only
-if ($isExtract) ob_start();
 ?>
+<?php if ($isExtract) $__stickerOutput = ''; ?>
 <?php foreach ($orders as $idx => $order): ?>
+<?php if ($isExtract) ob_start(); ?>
 <?php
     $items      = $allItems[$order['id']] ?? [];
     $discount   = floatval($order['discount'] ?? $order['discount_amount'] ?? 0);
@@ -722,15 +723,17 @@ if ($isExtract) ob_start();
 </div>
 
 <?php endif; /* end template switch */ ?>
+<?php if ($isExtract) { $__stickerOutput .= ob_get_clean(); } ?>
 <?php if ($useLayout): ?></div><!-- /layout-cell --><?php endif; ?>
 <?php if ($useLayout && $isGroupEnd): ?></div><!-- /layout-row --><?php endif; ?>
 <?php endforeach; ?>
 <?php if ($isExtract): ?>
 <?php
 // Capture the rendered sticker HTML
-$stickerHtml = ob_get_clean();
-// Output minimal CSS scoped to .kh-sticker-preview, then the sticker divs
-header('Content-Type: text/html; charset=utf-8');
+// Discard all the full page HTML that was captured
+ob_end_clean();
+// The sticker HTML is in $__stickerOutput (collected during foreach)
+$stickerHtml = $__stickerOutput ?? '';
 $sw = $stickerWidth;
 $pc = htmlspecialchars($primaryColor, ENT_QUOTES);
 $fs = $fontSize;
