@@ -124,34 +124,6 @@ if ($isPreview) {
 $tpl = $baseTemplate;
 // Detect sticker vs invoice
 $isSticker = strpos($tpl, 'stk_') === 0;
-// Each sticker is its own page — printer must eject after each label
-$stkPb = $isSticker ? ' stk-page' : '';
-// Sticker physical dimensions (mm) per template key
-$stickerDims = [
-    'stk_standard'   => ['w'=>76, 'h'=>'auto'],
-    'stk_compact'    => ['w'=>51, 'h'=>'auto'],
-    'stk_detailed'   => ['w'=>76, 'h'=>'auto'],
-    'stk_courier'    => ['w'=>76, 'h'=>'auto'],
-    'stk_pos'        => ['w'=>80, 'h'=>'auto'],
-    'stk_cod'        => ['w'=>76, 'h'=>'auto'],
-    'stk_wide'       => ['w'=>96, 'h'=>'auto'],
-    'stk_sku'        => ['w'=>76, 'h'=>'auto'],
-    'stk_note'       => ['w'=>76, 'h'=>'auto'],
-    'stk_compact'    => ['w'=>51, 'h'=>'auto'],
-    'stk_thermal'    => ['w'=>75, 'h'=>50],
-    'stk_thermal_m'  => ['w'=>75, 'h'=>50],
-    'stk_thermal_sku'=> ['w'=>75, 'h'=>50],
-    'stk_2in'        => ['w'=>51, 'h'=>'auto'],
-    'stk_3in'        => ['w'=>76, 'h'=>'auto'],
-    'stk_cod_t'      => ['w'=>75, 'h'=>50],
-    'stk_4x3'        => ['w'=>76, 'h'=>102],
-    'stk_3in_note'   => ['w'=>76, 'h'=>'auto'],
-    'stk_3sq'        => ['w'=>76, 'h'=>76],
-    'stk_mini'       => ['w'=>38, 'h'=>25],
-];
-$dim = $stickerDims[$tpl] ?? ['w'=>76, 'h'=>'auto'];
-$pgW = $dim['w'].'mm';
-$pgH = $dim['h'] === 'auto' ? 'auto' : $dim['h'].'mm';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -174,9 +146,9 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:var(--font-size);color:#3
 @media print{
   .no-print{display:none!important}
   body{padding:0;margin:0;background:#fff}
-  @page{size:<?= $pgW ?> <?= $pgH ?>;margin:2mm}
-  .sticker{display:block;margin:0!important;page-break-inside:avoid;break-inside:avoid}
-  .stk-sep{display:block;height:0;page-break-before:always;break-before:page}
+  @page{margin:0}
+  .sticker{display:block;margin:0 auto!important;page-break-inside:avoid;break-inside:avoid}
+  .stk-sep{display:block;height:0;page-break-before:always;break-before:page;break-after:avoid}
 }
 @media screen{
   body{background:#d1d5db;padding:16px;min-height:100vh}
