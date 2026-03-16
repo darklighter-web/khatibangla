@@ -1168,11 +1168,14 @@ $defLayout = getSetting('print_default_layout', 'a4_1');
         </button>
       </div>
     </div>
-    <div class="flex-1 bg-gray-100 relative">
+    <div class="flex-1 bg-gray-100 relative overflow-hidden">
       <div id="invPrintLoading" class="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
         <div class="text-center"><div class="text-2xl mb-2">⏳</div><p class="text-sm text-gray-500">Loading preview…</p></div>
       </div>
-      <iframe id="invPrintIframe" class="w-full h-full border-0" onload="if(this.src&&this.src!=='about:blank'){document.getElementById('invPrintLoading').style.display='none';}" src="about:blank"></iframe>
+      <iframe id="invPrintIframe"
+        style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;display:block"
+        onload="if(this.src&&this.src!=='about:blank'){document.getElementById('invPrintLoading').style.display='none';}"
+        src="about:blank"></iframe>
     </div>
   </div>
 </div>
@@ -1269,11 +1272,15 @@ $defLayout = getSetting('print_default_layout', 'a4_1');
         <svg class="w-3.5 h-3.5 flex-shrink-0 text-amber-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/></svg>
         <span><strong>Chrome print:</strong> Select label size above → Chrome auto-sets paper size · Margins = <strong>None</strong> · Scale = <strong>100%</strong> · Pages per sheet = <strong>1</strong></span>
       </div>
-    <div class="flex-1 bg-gray-100 relative">
+    <div class="flex-1 bg-gray-100 relative overflow-hidden" id="stkPreviewWrap">
       <div id="stkPrintLoading" class="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
         <div class="text-center"><div class="text-2xl mb-2">⏳</div><p class="text-sm text-gray-500">Loading preview…</p></div>
       </div>
-      <iframe id="stkPrintIframe" class="w-full h-full border-0" onload="if(this.src&&this.src!=='about:blank'){document.getElementById('stkPrintLoading').style.display='none';}" src="about:blank"></iframe>
+      <iframe id="stkPrintIframe"
+        scrolling="no"
+        style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;display:block"
+        onload="if(this.src&&this.src!=='about:blank'){document.getElementById('stkPrintLoading').style.display='none';stkFitPreview();}"
+        src="about:blank"></iframe>
     </div>
   </div>
 </div>
@@ -1328,6 +1335,26 @@ function openStkPrint(forceIds) {
     reloadStkPreview();
 }
 function closeStkModal() { document.getElementById('stkPrintModal').classList.add('hidden'); document.getElementById('stkPrintIframe').src = 'about:blank'; }
+function stkFitPreview() {
+    var iframe = document.getElementById('stkPrintIframe');
+    var wrap   = document.getElementById('stkPreviewWrap');
+    if (!iframe || !wrap || !iframe.contentDocument) return;
+    try {
+        var body = iframe.contentDocument.body;
+        var sticker = iframe.contentDocument.querySelector('.sticker');
+        if (!sticker) return;
+        var wrapW = wrap.clientWidth;
+        var wrapH = wrap.clientHeight;
+        var stickerW = sticker.offsetWidth || 272;
+        var scale = Math.min((wrapW - 32) / stickerW, 1.5); // max 1.5x zoom
+        body.style.padding = '16px';
+        body.style.margin = '0';
+        body.style.background = '#f4f4f4';
+        body.style.transform = 'scale(' + scale + ')';
+        body.style.transformOrigin = 'top center';
+        body.style.width = (wrapW / scale) + 'px';
+    } catch(e) {}
+}
 function reloadStkPreview() {
     document.getElementById('stkPrintLoading').style.display = 'flex';
     var tpl = document.getElementById('stkTplSelect').value;
