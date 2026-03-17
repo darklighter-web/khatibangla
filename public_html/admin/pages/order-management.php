@@ -474,6 +474,10 @@ function sortIcon($col) {
         </div>
         <button type="button" onclick="document.getElementById('advFilters').classList.toggle('hidden')" class="border text-gray-500 px-2.5 py-1.5 rounded text-xs hover:bg-gray-50">Filters</button>
     </form>
+    <a href="<?= adminUrl('pages/order-processing.php') ?>" class="bg-indigo-600 text-white px-3 py-1.5 rounded text-xs font-medium hover:bg-indigo-700 flex items-center gap-1.5" title="Card-based processing view">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+      Processing
+    </a>
     <a href="<?= adminUrl('pages/order-add.php') ?>" class="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-medium hover:bg-blue-700">+ New Order</a>
     <select class="border rounded text-xs px-2 py-1.5 text-gray-600" onchange="OM.go({per_page:this.value,page:1})" title="Orders per page">
       <?php foreach([20,50,100,200,500,1000,5000] as $pp): ?>
