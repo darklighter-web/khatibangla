@@ -14,7 +14,7 @@
     <td>
         <div style="display:flex;align-items:center;gap:4px">
             <a href="<?= adminUrl('pages/order-view.php?id='.$order['id']) ?>" style="font-weight:700;color:#0f172a;font-size:12px;text-decoration:none" onmouseover="this.style.color='#2563eb'" onmouseout="this.style.color='#0f172a'"><?= e($order['order_number']) ?></a>
-            <span class="dot-menu" onclick="toggleRowMenu(this,<?= $order['id'] ?>)">⋮</span>
+            <span class="dot-menu" onclick="toggleRowMenu(this,<?= $order['id'] ?>,'<?= e($order['order_number']) ?>')">⋮</span>
         </div>
         <?php if (!empty($order['is_preorder'])): ?>
         <span style="font-size:8px;background:#f3e8ff;color:#7c3aed;padding:1px 5px;border-radius:3px;font-weight:600;display:inline-block;margin-top:1px">⏰ PREORDER<?php if(!empty($order['preorder_date'])): ?> · <?= date('d M', strtotime($order['preorder_date'])) ?><?php endif; ?></span>

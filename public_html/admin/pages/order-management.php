@@ -779,6 +779,8 @@ function sortIcon($col) {
 <!-- Row Action Menu (reusable popup) -->
 <div id="rowMenu" class="hidden fixed z-50 w-44 bg-white rounded-lg shadow-xl border py-1" style="font-size:12px">
     <a id="rmOpen" href="#" class="block px-3 py-1.5 hover:bg-gray-50">📋 Open Order</a>
+    <button id="rmEdit" type="button" class="w-full text-left block px-3 py-1.5 hover:bg-gray-50 text-gray-700 font-medium">✏️ Edit Order</button>
+    <hr class="my-0.5">
     <button id="rmPrintInv" type="button" class="w-full text-left block px-3 py-1.5 hover:bg-blue-50 text-blue-700">📄 Print Invoice</button>
     <button id="rmPrintStk" type="button" class="w-full text-left block px-3 py-1.5 hover:bg-orange-50 text-orange-700">🏷 Print Sticker</button>
     <hr class="my-0.5">
@@ -981,10 +983,31 @@ function doCourier(ids,c){
 }
 
 function addTag(id){document.getElementById('tagOId').value=id;document.getElementById('tagIn').value='';document.getElementById('tagModal').classList.remove('hidden');document.getElementById('tagIn').focus()}
-function subTag(t){t=t.trim();if(!t)return;const id=document.getElementById('tagOId').value;fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'action=add_tag&order_id='+id+'&tag='+encodeURIComponent(t)}).then(()=>{document.getElementById('tagModal').classList.add('hidden');OM.refresh()})}
+function subTag(t){
+  t=t.trim();if(!t)return;
+  const id=document.getElementById('tagOId').value;
+  if(!id){return;}
+  fetch(location.pathname,{
+    method:'POST',
+    credentials:'same-origin',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:'action=add_tag&order_id='+encodeURIComponent(id)+'&tag='+encodeURIComponent(t)
+  })
+  .then(r=>r.json())
+  .then(d=>{
+    if(d && d.success){
+      document.getElementById('tagModal').classList.add('hidden');
+      OM.refresh();
+    }
+  })
+  .catch(()=>{
+    document.getElementById('tagModal').classList.add('hidden');
+    OM.refresh();
+  });
+}}
 
 // Row context menu
-function toggleRowMenu(el, orderId) {
+function toggleRowMenu(el, orderId, orderNum) {
     const rm = document.getElementById('rowMenu');
     if (rm._open === orderId) { rm.classList.add('hidden'); rm._open = null; return; }
     const r = el.getBoundingClientRect();
@@ -995,6 +1018,9 @@ function toggleRowMenu(el, orderId) {
     document.getElementById('rmOpen').href = '<?= adminUrl('pages/order-view.php?id=') ?>' + orderId;
     document.getElementById('rmPrintInv').onclick = () => { rm.classList.add('hidden'); openInvPrint([orderId]); };
     document.getElementById('rmPrintStk').onclick = () => { rm.classList.add('hidden'); openStkPrint([orderId]); };
+    if (document.getElementById('rmEdit')) {
+        document.getElementById('rmEdit').onclick = () => { rm.classList.add('hidden'); openEditOrder(orderId, orderNum); };
+    }
     ['Confirm','Ship','Deliver','Cancel'].forEach(a => {
         const btn = document.getElementById('rm'+a);
         btn.onclick = () => { if(confirm(a+' this order?')){
@@ -1147,6 +1173,40 @@ try {
 } catch(\Throwable $e){}
 $defLayout = getSetting('print_default_layout', 'a4_1');
 ?>
+
+<!-- ══════════════════════════════════════════
+     ORDER EDIT MODAL
+     ══════════════════════════════════════════ -->
+<div id="editOrderModal" class="hidden fixed inset-0 z-[9998] flex items-center justify-center bg-black/60" onclick="if(event.target===this)closeEditModal()">
+  <div class="bg-white rounded-2xl shadow-2xl w-[95vw] max-w-6xl h-[92vh] flex flex-col overflow-hidden" onclick="event.stopPropagation()">
+    <div class="flex items-center justify-between px-5 py-3 border-b bg-gray-50 shrink-0">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center text-lg">✏️</div>
+        <div>
+          <h3 class="font-bold text-gray-800 text-sm">Edit Order</h3>
+          <p class="text-[11px] text-gray-400" id="editOrderNum">Loading…</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="openEditNewTab()" class="border px-3 py-1.5 rounded-lg text-xs text-gray-500 hover:bg-gray-50 flex items-center gap-1.5" title="Open in new tab">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>New Tab
+        </button>
+        <button onclick="closeEditModal()" class="text-gray-400 hover:text-gray-600 p-1">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="flex-1 relative overflow-hidden" style="min-height:0">
+      <div id="editLoadingOverlay" class="absolute inset-0 flex items-center justify-center bg-white z-10">
+        <div class="text-center"><div class="text-3xl mb-2">⏳</div><p class="text-sm text-gray-500">Loading order…</p></div>
+      </div>
+      <iframe id="editOrderIframe"
+        style="display:block;width:100%;height:100%;border:0"
+        onload="if(this.src&&this.src!=='about:blank'){document.getElementById('editLoadingOverlay').style.display='none';handleEditLoad(this);}"
+        src="about:blank"></iframe>
+    </div>
+  </div>
+</div>
 
 <!-- ══════════════════════════════════════════
      PICKING LIST MODAL
@@ -1436,6 +1496,44 @@ function renderPickingList(data) {
     document.getElementById('pickingContent').innerHTML = html;
 }
 function escHtml(s) { var d=document.createElement('div');d.textContent=s||'';return d.innerHTML; }
+
+// ── Order Edit Modal ───────────────────────────────────────────────────────────
+var _editOrderId = null;
+var _editOrderUrl = null;
+
+function openEditOrder(orderId, orderNum) {
+    _editOrderId = orderId;
+    _editOrderUrl = '<?= adminUrl('pages/order-view.php') ?>?id=' + orderId + '&modal=1';
+    document.getElementById('editOrderNum').textContent = orderNum ? '#' + orderNum : 'Order #' + orderId;
+    document.getElementById('editLoadingOverlay').style.display = 'flex';
+    document.getElementById('editOrderModal').classList.remove('hidden');
+    document.getElementById('rowMenu')?.classList.add('hidden');
+    document.getElementById('editOrderIframe').src = _editOrderUrl;
+}
+function closeEditModal() {
+    document.getElementById('editOrderModal').classList.add('hidden');
+    document.getElementById('editOrderIframe').src = 'about:blank';
+    _editOrderId = null;
+}
+function openEditNewTab() {
+    if (_editOrderUrl) window.open(_editOrderUrl.replace('&modal=1',''), '_blank');
+}
+function handleEditLoad(iframe) {
+    // After save, order-view.php redirects to order-management.php?msg=updated
+    // Detect this redirect and refresh the table instead
+    try {
+        var iUrl = iframe.contentWindow.location.href;
+        if (iUrl.includes('order-management.php') || iUrl.includes('msg=updated') || iUrl.includes('msg=created')) {
+            closeEditModal();
+            OM.refresh();
+            return;
+        }
+        // Update the order number in header if available
+        var title = iframe.contentDocument?.title;
+        if (title) document.getElementById('editOrderNum').textContent = title.replace('Order Management','').replace('|','').trim() || document.getElementById('editOrderNum').textContent;
+    } catch(e) {}
+}
+
 function printPickingList() {
     var content = document.getElementById('pickingContent').innerHTML;
     var w = window.open('', '_blank', 'width=900,height=700');

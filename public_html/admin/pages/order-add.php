@@ -140,7 +140,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (\Throwable $e) {}
 
         logActivity(getAdminId(), 'create', 'orders', $orderId);
-        redirect(adminUrl("pages/order-view.php?id=$orderId&msg=created"));
+        redirect(adminUrl("pages/order-management.php?msg=created&highlight=$orderId"));
     }
 }
 

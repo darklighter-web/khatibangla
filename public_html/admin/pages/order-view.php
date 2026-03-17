@@ -5,6 +5,7 @@ require_once __DIR__ . '/../includes/auth.php';
 
 $db = Database::getInstance();
 $id = intval($_GET['id'] ?? 0);
+$isModal = !empty($_GET['modal']); // loaded inside edit modal iframe
 if (!$id) redirect(adminUrl('pages/order-management.php'));
 $order = $db->fetch("SELECT * FROM orders WHERE id = ?", [$id]);
 if (!$order) redirect(adminUrl('pages/order-management.php'));
@@ -79,7 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($action === 'confirm_order') {
             redirect(adminUrl("pages/order-management.php?status=confirmed&msg=confirmed"));
         }
-        redirect(adminUrl("pages/order-view.php?id={$id}&msg=updated"));
+        redirect(adminUrl("pages/order-management.php?msg=updated&highlight={$id}"));
     }
 
     if ($action === 'update_status') {
@@ -92,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($newStatus === 'cancelled')  { try { refundOrderCreditsOnCancel($id); } catch (\Throwable $e) {} }
         // Release order lock on status change
         try { $db->query("DELETE FROM order_locks WHERE order_id = ?", [$id]); } catch (\Throwable $e) {}
-        redirect(adminUrl("pages/order-view.php?id={$id}&msg=status_updated"));
+        redirect(adminUrl("pages/order-management.php?highlight={$id}&msg=status_updated"));
     }
 
     if ($action === 'mark_fake') {
@@ -102,7 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$ex) $db->insert('blocked_phones', ['phone'=>$order['customer_phone'],'reason'=>'Fake order #'.$order['order_number'],'blocked_by'=>getAdminId()]);
         logActivity(getAdminId(), 'mark_fake', 'orders', $id);
         try { $db->query("DELETE FROM order_locks WHERE order_id = ?", [$id]); } catch (\Throwable $e) {}
-        redirect(adminUrl("pages/order-view.php?id={$id}&msg=marked_fake"));
+        redirect(adminUrl("pages/order-management.php?highlight={$id}&msg=marked_fake"));
     }
 
     if ($action === 'add_note') {
@@ -122,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             if ($isAjax) { header('Content-Type: application/json'); echo json_encode(['ok'=>false,'error'=>'Empty note']); exit; }
         }
-        redirect(adminUrl("pages/order-view.php?id={$id}&msg=note_added"));
+        redirect(adminUrl("pages/order-management.php?highlight={$id}&msg=note_added"));
     }
 
     if ($action === 'clear_panel_notes') {
@@ -130,7 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $db->update('orders', ['panel_notes'=>null, 'admin_notes'=>null], 'id = ?', [$id]);
         logActivity(getAdminId(), 'clear_notes', 'orders', $id, null, 'Panel notes cleared');
         if ($isAjax) { header('Content-Type: application/json'); echo json_encode(['ok'=>true]); exit; }
-        redirect(adminUrl("pages/order-view.php?id={$id}&msg=updated"));
+        redirect(adminUrl("pages/order-management.php?msg=updated&highlight={$id}"));
     }
 }
 
