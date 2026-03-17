@@ -1,17 +1,15 @@
 <?php
-// Order Processing — same UI as order-management, pre-filtered to processing status
-// Just sets the default status to 'processing' and redirects there
-
-$status = $_GET['status'] ?? 'processing';
-$params = $_GET;
-if (!isset($params['status'])) $params['status'] = 'processing';
-
-// Build the redirect URL to order-management with all params
+// Order Processing page — same as order-management, pre-filtered to processing
+// Independent page with its own nav highlighting
 require_once __DIR__ . '/../../includes/session.php';
+$pageTitle = 'Processing';
 require_once __DIR__ . '/../includes/auth.php';
 
-// Just include order-management.php with the processing filter pre-set
-$_GET['status'] = $status;
-$_GET['_proc_view'] = '1'; // marker for nav highlighting
+// Pre-set the status filter
+if (!isset($_GET['status'])) {
+    $_GET['status'] = 'processing';
+}
 
+// Include the full order management page
+// All AJAX/POST handlers work via the same file
 include __DIR__ . '/order-management.php';

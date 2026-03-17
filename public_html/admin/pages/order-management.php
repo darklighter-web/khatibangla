@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/../../includes/session.php';
-$pageTitle = 'Order Management';
+if (!isset($pageTitle)) $pageTitle = 'Order Management';
 require_once __DIR__ . '/../includes/auth.php';
 
 if (!function_exists('timeAgo')) {
@@ -30,6 +30,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         if (in_array($newStatus, ['cancelled', 'returned'])) { try { refundOrderCreditsOnCancel($orderId); } catch (\Throwable $e) {} }
         if ($newStatus === 'delivered') { try { $db->update('orders', ['delivered_at' => date('Y-m-d H:i:s')], 'id = ? AND delivered_at IS NULL', [$orderId]); } catch (\Throwable $e) {} }
         try { $db->query("DELETE FROM order_locks WHERE order_id = ?", [$orderId]); } catch (\Throwable $e) {}
+        if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) || !empty($_POST['_ajax'])) {
+            header('Content-Type: application/json'); echo json_encode(['success'=>true]); exit;
+        }
         redirect(adminUrl('pages/order-management.php?' . http_build_query(array_diff_key($_GET, ['msg'=>''])) . '&msg=updated'));
     }
     
@@ -41,6 +44,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             if ($status === 'delivered') { try { awardOrderCredits(intval($id)); } catch (\Throwable $e) {} try { $db->update('orders', ['delivered_at' => date('Y-m-d H:i:s')], 'id = ? AND delivered_at IS NULL', [intval($id)]); } catch (\Throwable $e) {} }
             if (in_array($status, ['cancelled', 'returned'])) { try { refundOrderCreditsOnCancel(intval($id)); } catch (\Throwable $e) {} }
             try { $db->query("DELETE FROM order_locks WHERE order_id = ?", [intval($id)]); } catch (\Throwable $e) {}
+        }
+        // Return JSON for AJAX requests, redirect for form submits
+        if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) || !empty($_POST['_ajax'])) {
+            header('Content-Type: application/json'); echo json_encode(['success'=>true,'count'=>count($ids)]); exit;
         }
         redirect(adminUrl('pages/order-management.php?msg=bulk_updated'));
     }
@@ -962,9 +969,14 @@ function bStatus(s){
   const p=document.getElementById('cProg');p.classList.remove('hidden');
   document.getElementById('cProgL').textContent='Updating '+ids.length+' orders...';
   document.getElementById('cProgB').style.width='60%';
-  fetch(location.pathname,{method:'POST',body:fd})
-    .then(()=>{document.getElementById('cProgB').style.width='100%';document.getElementById('cProgL').textContent='✓ Updated';setTimeout(()=>{p.classList.add('hidden');OM.refresh();},1200)})
-    .catch(e=>{document.getElementById('cProgL').textContent='Error: '+e.message});
+  fd.append('_ajax','1');
+  fetch(location.pathname,{method:'POST',credentials:'same-origin',body:fd})
+    .then(r=>r.json()).then(d=>{
+      document.getElementById('cProgB').style.width='100%';
+      document.getElementById('cProgL').textContent='✓ Updated '+(d.count||'')+ ' orders';
+      setTimeout(()=>{p.classList.add('hidden');OM.refresh();},1200);
+    })
+    .catch(e=>{document.getElementById('cProgL').textContent='Error';p.classList.add('hidden');OM.refresh();});
 }
 function bCourier(c){const ids=getIds();if(!ids.length){alert('Select orders');return}if(!confirm('Upload '+ids.length+' to '+c+'?'))return;document.getElementById('actionsMenu').classList.add('hidden');doCourier(ids,c)}
 
@@ -1025,7 +1037,8 @@ function toggleRowMenu(el, orderId, orderNum) {
         const btn = document.getElementById('rm'+a);
         btn.onclick = () => { if(confirm(a+' this order?')){
             const fd=new FormData();fd.append('action','update_status');fd.append('order_id',orderId);fd.append('status',{Confirm:'confirmed',Ship:'shipped',Deliver:'delivered',Cancel:'cancelled'}[a]);
-            fetch(location.pathname,{method:'POST',body:fd}).then(()=>OM.refresh());
+            fd.append('_ajax','1');
+            fetch(location.pathname,{method:'POST',credentials:'same-origin',body:fd}).then(r=>{try{r.json().then(()=>OM.refresh());}catch(e){OM.refresh();}}).catch(()=>OM.refresh());
         }};
     });
 }

@@ -257,7 +257,7 @@ $icons = [
             <a href="<?= adminUrl('pages/search.php') ?>" class="px-2.5 py-1.5 rounded-md text-xs font-semibold <?= $currentPage==='search' ? $tc['qbLinkActive'] : $tc['qbLinkNorm'] ?> transition">Search</a>
             <?php if (canViewPage('order-add')): ?><a href="<?= adminUrl('pages/order-add.php') ?>" class="px-2.5 py-1.5 rounded-md text-xs font-semibold <?= $currentPage==='order-add' ? $tc['qbLinkActive'] : $tc['qbLinkNorm'] ?> transition hidden sm:inline-block">NewOrder</a><?php endif; ?>
             <?php if (canViewPage('order-management')): ?><a href="<?= adminUrl('pages/order-management.php') ?>" class="px-2.5 py-1.5 rounded-md text-xs font-semibold <?= $currentPage==='order-management' ? $tc['qbLinkActive'] : $tc['qbLinkNorm'] ?> transition hidden sm:inline-block">Orders</a><?php endif; ?>
-            <?php if (canViewPage('order-management')): ?><a href="<?= adminUrl('pages/order-management.php?status=processing') ?>" class="px-2.5 py-1.5 rounded-md text-xs font-semibold <?= $tc['qbLinkNorm'] ?> transition hidden md:inline-block">Processing</a><?php endif; ?>
+            <?php if (canViewPage('order-management')): ?><a href="<?= adminUrl('pages/order-processing.php') ?>" class="px-2.5 py-1.5 rounded-md text-xs font-semibold <?= $currentPage==='order-processing' ? $tc['qbLinkActive'] : $tc['qbLinkNorm'] ?> transition hidden md:inline-block">Processing</a><?php endif; ?>
             <?php if (canViewPage('incomplete-orders')): ?><a href="<?= adminUrl('pages/incomplete-orders.php') ?>" class="px-2.5 py-1.5 rounded-md text-xs font-semibold <?= $currentPage==='incomplete-orders' ? $tc['qbLinkActive'] : $tc['qbLinkNorm'] ?> transition hidden md:inline-block">Incomplete</a><?php endif; ?>
             <?php if (canViewPage('scan-to-update')): ?><a href="<?= adminUrl('pages/scan-to-update.php') ?>" class="px-2.5 py-1.5 rounded-md text-xs font-semibold <?= $currentPage==='scan-to-update' ? $tc['qbLinkActive'] : $tc['qbLinkNorm'] ?> transition hidden lg:inline-flex items-center gap-1" title="Scan To Update"><i class="fas fa-barcode text-[10px]"></i>Scan</a><?php endif; ?>
         </div>
@@ -639,6 +639,7 @@ document.addEventListener('click',e=>{
             <?php 
             $salesItems = navGroup('order-management', 'Order Management', '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>', [
                 subItem('order-management', 'All Orders'),
+                subItem('order-processing', 'Processing', $stats['pending_orders']),
                 subItem('order-add', 'New Order'),
                 subItem('incomplete-orders', 'Incomplete Orders', $stats['incomplete_orders']),
                 subItem('returns', 'Returns'),
