@@ -371,7 +371,7 @@ $totalOrders = count($orders);
 <?php if ($isExtract) ob_start(); ?>
 <?php
     $items      = $allItems[$order['id']] ?? [];
-    $discount   = floatval($order['discount'] ?? $order['discount_amount'] ?? 0);
+    $discount   = floatval($order['discount_amount'] ?? $order['discount'] ?? 0);
     $advance    = floatval($order['advance_amount'] ?? 0);
     $due        = floatval($order['total']) - $advance;
     $pay        = strtoupper($order['payment_method'] ?? 'COD');

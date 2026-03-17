@@ -149,17 +149,21 @@ $totalOrders = array_sum($statusCounts);
 // ── Filters ──
 $status=$_GET['status']??''; $search=$_GET['search']??''; $dateFrom=$_GET['date_from']??''; $dateTo=$_GET['date_to']??'';
 $channel=$_GET['channel']??''; $courier=$_GET['courier']??''; $assignedTo=$_GET['assigned']??''; $preorderFilter=$_GET['preorder']??'';
+$tagFilter=$_GET['tag']??''; $customerFilter=$_GET['customer']??'';
 $page = max(1, intval($_GET['page'] ?? 1));
+$allowedLimits = [20,50,100,200,500,1000,5000];
+$limit = in_array((int)($_GET['per_page']??0), $allowedLimits) ? (int)$_GET['per_page'] : (defined('ADMIN_ITEMS_PER_PAGE') ? ADMIN_ITEMS_PER_PAGE : 20);
 
 $where = '1=1'; $params = [];
 if ($status) {
     if ($status === 'processing') {
-        $where .= " AND o.order_status IN ('processing','pending')"; // Catch legacy pending too
+        $where .= " AND o.order_status IN ('processing','pending')";
     } else {
         $where .= " AND o.order_status = ?"; $params[] = $status;
     }
 }
 if ($search) { $where .= " AND (o.order_number LIKE ? OR o.customer_name LIKE ? OR o.customer_phone LIKE ? OR CAST(o.id AS CHAR) = ?)"; $params = array_merge($params, ["%$search%","%$search%","%$search%",$search]); }
+if ($customerFilter) { $where .= " AND (o.customer_name LIKE ? OR o.customer_phone LIKE ?)"; $params[] = "%$customerFilter%"; $params[] = "%$customerFilter%"; }
 if ($dateFrom) { $where .= " AND DATE(o.created_at) >= ?"; $params[] = $dateFrom; }
 if ($dateTo) { $where .= " AND DATE(o.created_at) <= ?"; $params[] = $dateTo; }
 if ($channel) { $where .= " AND o.channel = ?"; $params[] = $channel; }
@@ -173,9 +177,10 @@ if ($courier) {
 if ($assignedTo) { $where .= " AND o.assigned_to = ?"; $params[] = intval($assignedTo); }
 if ($preorderFilter === '1') { $where .= " AND o.is_preorder = 1"; }
 elseif ($preorderFilter === '0') { $where .= " AND (o.is_preorder = 0 OR o.is_preorder IS NULL)"; }
+if ($tagFilter) { $where .= " AND EXISTS (SELECT 1 FROM order_tags ot WHERE ot.order_id=o.id AND ot.tag_name=?)"; $params[] = $tagFilter; }
 
 $total = $db->fetch("SELECT COUNT(*) as cnt FROM orders o WHERE {$where}", $params)['cnt'];
-$limit = ADMIN_ITEMS_PER_PAGE; $offset = ($page-1)*$limit; $totalPages = ceil($total/$limit);
+$offset = ($page-1)*$limit; $totalPages = ceil($total/$limit);
 
 // Column sorting
 $sortCol = $_GET['sort'] ?? 'created_at';
@@ -470,6 +475,11 @@ function sortIcon($col) {
         <button type="button" onclick="document.getElementById('advFilters').classList.toggle('hidden')" class="border text-gray-500 px-2.5 py-1.5 rounded text-xs hover:bg-gray-50">Filters</button>
     </form>
     <a href="<?= adminUrl('pages/order-add.php') ?>" class="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-medium hover:bg-blue-700">+ New Order</a>
+    <select class="border rounded text-xs px-2 py-1.5 text-gray-600" onchange="OM.go({per_page:this.value,page:1})" title="Orders per page">
+      <?php foreach([20,50,100,200,500,1000,5000] as $pp): ?>
+      <option value="<?=$pp?>" <?=$limit==$pp?'selected':''?>><?=$pp?>/page</option>
+      <?php endforeach; ?>
+    </select>
     <button type="button" onclick="fcCheck('')" class="border border-blue-200 text-blue-600 px-2.5 py-1.5 rounded text-xs hover:bg-blue-50 font-medium">🔍 Check</button>
     <div class="relative" id="actionsWrap">
         <button type="button" onclick="document.getElementById('actionsMenu').classList.toggle('hidden')" class="border text-gray-500 px-2.5 py-1.5 rounded text-xs hover:bg-gray-50">⋮ Actions</button>
@@ -478,6 +488,7 @@ function sortIcon($col) {
             <p class="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase">Print</p>
             <button type="button" onclick="openInvPrint()" class="w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 text-blue-700 font-medium">📄 Print Invoice</button>
             <button type="button" onclick="openStkPrint()" class="w-full text-left px-3 py-1.5 text-xs hover:bg-orange-50 text-orange-700 font-medium">🏷 Print Sticker</button>
+            <button type="button" onclick="openPickingList()" class="w-full text-left px-3 py-1.5 text-xs hover:bg-green-50 text-green-700 font-medium">📦 Picking List</button>
             <hr class="my-0.5"><p class="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase">Status</p>
             <button type="button" onclick="bStatus('confirmed')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">✅ Confirm</button>
             <button type="button" onclick="bStatus('ready_to_ship')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">📦 Ready to Ship</button>
@@ -504,6 +515,16 @@ function sortIcon($col) {
         <input type="hidden" name="date_to" value="<?= e($dateTo) ?>">
         <div data-kb-datepicker data-from-param="date_from" data-to-param="date_to"></div>
         <select name="channel" class="px-2.5 py-1.5 border rounded text-xs" onchange="OM.goAdv(document.getElementById('advFiltersForm'))"><option value="">All Channels</option><?php foreach(['website','facebook','phone','whatsapp','instagram','landing_page'] as $ch): ?><option value="<?= $ch ?>" <?= $channel===$ch?'selected':'' ?>><?= ucfirst(str_replace('_',' ',$ch)) ?></option><?php endforeach; ?></select>
+        <input type="text" name="customer" value="<?= e($customerFilter) ?>" placeholder="Customer name/phone..." class="px-2.5 py-1.5 border rounded text-xs w-44" onchange="OM.goAdv(document.getElementById('advFiltersForm'))">
+        <select name="tag" class="px-2.5 py-1.5 border rounded text-xs" onchange="OM.goAdv(document.getElementById('advFiltersForm'))">
+          <option value="">All Tags</option>
+          <?php
+          try {
+            $allTags = $db->fetchAll("SELECT DISTINCT tag_name FROM order_tags ORDER BY tag_name");
+            foreach ($allTags as $t): ?>
+            <option value="<?= e($t['tag_name']) ?>" <?= $tagFilter===$t['tag_name']?'selected':'' ?>><?= e($t['tag_name']) ?></option>
+          <?php endforeach; } catch(\Throwable $e) {} ?>
+        </select>
         <select name="assigned" class="px-2.5 py-1.5 border rounded text-xs" onchange="OM.goAdv(document.getElementById('advFiltersForm'))"><option value="">All Staff</option><?php foreach($adminUsers as $au): ?><option value="<?= $au['id'] ?>" <?= $assignedTo==$au['id']?'selected':'' ?>><?= e($au['full_name']) ?></option><?php endforeach; ?></select>
         <select name="preorder" class="px-2.5 py-1.5 border rounded text-xs" onchange="OM.goAdv(document.getElementById('advFiltersForm'))"><option value="">All Orders</option><option value="1" <?= $preorderFilter==='1'?'selected':'' ?>>⏰ Preorders Only</option><option value="0" <?= $preorderFilter==='0'?'selected':'' ?>>Regular Only</option></select>
         <button type="button" onclick="OM.go({status:'',search:'',courier:'',date_from:'',date_to:'',channel:'',assigned:'',preorder:'',page:1})" class="bg-gray-100 text-gray-500 px-3 py-1.5 rounded text-xs">✕ Reset</button>
@@ -791,6 +812,9 @@ const OM = {
     channel:  '<?= e($channel) ?>',
     assigned: '<?= e($assignedTo) ?>',
     preorder: '<?= e($preorderFilter) ?>',
+    tag:      '<?= e($tagFilter) ?>',
+    customer: '<?= e($customerFilter) ?>',
+    per_page: '<?= $limit ?>',
   },
   _loading: false,
 
@@ -1121,6 +1145,37 @@ $defLayout = getSetting('print_default_layout', 'a4_1');
 ?>
 
 <!-- ══════════════════════════════════════════
+     PICKING LIST MODAL
+     ══════════════════════════════════════════ -->
+<div id="pickingModal" class="hidden fixed inset-0 z-[9999] flex items-center justify-center bg-black/60" onclick="if(event.target===this)closePickingModal()">
+  <div class="bg-white rounded-2xl shadow-2xl w-[95vw] max-w-4xl h-[90vh] flex flex-col overflow-hidden" onclick="event.stopPropagation()">
+    <div class="flex items-center justify-between px-5 py-3 border-b bg-green-50 shrink-0">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center text-lg">📦</div>
+        <div>
+          <h3 class="font-bold text-gray-800 text-sm">Picking List</h3>
+          <p class="text-[11px] text-gray-400"><span id="pickingCount">0</span> order(s) · <span id="pickingItemCount">0</span> unique products</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="printPickingList()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>Print
+        </button>
+        <button onclick="closePickingModal()" class="text-gray-400 hover:text-gray-600 p-1">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="flex-1 overflow-auto p-4" style="min-height:0" id="pickingBody">
+      <div id="pickingLoading" class="flex items-center justify-center h-full text-gray-400">
+        <div class="text-center"><div class="text-3xl mb-2">⏳</div><p class="text-sm">Building picking list…</p></div>
+      </div>
+      <div id="pickingContent" class="hidden"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
      INVOICE PRINT MODAL
      ══════════════════════════════════════════ -->
 <div id="invPrintModal" class="hidden fixed inset-0 z-[9999] flex items-center justify-center bg-black/60" onclick="if(event.target===this)closeInvModal()">
@@ -1295,6 +1350,99 @@ function openInvPrint(forceIds) {
     reloadInvPreview();
 }
 function closeInvModal() { document.getElementById('invPrintModal').classList.add('hidden'); document.getElementById('invPrintIframe').src = 'about:blank'; }
+
+// ── Picking List ──────────────────────────────────────────────────────────────
+var _pickIds = [];
+function openPickingList(forceIds) {
+    _pickIds = forceIds || getIds();
+    if (!_pickIds.length) { alert('Select orders first'); return; }
+    document.getElementById('actionsMenu')?.classList.add('hidden');
+    document.getElementById('pickingCount').textContent = _pickIds.length;
+    document.getElementById('pickingItemCount').textContent = '…';
+    document.getElementById('pickingLoading').classList.remove('hidden');
+    document.getElementById('pickingContent').classList.add('hidden');
+    document.getElementById('pickingModal').classList.remove('hidden');
+    // Fetch order items via API
+    fetch('<?= adminUrl('api/picking-list.php') ?>', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        credentials: 'same-origin',
+        body: JSON.stringify({ids: _pickIds})
+    })
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('pickingLoading').classList.add('hidden');
+        document.getElementById('pickingContent').classList.remove('hidden');
+        renderPickingList(data);
+    })
+    .catch(() => {
+        document.getElementById('pickingLoading').innerHTML = '<p class="text-red-500">Failed to load picking list</p>';
+    });
+}
+function closePickingModal() {
+    document.getElementById('pickingModal').classList.add('hidden');
+    document.getElementById('pickingContent').innerHTML = '';
+}
+function renderPickingList(data) {
+    const orders = data.orders || [];
+    const items = data.items || []; // aggregated by product+variant
+    document.getElementById('pickingItemCount').textContent = items.length;
+    var html = '';
+    // Summary table — aggregated products
+    html += '<div class="mb-6">';
+    html += '<h3 class="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2"><span class="w-6 h-6 bg-green-600 text-white rounded text-xs flex items-center justify-center">1</span>Products to Pick — ' + items.length + ' items</h3>';
+    html += '<table class="w-full border-collapse text-xs"><thead><tr class="bg-gray-100">';
+    html += '<th class="border border-gray-200 px-3 py-2 text-left">Product</th>';
+    html += '<th class="border border-gray-200 px-3 py-2 text-left">SKU</th>';
+    html += '<th class="border border-gray-200 px-2 py-2 text-center w-16">Qty</th>';
+    html += '<th class="border border-gray-200 px-2 py-2 text-center w-16">Orders</th>';
+    html += '<th class="border border-gray-200 px-2 py-2 text-center w-16">✓ Picked</th>';
+    html += '</tr></thead><tbody>';
+    items.forEach(function(item, i) {
+        var bg = i % 2 === 0 ? '' : 'background:#fafafa';
+        html += '<tr style="' + bg + '">';
+        html += '<td class="border border-gray-200 px-3 py-2 font-medium">' + escHtml(item.product_name) + (item.variant_name ? '<br><span class="text-gray-400 font-normal">' + escHtml(item.variant_name) + '</span>' : '') + '</td>';
+        html += '<td class="border border-gray-200 px-3 py-2 text-gray-500 font-mono">' + escHtml(item.sku || '—') + '</td>';
+        html += '<td class="border border-gray-200 px-2 py-2 text-center font-bold text-lg text-green-700">' + item.total_qty + '</td>';
+        html += '<td class="border border-gray-200 px-2 py-2 text-center text-gray-500">' + item.order_count + '</td>';
+        html += '<td class="border border-gray-200 px-2 py-2 text-center"><div style="width:22px;height:22px;border:2px solid #999;display:inline-block;border-radius:3px"></div></td>';
+        html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    // Per-order breakdown
+    html += '<div>';
+    html += '<h3 class="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2"><span class="w-6 h-6 bg-blue-600 text-white rounded text-xs flex items-center justify-center">2</span>Per Order Breakdown — ' + orders.length + ' orders</h3>';
+    orders.forEach(function(order) {
+        html += '<div class="mb-3 border border-gray-200 rounded-lg overflow-hidden">';
+        html += '<div class="px-3 py-2 bg-gray-50 flex items-center justify-between">';
+        html += '<span class="font-bold text-xs">#' + escHtml(order.order_number) + '</span>';
+        html += '<span class="text-xs text-gray-500">' + escHtml(order.customer_name) + ' · ' + escHtml(order.customer_phone) + '</span>';
+        html += '</div>';
+        html += '<table class="w-full text-xs border-collapse"><thead><tr class="bg-white">';
+        html += '<th class="border-t border-gray-100 px-3 py-1.5 text-left text-gray-500">Product</th><th class="border-t border-gray-100 px-2 py-1.5 text-center w-12 text-gray-500">Qty</th><th class="border-t border-gray-100 px-2 py-1.5 text-center w-16 text-gray-500">✓</th>';
+        html += '</tr></thead><tbody>';
+        (order.items || []).forEach(function(it) {
+            html += '<tr><td class="border-t border-gray-100 px-3 py-1.5">' + escHtml(it.product_name) + (it.variant_name ? ' <span class="text-gray-400">(' + escHtml(it.variant_name) + ')</span>' : '') + '</td>';
+            html += '<td class="border-t border-gray-100 px-2 py-1.5 text-center font-bold">' + it.quantity + '</td>';
+            html += '<td class="border-t border-gray-100 px-2 py-1.5 text-center"><div style="width:18px;height:18px;border:2px solid #ccc;display:inline-block;border-radius:2px"></div></td></tr>';
+        });
+        html += '</tbody></table></div>';
+    });
+    html += '</div>';
+    document.getElementById('pickingContent').innerHTML = html;
+}
+function escHtml(s) { var d=document.createElement('div');d.textContent=s||'';return d.innerHTML; }
+function printPickingList() {
+    var content = document.getElementById('pickingContent').innerHTML;
+    var w = window.open('', '_blank', 'width=900,height=700');
+    w.document.write('<html><head><title>Picking List</title><style>body{font-family:Arial,sans-serif;font-size:12px;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 10px}th{background:#f0f0f0}h3{margin:16px 0 8px}@media print{h3:first-child{margin-top:0}}@page{margin:10mm}</style></head><body>');
+    w.document.write('<h2 style="margin-bottom:16px">📦 Picking List — ' + _pickIds.length + ' Orders</h2>');
+    w.document.write(content);
+    w.document.write('</body></html>');
+    w.document.close();
+    w.focus();
+    setTimeout(function(){ w.print(); }, 400);
+}
 function reloadInvPreview() {
     document.getElementById('invPrintLoading').style.display = 'flex';
     var tpl = document.getElementById('invTplSelect').value;
