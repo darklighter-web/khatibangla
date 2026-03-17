@@ -83,6 +83,17 @@ $labelH = preg_replace('/[^0-9a-z.]/', '', $_GET['label_h'] ?? '101.6mm');
 $showLogo = cfg('show_logo', true);
 $showPhone = cfg('show_phone', true);
 $boldText = cfg('bold_text', false); // Sticker text bold toggle
+
+// Reusable sticker totals HTML — shows discount/advance only when present & toggle on
+function stkTotals($order, $due, $discount, $advance, $showDiscount, $showAdvance, $size='10px', $dueSize='16px') {
+    $html = '<div style="font-size:'.$size.'">';
+    $html .= 'Sub: ৳'.number_format($order['subtotal']).' | Del: ৳'.number_format($order['shipping_cost']);
+    if ($showDiscount && $discount > 0) $html .= ' | <span style="color:#dc2626">Disc: -৳'.number_format($discount).'</span>';
+    if ($showAdvance  && $advance  > 0) $html .= ' | <span style="color:#2563eb">Adv: -৳'.number_format($advance).'</span>';
+    $html .= '</div>';
+    $html .= '<div style="font-size:'.$dueSize.';font-weight:900">৳'.number_format($due).'</div>';
+    return $html;
+}
 $showAddress = cfg('show_address', true);
 $showSku = cfg('show_sku', false);
 $showImages = cfg('show_images', false);
@@ -368,9 +379,18 @@ $totalOrders = count($orders);
     $parcel     = $order['courier_consignment_id'] ?? $order['courier_tracking_id'] ?? '';
     $dt         = date('d/m/Y', strtotime($order['created_at']));
     $addr       = trim(($order['customer_address']??'').($order['customer_city']?', '.$order['customer_city']:'').($order['customer_district']?', '.$order['customer_district']:''));
-    $notes      = $showNotes ? trim(($order['notes']??'').' '.($order['order_note']??'')) : '';
-    $aNotes     = $order['admin_notes'] ?? '';
-    $orderNote  = $showNotes ? ($order['order_note'] ?? '') : '';
+    // order['notes']      = Shipping note (shown orange in order management, sent to courier)
+    // order['order_note'] = Order note (shown blue in order management, printed on invoice)
+    $orderNote    = $showNotes    ? ($order['order_note'] ?? '') : '';  // toggle: show_notes
+    $shipNoteText = $showShipNote ? ($order['notes'] ?? '')      : '';  // toggle: show_shipping_note
+    $notes        = $orderNote; // backward compat — sticker templates use $notes for order note
+    $aNotes       = $order['admin_notes'] ?? '';
+    // Per-order shipping note overrides site-wide template shipping note
+    if ($isSticker && $showShipNote) {
+        $shippingNote = $shipNoteText ?: $_shipNoteText;
+    } elseif (!$isSticker && $showShipNote) {
+        $shippingNote = $_shipNoteText; // invoices use site-wide note only
+    }
     $barcodeVal = $order['order_number'] ?? ('ORD-'.$order['id']);
     $barcodeId  = 'bc_'.$idx;
     $posInGroup  = $idx % $perPage;
@@ -480,7 +500,7 @@ $totalOrders = count($orders);
 <?=$showCourier&&$courier?"<span style='font-size:9px;background:#000;color:#fff;padding:1px 4px'>Courier: ".e($courier)."</span><br>":""?>
 <div style="font-size:13px;font-weight:700"><?=e($order['customer_name'])?></div><div style="font-size:11px;line-height:1.4">📞 <?=e($order['customer_phone'])?><br>📍 <?=e($addr)?></div>
 <table class="stk-ptbl"><thead><tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody><?php foreach($items as $it):?><tr><td><?=e($it['product_name'])?></td><td><?=$it['quantity']?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?></tbody></table>
-<div style="display:flex;justify-content:space-between;border-top:2px solid #000;padding-top:5px;margin-top:4px"><div style="font-size:10px">Sub: ৳<?=number_format($order['subtotal'])?> | Del: ৳<?=number_format($order['shipping_cost'])?></div><div style="font-size:16px;font-weight:900">৳<?=number_format($due)?></div></div>
+<div style="display:flex;justify-content:space-between;border-top:2px solid #000;padding-top:5px;margin-top:4px"><?= stkTotals($order,$due,$discount,$advance,$showDiscount,$showAdvance,'10px','16px') ?></div>
 <?php if($showNotes&&$notes):?><div style="font-size:9px;color:#444;border-top:1px dashed #ccc;padding-top:3px;margin-top:3px"><strong>Note:</strong> <?=e($notes)?></div><?php endif;?>
 <?php if($showShipNote&&$shippingNote):?><div style="font-size:9px;color:#444;margin-top:2px"><strong>Shipping:</strong> <?=e($shippingNote)?></div><?php endif;?>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>d" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?></div>
@@ -506,7 +526,11 @@ $totalOrders = count($orders);
 <div style="border-top:1px dashed #999;margin:6px 0"></div>
 <table class="stk-pos-tbl"><thead><tr><th>Item</th><th class="text-right">Qty</th><th class="text-right">Total</th></tr></thead><tbody><?php foreach($items as $it):?><tr><td><?=e($it['product_name'])?></td><td class="text-right"><?=$it['quantity']?></td><td class="text-right">৳<?=number_format($it['subtotal'])?></td></tr><?php endforeach;?></tbody></table>
 <div style="border-top:1px dashed #999;margin:6px 0"></div>
-<div style="text-align:right;margin:6px 0;font-size:11px;line-height:1.6">Sub Total: ৳<?=number_format($order['subtotal'])?><br>Delivery: ৳<?=number_format($order['shipping_cost'])?><br><span style="font-size:18px;font-weight:900">Due: ৳<?=number_format($due)?></span></div>
+<div style="text-align:right;margin:6px 0;font-size:11px;line-height:1.6">Sub Total: ৳<?=number_format($order['subtotal'])?>
+<br>Delivery: ৳<?=number_format($order['shipping_cost'])?>
+<?php if($showDiscount&&$discount>0):?><br><span style="color:#dc2626">Discount: -৳<?=number_format($discount)?></span><?php endif;?>
+<?php if($showAdvance&&$advance>0):?><br><span style="color:#2563eb">Advance: -৳<?=number_format($advance)?></span><?php endif;?>
+<br><span style="font-size:18px;font-weight:900">Due: ৳<?=number_format($due)?></span></div>
 <?php if($showNotes&&$notes):?><div style="font-size:9px;color:#555;border-top:1px dashed #999;padding-top:3px;margin-top:4px"><strong>Note:</strong> <?=e($notes)?></div><?php endif;?>
 <?php if($showShipNote&&$shippingNote):?><div style="font-size:9px;color:#555;margin-top:2px"><strong>Shipping:</strong> <?=e($shippingNote)?></div><?php endif;?>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?></div>
@@ -535,7 +559,7 @@ $totalOrders = count($orders);
 <div style="display:flex;justify-content:space-between;border-bottom:2px solid #000;padding-bottom:5px;margin-bottom:6px"><?= logoOrName($logoUrl,$siteName,'28px') ?><div style="font-size:10px">IV: <?=e($order['order_number'])?><br><?=$dt?></div></div>
 <?=$showCourier&&$courier?"<span style='font-size:9px;background:#000;color:#fff;padding:0 4px'>".e($courier)."</span> ":""?><span style="font-size:13px;font-weight:700"><?=e($order['customer_name'])?></span><br><span style="font-size:11px">📞 <?=e($order['customer_phone'])?></span><br><span style="font-size:10px">📍 <?=e($addr)?></span>
 <table class="sku-tbl"><thead><tr><th>SKU</th><th>Price</th><th>Total</th></tr></thead><tbody><?php foreach($items as $it):?><tr><td><?=e($it['sku']??$it['product_name'])?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?></tbody></table>
-<div style="display:flex;justify-content:space-between;border-top:2px solid #000;padding-top:5px;margin-top:4px;font-size:10px"><div>Sub: ৳<?=number_format($order['subtotal'])?><br>Del: ৳<?=number_format($order['shipping_cost'])?></div><div style="font-size:16px;font-weight:900">৳<?=number_format($due)?></div></div>
+<div style="display:flex;justify-content:space-between;border-top:2px solid #000;padding-top:5px;margin-top:4px"><?= stkTotals($order,$due,$discount,$advance,$showDiscount,$showAdvance,'10px','16px') ?></div>
 <?php if($showNotes&&$notes):?><div style="font-size:9px;color:#444;border-top:1px dashed #ccc;padding-top:3px;margin-top:3px"><strong>Note:</strong> <?=e($notes)?></div><?php endif;?>
 <?php if($showShipNote&&$shippingNote):?><div style="font-size:9px;color:#444;margin-top:2px"><strong>Shipping:</strong> <?=e($shippingNote)?></div><?php endif;?>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?></div>
@@ -546,7 +570,7 @@ $totalOrders = count($orders);
 <div style="font-size:14px;font-weight:700"><?=e($order['customer_name'])?></div>
 <div style="font-size:11px;line-height:1.4">📞 <?=e($order['customer_phone'])?><br>📍 <?=e($addr)?></div>
 <div style="font-size:10px;border-top:1px dashed #999;padding-top:4px;margin:5px 0"><?php foreach($items as $it):?><?=e($it['product_name'])?> × <?=$it['quantity']?> — ৳<?=number_format($it['subtotal'])?><br><?php endforeach;?></div>
-<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:5px"><div>Sub: ৳<?=number_format($order['subtotal'])?> | Del: ৳<?=number_format($order['shipping_cost'])?></div><div style="font-size:16px;font-weight:900">৳<?=number_format($due)?></div></div>
+<div style="display:flex;justify-content:space-between;margin-bottom:5px"><?= stkTotals($order,$due,$discount,$advance,$showDiscount,$showAdvance,'10px','16px') ?></div>
 <div style="border-top:1px solid #ccc;padding-top:5px">
 <?php if($showNotes&&$notes):?><p style="font-size:8px;text-transform:uppercase;color:#666;font-weight:700;margin-bottom:1px">Order Note:</p><p style="font-size:9px;line-height:1.3"><?=e($notes)?></p><?php endif;?>
 <?php if($showShipNote&&$shippingNote):?><p style="font-size:8px;text-transform:uppercase;color:#666;font-weight:700;margin-top:3px;margin-bottom:1px">Shipping Note:</p><p style="font-size:9px;line-height:1.3"><?=e($shippingNote)?></p><?php endif;?>
@@ -581,7 +605,7 @@ $totalOrders = count($orders);
 <table class="thm-ptbl"><thead><tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>
 <?php foreach($items as $it):?><tr><td><?=e($it['product_name'])?></td><td><?=$it['quantity']?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
 </tbody></table>
-<div style="display:flex;justify-content:space-between;border-top:1px solid #999;padding-top:3px;font-size:9px"><span>Sub: ৳<?=number_format($order['subtotal'])?></span><span>Del: ৳<?=number_format($order['shipping_cost'])?></span><strong style="font-size:13px">৳<?=number_format($due)?></strong></div>
+<div style="display:flex;justify-content:space-between;border-top:1px solid #999;padding-top:3px"><?= stkTotals($order,$due,$discount,$advance,$showDiscount,$showAdvance,'9px','13px') ?></div>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?>
 </div>
 
@@ -616,7 +640,7 @@ $totalOrders = count($orders);
 <table class="tsku-tbl"><thead><tr><th>SKU</th><th>Price</th><th>Total</th></tr></thead><tbody>
 <?php foreach($items as $it):?><tr><td><?=e($it['sku']??$it['product_name'])?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
 </tbody></table>
-<div style="display:flex;justify-content:space-between;border-top:2px solid #000;padding-top:3px;font-size:9px"><span>Sub: ৳<?=number_format($order['subtotal'])?><br>Del: ৳<?=number_format($order['shipping_cost'])?></span><strong style="font-size:13px">৳<?=number_format($due)?></strong></div>
+<div style="display:flex;justify-content:space-between;border-top:2px solid #000;padding-top:3px"><?= stkTotals($order,$due,$discount,$advance,$showDiscount,$showAdvance,'9px','13px') ?></div>
 <?php if($showShipNote&&$shippingNote):?><div style="font-size:8px;border-top:1px solid #ccc;padding-top:3px;margin-top:3px"><strong>Shipping Note:</strong> <?=e($shippingNote)?></div><?php endif;?>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?>
 </div>
@@ -631,7 +655,7 @@ $totalOrders = count($orders);
 <table class="s2in-ptbl"><thead><tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>
 <?php foreach($items as $it):?><tr><td><?=e($it['product_name'])?></td><td><?=$it['quantity']?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
 </tbody></table>
-<div style="display:flex;justify-content:space-between;border-top:1px solid #999;padding-top:2px;font-size:8px"><span>Sub: ৳<?=number_format($order['subtotal'])?><br>Del: ৳<?=number_format($order['shipping_cost'])?></span><strong style="font-size:12px">৳<?=number_format($due)?></strong></div>
+<div style="display:flex;justify-content:space-between;border-top:1px solid #999;padding-top:2px"><?= stkTotals($order,$due,$discount,$advance,$showDiscount,$showAdvance,'8px','12px') ?></div>
 <?php if($showNotes&&$notes):?><div style="font-size:8px;color:#444;border-top:1px dashed #ccc;padding-top:2px;margin-top:3px"><strong>Note:</strong> <?=e($notes)?></div><?php endif;?>
 <?php if($showShipNote&&$shippingNote):?><div style="font-size:8px;color:#444;margin-top:1px"><strong>Ship:</strong> <?=e($shippingNote)?></div><?php endif;?>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?>
@@ -647,7 +671,7 @@ $totalOrders = count($orders);
 <table class="s3in-ptbl"><thead><tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>
 <?php foreach($items as $it):?><tr><td><?=e($it['product_name'])?><?=$showVariant&&!empty($it['variant_name'])?"<br><small style='color:#666'>".e($it['variant_name'])."</small>":""?></td><td><?=$it['quantity']?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
 </tbody></table>
-<div style="display:flex;justify-content:space-between;border-top:2px solid #000;padding-top:5px;margin-top:4px"><div style="font-size:10px">Sub Total: ৳<?=number_format($order['subtotal'])?><br>Delivery: ৳<?=number_format($order['shipping_cost'])?></div><div style="font-size:16px;font-weight:900">Due: ৳<?=number_format($due)?></div></div>
+<div style="display:flex;justify-content:space-between;border-top:2px solid #000;padding-top:5px;margin-top:4px"><?= stkTotals($order,$due,$discount,$advance,$showDiscount,$showAdvance,'10px','16px') ?></div>
 <?php if($showShipNote&&$shippingNote):?><div style="font-size:9px;border-top:1px solid #ccc;padding-top:4px;margin-top:4px"><strong>Shipping Note:</strong><br><?=e($shippingNote)?></div><?php endif;?>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?>
 </div>
@@ -678,7 +702,7 @@ $totalOrders = count($orders);
 <table class="s4x3-tbl"><thead><tr><th>SKU</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>
 <?php foreach($items as $it):?><tr><td style="font-weight:700"><?=e($it['sku']??$it['product_name'])?></td><td style="font-weight:700;font-size:13px"><?=$it['quantity']?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
 </tbody></table>
-<div style="display:flex;justify-content:space-between;border-top:2px solid #000;padding-top:6px;margin-top:4px"><div style="font-size:10px">Sub: ৳<?=number_format($order['subtotal'])?><br>Del: ৳<?=number_format($order['shipping_cost'])?></div><div style="font-size:18px;font-weight:900">৳<?=number_format($due)?></div></div>
+<div style="display:flex;justify-content:space-between;border-top:2px solid #000;padding-top:6px;margin-top:4px"><?= stkTotals($order,$due,$discount,$advance,$showDiscount,$showAdvance,'10px','18px') ?></div>
 <?php if($showNotes&&$notes):?><div style="font-size:9px;color:#444;border-top:1px dashed #ccc;padding-top:3px;margin-top:3px"><strong>Note:</strong> <?=e($notes)?></div><?php endif;?>
 <?php if($showShipNote&&$shippingNote):?><div style="font-size:9px;color:#444;margin-top:2px"><strong>Shipping:</strong> <?=e($shippingNote)?></div><?php endif;?>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?>
@@ -694,7 +718,7 @@ $totalOrders = count($orders);
 <table class="s3n-ptbl"><thead><tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>
 <?php foreach($items as $it):?><tr><td><?=e($it['product_name'])?></td><td><?=$it['quantity']?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
 </tbody></table>
-<div style="display:flex;justify-content:space-between;border-top:2px solid #000;padding-top:5px;margin-top:4px;font-size:10px"><div>Sub Total: ৳<?=number_format($order['subtotal'])?><br>Delivery: ৳<?=number_format($order['shipping_cost'])?></div><div style="font-size:16px;font-weight:900">৳<?=number_format($due)?></div></div>
+<div style="display:flex;justify-content:space-between;border-top:2px solid #000;padding-top:5px;margin-top:4px"><?= stkTotals($order,$due,$discount,$advance,$showDiscount,$showAdvance,'10px','16px') ?></div>
 <?php if($showShipNote&&$shippingNote):?><div style="font-size:9px;border-top:1px dashed #ccc;padding-top:4px;margin-top:4px"><strong style="font-size:8px;text-transform:uppercase;color:#555">Shipping Note:</strong><br><?=e($shippingNote)?></div><?php endif;?>
 <?php if($showNotes&&$notes):?><div style="font-size:9px;border-top:1px dashed #ccc;padding-top:4px;margin-top:4px"><strong style="font-size:8px;text-transform:uppercase;color:#555">Order Note:</strong><br><?=e($notes)?></div><?php endif;?>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?>
@@ -709,7 +733,7 @@ $totalOrders = count($orders);
 <table class="s3sq-tbl"><thead><tr><th>SKU</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>
 <?php foreach($items as $it):?><tr><td><?=e($it['sku']??$it['product_name'])?></td><td><?=$it['quantity']?></td><td><?=number_format($it['price'])?></td><td><?=number_format($it['subtotal'])?></td></tr><?php endforeach;?>
 </tbody></table>
-<div style="display:flex;justify-content:space-between;border-top:1px solid #999;padding-top:3px;margin-top:3px;font-size:9px"><span>Sub: ৳<?=number_format($order['subtotal'])?> | Del: ৳<?=number_format($order['shipping_cost'])?></span><strong style="font-size:13px">৳<?=number_format($due)?></strong></div>
+<div style="display:flex;justify-content:space-between;border-top:1px solid #999;padding-top:3px;margin-top:3px"><?= stkTotals($order,$due,$discount,$advance,$showDiscount,$showAdvance,'9px','13px') ?></div>
 <?php if($showBarcode):?><div class="barcode-wrap-sm"><svg id="<?=$barcodeId?>" class="barcode-svg-sm" data-value="<?=e($barcodeVal)?>"></svg></div><?php endif;?>
 </div>
 
