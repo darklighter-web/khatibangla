@@ -174,7 +174,36 @@ try { $orderTags = $db->fetchAll("SELECT * FROM order_tags WHERE order_id = ?", 
 $custCredit  = 0;
 if ($order['customer_id']) { try { $custCredit = getStoreCredit($order['customer_id']); } catch (\Throwable $e) {} }
 
-require_once __DIR__ . '/../includes/header.php';
+if ($isModal) {
+    // Modal mode: minimal HTML, no sidebar/nav
+    $modalCss = file_get_contents(__DIR__ . '/../includes/header.php');
+    // Modal mode: full <head> with same assets as admin, but no sidebar/nav body shell
+    ?><!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Edit Order #<?= e($order['order_number']) ?></title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<style>
+:root{--primary:#f97316;--primary-dark:#ea580c}
+*{box-sizing:border-box}
+body{font-family:'Inter',system-ui,sans-serif;font-size:13px;background:#f1f5f9;margin:0;padding:0}
+input,select,textarea{font-family:inherit}
+.no-print{display:none}
+/* Suppress any full-page layout wrappers */
+#adminWrap,#sidebar,.sidebar-scroll{display:none!important}
+</style>
+</head>
+<body class="bg-gray-100">
+<div class="max-w-full">
+<?php
+} else {
+    require_once __DIR__ . '/../includes/header.php';
+}
 
 /* ─── ORDER LOCK SYSTEM ─── */
 $__lockBlocked = false;
@@ -273,7 +302,9 @@ function confirmTakeover() {
 }
 </script>
 
-<?php require_once __DIR__ . '/../includes/footer.php'; exit; endif; /* end lockBlocked */ ?>
+<?php
+if ($isModal) { echo '</div></body></html>'; } else { require_once __DIR__ . '/../includes/footer.php'; }
+exit; endif; /* end lockBlocked */ ?>
 
 <?php if (isset($_GET['msg'])): ?>
 <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4 text-sm">
@@ -1601,4 +1632,13 @@ function courierUpdateUI(d) {
     });
 })();
 </script>
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+<?php
+if ($isModal) {
+    ?>
+</div>
+</body></html>
+<?php
+} else {
+    require_once __DIR__ . '/../includes/footer.php';
+}
+?>

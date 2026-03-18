@@ -807,9 +807,9 @@ function sortIcon($col) {
 <div id="tagModal" class="fixed inset-0 z-50 hidden bg-black/40 flex items-center justify-center">
     <div class="bg-white rounded-lg p-4 w-72 shadow-2xl">
         <h3 class="font-bold text-gray-800 text-sm mb-2">Add Tag</h3><input type="hidden" id="tagOId">
-        <div class="flex flex-wrap gap-1.5 mb-2"><?php foreach(['REPEAT','URGENT','VIP','GIFT','FOLLOW UP','COD VERIFIED','ADVANCE PAID'] as $p): ?><button onclick="subTag('<?= $p ?>')" class="text-[10px] bg-gray-100 hover:bg-blue-100 px-2 py-1 rounded"><?= $p ?></button><?php endforeach; ?></div>
-        <div class="flex gap-1.5"><input type="text" id="tagIn" placeholder="Custom..." class="flex-1 px-2.5 py-1.5 border rounded text-xs" onkeydown="if(event.key==='Enter')subTag(this.value)"><button onclick="subTag(document.getElementById('tagIn').value)" class="bg-blue-600 text-white px-3 py-1.5 rounded text-xs">Add</button></div>
-        <button onclick="document.getElementById('tagModal').classList.add('hidden')" class="mt-1.5 text-[10px] text-gray-400 w-full text-center">Cancel</button>
+        <div class="flex flex-wrap gap-1.5 mb-2"><?php foreach(['REPEAT','URGENT','VIP','GIFT','FOLLOW UP','COD VERIFIED','ADVANCE PAID'] as $p): ?><button type="button" onclick="subTag('<?= $p ?>')" class="text-[10px] bg-gray-100 hover:bg-blue-100 px-2 py-1 rounded"><?= $p ?></button><?php endforeach; ?></div>
+        <div class="flex gap-1.5"><input type="text" id="tagIn" placeholder="Custom..." class="flex-1 px-2.5 py-1.5 border rounded text-xs" onkeydown="if(event.key==='Enter'){event.preventDefault();subTag(this.value)}"><button type="button" onclick="subTag(document.getElementById('tagIn').value)" class="bg-blue-600 text-white px-3 py-1.5 rounded text-xs">Add</button></div>
+        <button type="button" onclick="document.getElementById('tagModal').classList.add('hidden')" class="mt-1.5 text-[10px] text-gray-400 w-full text-center">Cancel</button>
     </div>
 </div>
 
