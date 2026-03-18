@@ -6,956 +6,1650 @@ $db = Database::getInstance();
 $pageTitle = 'Call Center';
 $tab = $_GET['tab'] ?? 'dashboard';
 
-// Helper: safe fetch single value
-function ccVal($db, $sql, $params, $col, $default = 0) {
-    $row = $db->fetch($sql, $params);
-    return ($row && isset($row[$col])) ? $row[$col] : $default;
-}
-
 // ══════════════════════════════════════════
-// ── Auto-create tables if not exist ──────
+// ── Auto-create / migrate tables ─────────
 // ══════════════════════════════════════════
 try {
-$db->query("CREATE TABLE IF NOT EXISTS cc_channels (
+// ManyDial settings
+$db->query("CREATE TABLE IF NOT EXISTS md_settings (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    channel_type ENUM('sip','whatsapp','messenger','sms','viber','telegram') NOT NULL,
-    channel_name VARCHAR(100) NOT NULL,
-    config JSON DEFAULT NULL,
-    is_active TINYINT(1) NOT NULL DEFAULT 1,
-    sort_order INT DEFAULT 0,
+    setting_key VARCHAR(100) NOT NULL UNIQUE,
+    setting_value TEXT DEFAULT NULL,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+// Caller IDs registered with ManyDial
+$db->query("CREATE TABLE IF NOT EXISTS md_caller_ids (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    label VARCHAR(100) NOT NULL DEFAULT '',
+    caller_id VARCHAR(50) NOT NULL,
+    business_name VARCHAR(150) DEFAULT NULL,
+    status ENUM('pending','approved','rejected','unknown') DEFAULT 'pending',
+    manydial_response JSON DEFAULT NULL,
+    is_active TINYINT(1) DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_caller (caller_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+// Call automation logs
+$db->query("CREATE TABLE IF NOT EXISTS md_call_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    call_type ENUM('automation','click_to_call','call_center') NOT NULL DEFAULT 'automation',
+    caller_id VARCHAR(50) DEFAULT NULL,
+    phone_number VARCHAR(50) DEFAULT NULL,
+    customer_name VARCHAR(200) DEFAULT NULL,
+    customer_id INT DEFAULT NULL,
+    order_id INT DEFAULT NULL,
+    agent_id INT DEFAULT NULL,
+    agent_email VARCHAR(150) DEFAULT NULL,
+    per_call_duration INT DEFAULT NULL,
+    status ENUM('initiated','answered','missed','failed','busy','no_answer','completed') DEFAULT 'initiated',
+    duration_seconds INT DEFAULT 0,
+    actions_taken JSON DEFAULT NULL,
+    sms_sent TEXT DEFAULT NULL,
+    recording_url VARCHAR(500) DEFAULT NULL,
+    forward_number VARCHAR(50) DEFAULT NULL,
+    delivery_hook_payload JSON DEFAULT NULL,
+    call_payload VARCHAR(500) DEFAULT NULL,
+    started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ended_at DATETIME DEFAULT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_phone (phone_number),
+    INDEX idx_status (status),
+    INDEX idx_started (started_at),
+    INDEX idx_order (order_id),
+    INDEX idx_customer (customer_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+// Call Center agents
+$db->query("CREATE TABLE IF NOT EXISTS md_agents (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    caller_id VARCHAR(50) NOT NULL,
+    name VARCHAR(150) NOT NULL,
+    email VARCHAR(150) NOT NULL,
+    phone VARCHAR(50) DEFAULT NULL,
+    password_hash VARCHAR(255) DEFAULT NULL,
+    call_direction ENUM('inbound','outbound','both') DEFAULT 'both',
+    phone_type ENUM('WEBPHONE','CELLPHONE','SOFTPHONE') DEFAULT 'WEBPHONE',
+    auto_connect TINYINT(1) DEFAULT 1,
+    expires_at DATE DEFAULT NULL,
+    manydial_agent_id VARCHAR(100) DEFAULT NULL,
+    status ENUM('active','inactive','deleted') DEFAULT 'active',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_email_caller (email, caller_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+// Call automation templates
+$db->query("CREATE TABLE IF NOT EXISTS md_call_templates (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(150) NOT NULL,
+    caller_id VARCHAR(50) NOT NULL,
+    per_call_duration INT DEFAULT 5,
+    messages JSON NOT NULL,
+    buttons JSON DEFAULT NULL,
+    delivery_hook VARCHAR(500) DEFAULT NULL,
+    call_payload VARCHAR(500) DEFAULT NULL,
+    is_active TINYINT(1) DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-$db->query("CREATE TABLE IF NOT EXISTS cc_numbers (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    number VARCHAR(50) NOT NULL,
-    label VARCHAR(100) DEFAULT NULL,
-    provider VARCHAR(100) DEFAULT NULL,
-    pbx_type VARCHAR(30) DEFAULT 'generic',
-    sip_server VARCHAR(255) DEFAULT NULL,
-    sip_port INT DEFAULT 5060,
-    ws_uri VARCHAR(500) DEFAULT NULL,
-    sip_username VARCHAR(100) DEFAULT NULL,
-    sip_password VARCHAR(255) DEFAULT NULL,
-    sip_transport ENUM('ws','wss','tcp','udp') DEFAULT 'wss',
-    sip_realm VARCHAR(255) DEFAULT NULL,
-    stun_server VARCHAR(255) DEFAULT 'stun:stun.l.google.com:19302',
-    turn_server VARCHAR(255) DEFAULT NULL,
-    turn_user VARCHAR(100) DEFAULT NULL,
-    turn_pass VARCHAR(255) DEFAULT NULL,
-    caller_id VARCHAR(50) DEFAULT NULL,
-    channel_id INT DEFAULT NULL,
-    is_active TINYINT(1) NOT NULL DEFAULT 1,
-    last_health_check DATETIME DEFAULT NULL,
-    last_health_status ENUM('ok','warn','fail','unknown') DEFAULT 'unknown',
-    last_health_message TEXT DEFAULT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_channel (channel_id),
-    INDEX idx_active (is_active)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-
-$db->query("CREATE TABLE IF NOT EXISTS cc_call_logs (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    direction ENUM('inbound','outbound','internal') NOT NULL DEFAULT 'outbound',
-    channel_type VARCHAR(30) DEFAULT 'sip',
-    caller_number VARCHAR(50) DEFAULT NULL,
-    callee_number VARCHAR(50) DEFAULT NULL,
-    customer_name VARCHAR(200) DEFAULT NULL,
-    customer_id INT DEFAULT NULL,
-    order_id INT DEFAULT NULL,
-    number_id INT DEFAULT NULL,
-    agent_id INT DEFAULT NULL,
-    agent_name VARCHAR(100) DEFAULT NULL,
-    status ENUM('initiated','ringing','answered','completed','missed','failed','busy','no_answer','voicemail') NOT NULL DEFAULT 'initiated',
-    duration_seconds INT DEFAULT 0,
-    recording_url VARCHAR(500) DEFAULT NULL,
-    recording_file VARCHAR(500) DEFAULT NULL,
-    notes TEXT DEFAULT NULL,
-    tags VARCHAR(255) DEFAULT NULL,
-    started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    answered_at DATETIME DEFAULT NULL,
-    ended_at DATETIME DEFAULT NULL,
-    metadata JSON DEFAULT NULL,
-    INDEX idx_direction (direction),
-    INDEX idx_status (status),
-    INDEX idx_started (started_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-
-// Safe column addition for existing tables
-$existingCols = [];
-try { foreach ($db->fetchAll("SHOW COLUMNS FROM cc_numbers") ?: [] as $cr) $existingCols[] = $cr['Field'] ?? ''; } catch (\Throwable $e) {}
-$adds = [
-    'pbx_type' => "ADD COLUMN pbx_type VARCHAR(30) DEFAULT 'generic' AFTER provider",
-    'ws_uri' => "ADD COLUMN ws_uri VARCHAR(500) DEFAULT NULL AFTER sip_port",
-    'sip_realm' => "ADD COLUMN sip_realm VARCHAR(255) DEFAULT NULL AFTER sip_transport",
-    'turn_server' => "ADD COLUMN turn_server VARCHAR(255) DEFAULT NULL AFTER stun_server",
-    'turn_user' => "ADD COLUMN turn_user VARCHAR(100) DEFAULT NULL AFTER turn_server",
-    'turn_pass' => "ADD COLUMN turn_pass VARCHAR(255) DEFAULT NULL AFTER turn_user",
-    'caller_id' => "ADD COLUMN caller_id VARCHAR(50) DEFAULT NULL AFTER turn_pass",
-];
-foreach ($adds as $col => $sql) { if (!in_array($col, $existingCols)) { try { $db->query("ALTER TABLE cc_numbers $sql"); } catch (\Throwable $e) {} } }
 } catch (\Throwable $e) {}
 
+// ─── Helper: get MD setting ───────────────────────────────────────────────
+function mdSetting($key, $default = '') {
+    global $db;
+    try {
+        $row = $db->fetch("SELECT setting_value FROM md_settings WHERE setting_key=?", [$key]);
+        return $row['setting_value'] ?? $default;
+    } catch (\Throwable $e) { return $default; }
+}
+function mdSetSetting($key, $value) {
+    global $db;
+    try {
+        $db->query("INSERT INTO md_settings (setting_key, setting_value) VALUES (?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_at=NOW()", [$key, $value]);
+    } catch (\Throwable $e) {}
+}
+
+// ─── ManyDial API helper ──────────────────────────────────────────────────
+function mdApiCall($endpoint, $method = 'POST', $data = [], $isJson = true) {
+    $apiKey = mdSetting('md_api_key');
+    if (!$apiKey) return ['success'=>false,'error'=>'API key not configured'];
+
+    $baseUrl = 'https://api.manydial.com/v1';
+    $url = $baseUrl . $endpoint;
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'x-api-key: ' . $apiKey,
+        $isJson ? 'Content-Type: application/json' : 'Content-Type: multipart/form-data',
+    ]);
+
+    if ($method === 'POST') {
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $isJson ? json_encode($data) : $data);
+    } elseif ($method === 'DELETE') {
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
+        if (!empty($data)) curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    }
+    // GET: no body needed, params already in URL
+
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+
+    if ($curlError) return ['success'=>false,'error'=>$curlError];
+    $decoded = json_decode($response, true);
+    return $decoded ?? ['success'=>false,'error'=>'Invalid response','raw'=>$response];
+}
+
+// FormData version for Caller ID registration
+function mdApiCallFormData($endpoint, $data = []) {
+    $apiKey = mdSetting('md_api_key');
+    if (!$apiKey) return ['success'=>false,'error'=>'API key not configured'];
+
+    $url = 'https://api.manydial.com/v1' . $endpoint;
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['x-api-key: ' . $apiKey]);
+    $response = curl_exec($ch);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+    if ($curlError) return ['success'=>false,'error'=>$curlError];
+    return json_decode($response, true) ?? ['success'=>false,'error'=>'Invalid response'];
+}
+
 // ══════════════════════════════════════════
-// ── AJAX Handlers ────────────────────────
+// ── POST action handlers ──────────────────
 // ══════════════════════════════════════════
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+$msg = '';
+$msgType = 'success';
+
+// ── GET API test handler ──
+if (($_GET['action'] ?? '') === 'api_test') {
     header('Content-Type: application/json');
+    // Try a simple call to verify API key works
+    // We pass a dummy caller_id to get a structured response (even 4xx confirms connection)
+    $apiKey = mdSetting('md_api_key');
+    if (!$apiKey) {
+        echo json_encode(['success'=>false,'error'=>'No API key configured']);
+        exit;
+    }
+    $ch = curl_init('https://api.manydial.com/v1/portal/call-center/agent-list?callerId=%2B8800000000000');
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>true, CURLOPT_TIMEOUT=>10, CURLOPT_HTTPHEADER=>["x-api-key: $apiKey",'Content-Type: application/json']]);
+    $resp = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err = curl_error($ch);
+    curl_close($ch);
+    $parsed = json_decode($resp, true);
+    // Any structured JSON response means the API is reachable and key was processed
+    $connected = !$err && $httpCode > 0 && is_array($parsed);
+    echo json_encode(['success'=>$connected,'http_code'=>$httpCode,'response'=>$parsed,'api_key_set'=>true,'curl_error'=>$err?:null]);
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
-    if ($action === 'save_channel') {
-        $chId = intval($_POST['ch_id'] ?? 0);
-        $data = [
-            'channel_type' => sanitize($_POST['channel_type'] ?? 'sip'),
-            'channel_name' => sanitize($_POST['channel_name'] ?? ''),
-            'config' => json_encode(['api_key'=>sanitize($_POST['ch_api_key']??''),'api_secret'=>sanitize($_POST['ch_api_secret']??''),'webhook_url'=>sanitize($_POST['ch_webhook_url']??''),'phone_number'=>sanitize($_POST['ch_phone_number']??''),'page_id'=>sanitize($_POST['ch_page_id']??''),'access_token'=>sanitize($_POST['ch_access_token']??''),'extra'=>sanitize($_POST['ch_extra']??'')]),
-            'is_active' => isset($_POST['ch_active']) ? 1 : 0,
-            'sort_order' => intval($_POST['ch_sort_order'] ?? 0),
+    // ── Save API settings ──
+    if ($action === 'save_settings') {
+        mdSetSetting('md_api_key', sanitize($_POST['md_api_key'] ?? ''));
+        mdSetSetting('md_delivery_hook', sanitize($_POST['md_delivery_hook'] ?? ''));
+        mdSetSetting('md_default_caller_id', sanitize($_POST['md_default_caller_id'] ?? ''));
+        mdSetSetting('md_default_duration', intval($_POST['md_default_duration'] ?? 5));
+        header('Location: ?tab=settings&msg=Settings+saved'); exit;
+    }
+
+    // ── Register Caller ID ──
+    if ($action === 'register_caller_id') {
+        $formData = [
+            'ownerName'         => sanitize($_POST['ownerName'] ?? ''),
+            'businessName'      => sanitize($_POST['businessName'] ?? ''),
+            'email'             => sanitize($_POST['email'] ?? ''),
+            'phone'             => sanitize($_POST['phone'] ?? ''),
+            'passportOrIdImage' => sanitize($_POST['passportOrIdImage'] ?? ''),
+            'nid'               => sanitize($_POST['nid'] ?? ''),
+            'dob'               => sanitize($_POST['dob'] ?? ''),
+            'fullNo'            => sanitize($_POST['fullNo'] ?? ''),
+            'doc'               => sanitize($_POST['doc'] ?? ''),
+            'fatherName'        => sanitize($_POST['fatherName'] ?? ''),
+            'countryChrCode'    => sanitize($_POST['countryChrCode'] ?? ''),
+            'nameOrFirmName'    => sanitize($_POST['nameOrFirmName'] ?? ''),
+            'stateOrVillage'    => sanitize($_POST['stateOrVillage'] ?? ''),
+            'genderDivision'    => sanitize($_POST['genderDivision'] ?? ''),
+            'district'          => sanitize($_POST['district'] ?? ''),
+            'upazilaThan'       => sanitize($_POST['upazilaThan'] ?? ''),
+            'postCode'          => sanitize($_POST['postCode'] ?? ''),
+            'redirectingCallback' => sanitize($_POST['redirectingCallback'] ?? ''),
+            'smsEnabled'        => sanitize($_POST['smsEnabled'] ?? 'No'),
+            'callerPayload'     => sanitize($_POST['callerPayload'] ?? ''),
         ];
-        if ($chId) $db->update('cc_channels', $data, 'id = ?', [$chId]);
-        else { $db->insert('cc_channels', $data); $chId = $db->lastInsertId(); }
-        echo json_encode(['success'=>true,'id'=>$chId]); exit;
-    }
-    if ($action === 'delete_channel') { $db->delete('cc_channels','id = ?',[intval($_POST['ch_id']??0)]); echo json_encode(['success'=>true]); exit; }
 
-    if ($action === 'save_number') {
-        $numId = intval($_POST['num_id'] ?? 0);
-        $data = ['number'=>sanitize($_POST['num_number']??''),'label'=>sanitize($_POST['num_label']??''),'provider'=>sanitize($_POST['num_provider']??''),'pbx_type'=>sanitize($_POST['num_pbx_type']??'generic'),'sip_server'=>sanitize($_POST['num_sip_server']??''),'sip_port'=>intval($_POST['num_sip_port']??5060),'ws_uri'=>sanitize($_POST['num_ws_uri']??''),'sip_username'=>sanitize($_POST['num_sip_username']??''),'sip_transport'=>sanitize($_POST['num_sip_transport']??'wss'),'sip_realm'=>sanitize($_POST['num_sip_realm']??''),'stun_server'=>sanitize($_POST['num_stun_server']??'stun:stun.l.google.com:19302'),'turn_server'=>sanitize($_POST['num_turn_server']??''),'turn_user'=>sanitize($_POST['num_turn_user']??''),'turn_pass'=>$_POST['num_turn_pass']??'','caller_id'=>sanitize($_POST['num_caller_id']??''),'channel_id'=>intval($_POST['num_channel_id']??0)?:null,'is_active'=>intval($_POST['num_active']??1)];
-        // Password: use raw POST value, no sanitize (may contain @#$ etc)
-        $sipPass = $_POST['num_sip_password'] ?? '';
-        if ($numId) {
-            // Edit: only update password if user typed something
-            if (strlen($sipPass) > 0) $data['sip_password'] = $sipPass;
-            $db->update('cc_numbers', $data, 'id = ?', [$numId]);
+        // Handle file upload for signature
+        if (!empty($_FILES['signature']['name']) && $_FILES['signature']['error'] === UPLOAD_ERR_OK) {
+            $formData['signature'] = new CURLFile(
+                $_FILES['signature']['tmp_name'],
+                $_FILES['signature']['type'] ?: 'image/jpeg',
+                $_FILES['signature']['name']
+            );
         } else {
-            // New: always set password (even if empty)
-            $data['sip_password'] = $sipPass;
-            $db->insert('cc_numbers', $data);
-            $numId = $db->lastInsertId();
-        }
-        // Verify password was saved
-        $check = $db->fetch("SELECT LENGTH(sip_password) as pw_len FROM cc_numbers WHERE id = ?", [$numId]);
-        $pwLen = intval($check['pw_len'] ?? 0);
-        echo json_encode(['success'=>true,'id'=>$numId,'password_saved'=>$pwLen > 0,'password_length'=>$pwLen]); exit;
-    }
-    if ($action === 'delete_number') { $db->delete('cc_numbers','id = ?',[intval($_POST['num_id']??0)]); echo json_encode(['success'=>true]); exit; }
-
-    if ($action === 'get_sip_creds') {
-        $num = $db->fetch("SELECT * FROM cc_numbers WHERE id = ? AND is_active = 1", [intval($_POST['num_id']??0)]);
-        if (!$num) { echo json_encode(['success'=>false,'message'=>'Not found']); exit; }
-        $wsUri = $num['ws_uri'] ?? '';
-        $server = $num['sip_server'] ?? '';
-        $ip = !empty($server) ? gethostbyname($server) : '';
-
-        // Build list of WS URIs to try (primary + fallbacks)
-        $wsUris = [];
-        if (!empty($wsUri)) $wsUris[] = $wsUri;
-
-        if (!empty($server)) {
-            // PortSIP PBX: 5066(ws), 5067(wss)
-            // FreePBX/Asterisk: 8089(wss), 8088(ws)
-            // 3CX: 5090(wss) | Common: 443, 7443
-            $tryPorts = [8089,5067,5066,5090,7443,8443,443,8088,8900,10443];
-            $paths = ['/ws','/wss','/websocket',''];
-
-            // Scan open ports
-            $openPorts = [];
-            foreach ($tryPorts as $p) {
-                $fp = @fsockopen($ip ?: $server, $p, $en, $es, 2);
-                if ($fp) { fclose($fp); $openPorts[] = $p; }
-            }
-
-            // Generate candidate URIs from open ports
-            foreach ($openPorts as $p) {
-                $scheme = in_array($p, [5066, 8088, 80]) ? 'ws' : 'wss';
-                foreach ($paths as $path) {
-                    $candidate = "{$scheme}://{$server}:{$p}{$path}";
-                    if (!in_array($candidate, $wsUris)) $wsUris[] = $candidate;
-                }
-            }
-
-            // Save first discovered URI if none configured
-            if (empty($num['ws_uri'] ?? '') && !empty($wsUris)) {
-                $db->update('cc_numbers', ['ws_uri' => $wsUris[0]], 'id = ?', [intval($num['id']??0)]);
-            }
+            unset($formData['signature']); // Don't send empty file field
         }
 
-        $realm = ($num['sip_realm'] ?? '') ?: ($server);
-        echo json_encode([
-            'success'=>true,
-            'ws_uri'=>$wsUris[0] ?? '',
-            'ws_uris'=>$wsUris, // All candidates for fallback
-            'sip_server'=>$server,
-            'sip_user'=>$num['sip_username']??'',
-            'sip_pass'=>$num['sip_password']??'',
-            'sip_realm'=>$realm,
-            'stun'=>$num['stun_server']??'stun:stun.l.google.com:19302',
-            'turn'=>$num['turn_server']??'',
-            'turn_user'=>$num['turn_user']??'',
-            'turn_pass'=>$num['turn_pass']??'',
-            'caller_id'=>($num['caller_id']??'')?:($num['number']??''),
-            'number'=>$num['number']??'',
-            'label'=>$num['label']??'',
-            'ip'=>$ip,
-        ]);
-        exit;
-    }
-
-    if ($action === 'health_check') {
-        $num = $db->fetch("SELECT * FROM cc_numbers WHERE id = ?", [intval($_POST['num_id']??0)]);
-        if (!$num) { echo json_encode(['success'=>false,'message'=>'Not found']); exit; }
-        $server=$num['sip_server']??''; $port=intval($num['sip_port']??5060); $status='unknown'; $message='';
-        if (empty($server)) { $status='fail'; $message='No SIP server'; }
-        else {
-            $ip = gethostbyname($server);
-            if ($ip===$server && !filter_var($server,FILTER_VALIDATE_IP)) { $status='fail'; $message="DNS failed: $server"; }
-            else {
-                $sipOk=false; $wsOk=false; $foundWsPort=0;
-                $fp=@fsockopen($ip,$port,$en,$es,4); if($fp){fclose($fp);$sipOk=true;}
-                // Try specific WS URI first, then scan common ports
-                $ws=$num['ws_uri']??'';
-                if(!empty($ws)&&preg_match('/:(\d+)/',$ws,$m)){
-                    $wsPort=intval($m[1]);
-                    $fp2=@fsockopen($ip,$wsPort,$e2,$es2,3);if($fp2){fclose($fp2);$wsOk=true;$foundWsPort=$wsPort;}
-                }
-                if(!$wsOk){
-                    // Auto-scan common WebSocket ports
-                    $scanPorts=[8089,5067,5066,5090,443,7443,8088,5060,5061,80,8443,8900,10443];
-                    foreach($scanPorts as $sp){
-                        $fp3=@fsockopen($ip,$sp,$e3,$es3,2);
-                        if($fp3){fclose($fp3);$wsOk=true;$foundWsPort=$sp;break;}
-                    }
-                }
-                // Auto-save discovered WS port if we found one and didn't have one configured
-                if($wsOk && $foundWsPort && empty($num['ws_uri']??'')){
-                    $scheme=($num['sip_transport']??'wss')==='wss'?'wss':'ws';
-                    $autoUri="{$scheme}://{$server}:{$foundWsPort}/ws";
-                    $db->update('cc_numbers',['ws_uri'=>$autoUri],'id = ?',[intval($num['id']??0)]);
-                }
-                if($sipOk&&$wsOk){$status='ok';$message="✓ DNS($ip) · SIP:$port ✓ · WS:$foundWsPort ✓";}
-                elseif($wsOk){$status='warn';$message="⚠ WS:$foundWsPort OK, SIP:$port unreachable";}
-                elseif($sipOk){$status='warn';$message="⚠ SIP:$port OK, but no WebSocket port found. Scanned: 8089,5090,443,7443,8088";}
-                else{$status='fail';$message="✗ SIP:$port unreachable, no WS port found at $server($ip)";}
-            }
+        $result = mdApiCallFormData('/portal/callerid', $formData);
+        $callerPhone = sanitize($_POST['phone'] ?? '');
+        
+        if (!empty($result['success']) || !empty($result['callerid'])) {
+            try {
+                $db->query("INSERT INTO md_caller_ids (label, caller_id, business_name, status, manydial_response) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE manydial_response=VALUES(manydial_response), updated_at=NOW()",
+                    [$formData['businessName'] ?: $callerPhone, $callerPhone, $formData['businessName'], 'pending', json_encode($result)]);
+            } catch (\Throwable $e) {}
+            header('Location: ?tab=caller-ids&msg=Caller+ID+registration+submitted'); exit;
+        } else {
+            $msg = 'Registration failed: ' . ($result['message'] ?? $result['error'] ?? 'Unknown error');
+            $msgType = 'error';
         }
-        $db->update('cc_numbers',['last_health_check'=>date('Y-m-d H:i:s'),'last_health_status'=>$status,'last_health_message'=>$message],'id = ?',[intval($num['id']??0)]);
-        echo json_encode(['success'=>true,'status'=>$status,'message'=>$message]); exit;
     }
 
-    // ── Port Scan (find WebSocket port) ──
-    if ($action === 'port_scan') {
-        $server = sanitize($_POST['scan_server'] ?? '');
-        if (empty($server)) { echo json_encode(['success'=>false,'message'=>'No server']); exit; }
-        $ip = gethostbyname($server);
-        if ($ip===$server && !filter_var($server,FILTER_VALIDATE_IP)) { echo json_encode(['success'=>false,'message'=>"DNS failed: $server"]); exit; }
-        $open = [];
-        $scanPorts = [5060,5061,8089,5067,5066,5090,443,7443,8088,80,8443,8900,10443];
-        foreach ($scanPorts as $p) {
-            $fp = @fsockopen($ip, $p, $en, $es, 2);
-            if ($fp) { fclose($fp); $open[] = $p; }
+    // ── Create Call Automation ──
+    if ($action === 'create_call_automation') {
+        $callerId   = sanitize($_POST['caller_id'] ?? '');
+        $phone      = sanitize($_POST['phone_number'] ?? '');
+        $duration   = intval($_POST['per_call_duration'] ?? 5);
+        $deliveryHook = sanitize($_POST['delivery_hook'] ?? '');
+        $callPayload  = sanitize($_POST['call_payload'] ?? '');
+
+        // Parse messages JSON
+        $messagesJson = trim($_POST['messages_json'] ?? '');
+        $messages = json_decode($messagesJson, true);
+        if (!is_array($messages)) { $msg = 'Invalid messages JSON'; $msgType = 'error'; goto done; }
+
+        // Parse buttons JSON (optional)
+        $buttonsJson = trim($_POST['buttons_json'] ?? '');
+        $buttons = $buttonsJson ? json_decode($buttonsJson, true) : null;
+
+        $payload = [
+            'callerId'       => $callerId,
+            'phoneNumber'    => $phone,
+            'perCallDuration'=> $duration,
+            'messages'       => $messages,
+        ];
+        if ($deliveryHook) $payload['deliveryHook'] = $deliveryHook;
+        if ($buttons)      $payload['buttons']      = $buttons;
+        if ($callPayload)  $payload['callPayload']  = $callPayload;
+
+        $result = mdApiCall('/portal/callIdDispatch', 'POST', $payload);
+
+        // Log the attempt
+        $custId = null; $orderId = null;
+        // Try to find customer by phone
+        try {
+            $cust = $db->fetch("SELECT id FROM customers WHERE customer_phone LIKE ?", ['%'.preg_replace('/[^0-9]/','',$phone).'%']);
+            $custId = $cust['id'] ?? null;
+        } catch (\Throwable $e) {}
+
+        try {
+            $db->insert('md_call_logs', [
+                'call_type'        => 'automation',
+                'caller_id'        => $callerId,
+                'phone_number'     => $phone,
+                'customer_id'      => $custId,
+                'per_call_duration'=> $duration,
+                'call_payload'     => $callPayload ?: $deliveryHook, // store delivery hook as payload ref
+                'status'           => (!empty($result['success'])) ? 'initiated' : 'failed',
+                'delivery_hook_payload' => json_encode($result),
+            ]);
+        } catch (\Throwable $e) {}
+
+        if (!empty($result['success'])) {
+            header('Location: ?tab=call-logs&msg=Call+initiated+successfully'); exit;
+        } else {
+            $msg = 'Call failed: ' . ($result['message'] ?? $result['error'] ?? 'Unknown error');
+            $msgType = 'error';
         }
-        echo json_encode(['success'=>true,'ip'=>$ip,'open_ports'=>$open,'scanned'=>$scanPorts]);
-        exit;
     }
 
-    if ($action === 'health_check_all') {
-        $results = [];
-        foreach ($db->fetchAll("SELECT id FROM cc_numbers WHERE is_active = 1") ?: [] as $n) {
-            $num=$db->fetch("SELECT * FROM cc_numbers WHERE id = ?",[$n['id']]); if(!$num)continue;
-            $server=$num['sip_server']??''; $port=intval($num['sip_port']??5060); $st='unknown'; $msg='';
-            if(empty($server)){$st='fail';$msg='No SIP server';}else{$ip=gethostbyname($server);if($ip===$server&&!filter_var($server,FILTER_VALIDATE_IP)){$st='fail';$msg="DNS failed: $server";}else{$fp=@fsockopen($ip,$port,$en,$es,3);if($fp){fclose($fp);$st='ok';$msg="✓ $server:$port ($ip)";}else{$st='fail';$msg="✗ $server:$port unreachable";}}}
-            $db->update('cc_numbers',['last_health_check'=>date('Y-m-d H:i:s'),'last_health_status'=>$st,'last_health_message'=>$msg],'id = ?',[$n['id']]);
-            $results[]=['id'=>$n['id'],'number'=>$num['number']??'','status'=>$st,'message'=>$msg];
+    // ── Save Call Template ──
+    if ($action === 'save_template') {
+        $data = [
+            'name'             => sanitize($_POST['tpl_name'] ?? ''),
+            'caller_id'        => sanitize($_POST['tpl_caller_id'] ?? ''),
+            'per_call_duration'=> intval($_POST['tpl_duration'] ?? 5),
+            'messages'         => $_POST['tpl_messages'] ?? '[]',
+            'buttons'          => $_POST['tpl_buttons'] ?? null,
+            'delivery_hook'    => sanitize($_POST['tpl_delivery_hook'] ?? ''),
+            'call_payload'     => sanitize($_POST['tpl_call_payload'] ?? ''),
+            'is_active'        => 1,
+        ];
+        $id = intval($_POST['tpl_id'] ?? 0);
+        if ($id) {
+            $db->update('md_call_templates', $data, 'id=?', [$id]);
+        } else {
+            $db->insert('md_call_templates', $data);
         }
-        echo json_encode(['success'=>true,'results'=>$results]); exit;
+        header('Location: ?tab=templates&msg=Template+saved'); exit;
     }
 
-    if ($action === 'log_call') {
-        $logData = ['direction'=>sanitize($_POST['log_direction']??'outbound'),'channel_type'=>sanitize($_POST['log_channel_type']??'sip'),'caller_number'=>sanitize($_POST['log_caller']??''),'callee_number'=>sanitize($_POST['log_callee']??''),'customer_name'=>sanitize($_POST['log_customer_name']??''),'customer_id'=>intval($_POST['log_customer_id']??0)?:null,'order_id'=>intval($_POST['log_order_id']??0)?:null,'number_id'=>intval($_POST['log_number_id']??0)?:null,'agent_id'=>intval($_SESSION['admin_id']??0)?:null,'agent_name'=>$_SESSION['admin_name']??'System','status'=>sanitize($_POST['log_status']??'initiated'),'duration_seconds'=>intval($_POST['log_duration']??0),'notes'=>sanitize($_POST['log_notes']??''),'tags'=>sanitize($_POST['log_tags']??''),'started_at'=>sanitize($_POST['log_started_at']??date('Y-m-d H:i:s'))];
-        if(!empty($_POST['log_answered_at']))$logData['answered_at']=sanitize($_POST['log_answered_at']);
-        if(!empty($_POST['log_ended_at']))$logData['ended_at']=sanitize($_POST['log_ended_at']);
-        $logId=intval($_POST['log_id']??0);
-        if($logId)$db->update('cc_call_logs',$logData,'id = ?',[$logId]);
-        else{$db->insert('cc_call_logs',$logData);$logId=$db->lastInsertId();}
-        echo json_encode(['success'=>true,'id'=>$logId]); exit;
+    // ── Delete Template ──
+    if ($action === 'delete_template') {
+        $db->delete('md_call_templates', 'id=?', [intval($_POST['tpl_id'] ?? 0)]);
+        header('Location: ?tab=templates&msg=Template+deleted'); exit;
     }
-    if ($action === 'update_call_status') {
-        $logId=intval($_POST['log_id']??0); $u=['status'=>sanitize($_POST['log_status']??'completed')];
-        if(!empty($_POST['log_duration']))$u['duration_seconds']=intval($_POST['log_duration']);
-        if(!empty($_POST['log_ended_at']))$u['ended_at']=sanitize($_POST['log_ended_at']);
-        if(!empty($_POST['log_answered_at']))$u['answered_at']=sanitize($_POST['log_answered_at']);
-        if(isset($_POST['log_notes'])&&$_POST['log_notes']!=='')$u['notes']=sanitize($_POST['log_notes']);
-        if(!empty($_POST['log_tags']))$u['tags']=sanitize($_POST['log_tags']);
-        $db->update('cc_call_logs',$u,'id = ?',[$logId]); echo json_encode(['success'=>true]); exit;
+
+    // ── Create Call Center ──
+    if ($action === 'create_call_center') {
+        $ccCallerId = trim(sanitize($_POST['cc_caller_id_manual'] ?? '')) ?: sanitize($_POST['cc_caller_id'] ?? '');
+        $payload = [
+            'callerId'    => $ccCallerId,
+            'callPrefix'  => sanitize($_POST['cc_call_prefix'] ?? ''),
+            'totalAgent'  => intval($_POST['cc_total_agents'] ?? 5),
+            'statusHook'  => sanitize($_POST['cc_status_hook'] ?? ''),
+            'endCallHook' => sanitize($_POST['cc_endcall_hook'] ?? ''),
+            'redirectUrl' => sanitize($_POST['cc_redirect_url'] ?? ''),
+            'domainUrl'   => sanitize($_POST['cc_domain_url'] ?? ''),
+        ];
+        $result = mdApiCall('/portal/call-center', 'POST', $payload);
+        if (!empty($result['success'])) {
+            header('Location: ?tab=call-center&msg=Call+Center+created'); exit;
+        } else {
+            $msg = 'Failed: ' . ($result['message'] ?? $result['error'] ?? 'Unknown error');
+            $msgType = 'error';
+        }
     }
-    if ($action === 'delete_call_log') { $db->delete('cc_call_logs','id = ?',[intval($_POST['log_id']??0)]); echo json_encode(['success'=>true]); exit; }
-    if ($action === 'customer_lookup') {
-        $q=sanitize($_POST['q']??''); if(strlen($q)<2){echo json_encode(['success'=>true,'results'=>[]]);exit;}
-        $r=$db->fetchAll("SELECT id,name,phone,email FROM customers WHERE phone LIKE ? OR name LIKE ? ORDER BY name LIMIT 10",["%$q%","%$q%"])?: [];
-        echo json_encode(['success'=>true,'results'=>$r]); exit;
+
+    // ── Renew Call Center ──
+    if ($action === 'renew_call_center') {
+        $payload = [
+            'callerId'   => sanitize($_POST['cc_caller_id'] ?? ''),
+            'expireDate' => sanitize($_POST['cc_expire_date'] ?? ''),
+        ];
+        $result = mdApiCall('/portal/call-center/renew', 'POST', $payload);
+        if (!empty($result['success'])) {
+            header('Location: ?tab=call-center&msg=Call+Center+renewed'); exit;
+        } else {
+            $msg = 'Failed: ' . ($result['message'] ?? $result['error'] ?? 'Unknown');
+            $msgType = 'error';
+        }
     }
-    echo json_encode(['success'=>false,'message'=>'Unknown action']); exit;
+
+    // ── Create Agent ──
+    if ($action === 'create_agent') {
+        $payload = [
+            'callerId'          => sanitize($_POST['ag_caller_id'] ?? ''),
+            'name'              => sanitize($_POST['ag_name'] ?? ''),
+            'email'             => sanitize($_POST['ag_email'] ?? ''),
+            'phone'             => sanitize($_POST['ag_phone'] ?? ''),
+            'password'          => $_POST['ag_password'] ?? '',
+            'callDirection'     => sanitize($_POST['ag_direction'] ?? 'both'),
+            'isAutoCallConnect' => ($_POST['ag_auto_connect'] ?? 'true') === 'true',
+            'phoneType'         => sanitize($_POST['ag_phone_type'] ?? 'WEBPHONE'),
+            'expiresOn'         => sanitize($_POST['ag_expires'] ?? date('Y-m-d', strtotime('+1 year'))),
+        ];
+        $result = mdApiCall('/portal/agent-request', 'POST', $payload);
+        if (!empty($result['success'])) {
+            // Save locally
+            try {
+                $db->insert('md_agents', [
+                    'caller_id'   => $payload['callerId'],
+                    'name'        => $payload['name'],
+                    'email'       => $payload['email'],
+                    'phone'       => $payload['phone'],
+                    'call_direction' => $payload['callDirection'],
+                    'auto_connect'   => $payload['isAutoCallConnect'] ? 1 : 0,
+                    'phone_type'     => $payload['phoneType'],
+                    'expires_at'     => $payload['expiresOn'],
+                    'status'         => 'active',
+                ]);
+            } catch (\Throwable $e) {}
+            header('Location: ?tab=agents&msg=Agent+created'); exit;
+        } else {
+            $msg = 'Agent creation failed: ' . ($result['message'] ?? $result['error'] ?? 'Unknown');
+            $msgType = 'error';
+        }
+    }
+
+    // ── Delete Agent ──
+    if ($action === 'delete_agent') {
+        $callerId = sanitize($_POST['ag_caller_id'] ?? '');
+        $email    = sanitize($_POST['ag_email'] ?? '');
+        $agentId  = intval($_POST['ag_id'] ?? 0);
+        $localId  = intval($_POST['ag_local_id'] ?? 0);
+        $url = '/portal/agents/delete?' . http_build_query(['email'=>$email,'callerId'=>$callerId]);
+        $result = mdApiCall($url, 'DELETE');
+        if (!empty($result['success'])) {
+            if ($localId) $db->update('md_agents', ['status'=>'deleted'], 'id=?', [$localId]);
+            header('Location: ?tab=agents&msg=Agent+deleted'); exit;
+        } else {
+            $msg = 'Delete failed: ' . ($result['message'] ?? $result['error'] ?? 'Unknown');
+            $msgType = 'error';
+        }
+    }
+
+    // ── Click to Call ──
+    if ($action === 'click_to_call') {
+        $callerId = sanitize($_POST['ctc_caller_id'] ?? '');
+        $email    = sanitize($_POST['ctc_email'] ?? '');
+        $number   = sanitize($_POST['ctc_number'] ?? '');
+        $payload  = sanitize($_POST['ctc_payload'] ?? '');
+
+        $data = ['callerId'=>$callerId,'email'=>$email,'number'=>$number];
+        if ($payload) $data['payload'] = $payload;
+
+        $result = mdApiCall('/portal/click-to-call', 'POST', $data);
+
+        // Log it
+        try {
+            $db->insert('md_call_logs', [
+                'call_type'  => 'click_to_call',
+                'caller_id'  => $callerId,
+                'phone_number' => $number,
+                'agent_email'  => $email,
+                'call_payload' => $payload,
+                'status'       => (!empty($result['success'])) ? 'initiated' : 'failed',
+                'delivery_hook_payload' => json_encode($result),
+            ]);
+        } catch (\Throwable $e) {}
+
+        header('Content-Type: application/json');
+        echo json_encode($result); exit;
+    }
+
+    done:
 }
 
-// ══════════════════════════════════════════
-// ── Load Stats (PHP 8 safe) ──────────────
-// ══════════════════════════════════════════
-$today = date('Y-m-d');
-$todayCalls     = intval(ccVal($db,"SELECT COUNT(*) as c FROM cc_call_logs WHERE DATE(started_at)=?",[$today],'c'));
-$todayAnswered  = intval(ccVal($db,"SELECT COUNT(*) as c FROM cc_call_logs WHERE DATE(started_at)=? AND status='completed'",[$today],'c'));
-$todayMissed    = intval(ccVal($db,"SELECT COUNT(*) as c FROM cc_call_logs WHERE DATE(started_at)=? AND status IN('missed','no_answer')",[$today],'c'));
-$todayDuration  = intval(ccVal($db,"SELECT COALESCE(SUM(duration_seconds),0) as s FROM cc_call_logs WHERE DATE(started_at)=? AND status='completed'",[$today],'s'));
-$activeChannels = intval(ccVal($db,"SELECT COUNT(*) as c FROM cc_channels WHERE is_active=1",[],'c'));
-$activeNumbers  = intval(ccVal($db,"SELECT COUNT(*) as c FROM cc_numbers WHERE is_active=1",[],'c'));
-$healthyNumbers = intval(ccVal($db,"SELECT COUNT(*) as c FROM cc_numbers WHERE is_active=1 AND last_health_status='ok'",[],'c'));
-$todayRate      = $todayCalls>0 ? round(($todayAnswered/$todayCalls)*100) : 0;
+// ── Fetch data for display ────────────────────────────────────────────────
+$mdApiKey     = mdSetting('md_api_key');
+$mdDeliveryHook = mdSetting('md_delivery_hook');
+$mdDefaultCaller = mdSetting('md_default_caller_id');
+$mdDefaultDuration = mdSetting('md_default_duration', 5);
 
-$channels    = $db->fetchAll("SELECT * FROM cc_channels ORDER BY sort_order,id") ?: [];
-$numbers     = $db->fetchAll("SELECT n.*,COALESCE(c.channel_name,'') as channel_name, LENGTH(n.sip_password) as pw_len FROM cc_numbers n LEFT JOIN cc_channels c ON n.channel_id=c.id ORDER BY n.is_active DESC,n.id") ?: [];
-$recentCalls = $db->fetchAll("SELECT * FROM cc_call_logs ORDER BY started_at DESC LIMIT 50") ?: [];
-$filteredCalls = [];
-if ($tab === 'history') {
-    $w=['1=1']; $hp=[];
-    if(!empty($_GET['dir'])){$w[]='direction=?';$hp[]=$_GET['dir'];}
-    if(!empty($_GET['status'])){$w[]='status=?';$hp[]=$_GET['status'];}
-    if(!empty($_GET['from'])){$w[]='DATE(started_at)>=?';$hp[]=$_GET['from'];}
-    if(!empty($_GET['to'])){$w[]='DATE(started_at)<=?';$hp[]=$_GET['to'];}
-    if(!empty($_GET['q'])){$sq='%'.sanitize($_GET['q']).'%';$w[]='(callee_number LIKE ? OR caller_number LIKE ? OR customer_name LIKE ?)';array_push($hp,$sq,$sq,$sq);}
-    $filteredCalls=$db->fetchAll("SELECT * FROM cc_call_logs WHERE ".implode(' AND ',$w)." ORDER BY started_at DESC LIMIT 200",$hp)?:[];
-}
-$stColors=['completed'=>'bg-green-100 text-green-700','answered'=>'bg-green-100 text-green-700','missed'=>'bg-red-100 text-red-700','no_answer'=>'bg-red-100 text-red-700','failed'=>'bg-red-100 text-red-700','busy'=>'bg-yellow-100 text-yellow-700','ringing'=>'bg-blue-100 text-blue-700','initiated'=>'bg-gray-100 text-gray-600'];
+$callerIds    = [];
+$callLogs     = [];
+$agents       = [];
+$templates    = [];
 
-include __DIR__ . '/../includes/header.php';
+try { $callerIds = $db->fetchAll("SELECT * FROM md_caller_ids ORDER BY created_at DESC"); } catch (\Throwable $e) {}
+try { $callLogs  = $db->fetchAll("SELECT l.*, c.customer_name as cname, o.order_number FROM md_call_logs l LEFT JOIN customers c ON c.id=l.customer_id LEFT JOIN orders o ON o.id=l.order_id ORDER BY l.created_at DESC LIMIT 200"); } catch (\Throwable $e) {}
+try { $agents    = $db->fetchAll("SELECT * FROM md_agents WHERE status != 'deleted' ORDER BY created_at DESC"); } catch (\Throwable $e) {}
+try { $templates = $db->fetchAll("SELECT * FROM md_call_templates WHERE is_active=1 ORDER BY created_at DESC"); } catch (\Throwable $e) {}
+
+// Stats
+$totalCalls    = count($callLogs);
+$todayCalls    = count(array_filter($callLogs, fn($l) => date('Y-m-d', strtotime($l['created_at'])) === date('Y-m-d')));
+$successCalls  = count(array_filter($callLogs, fn($l) => in_array($l['status'], ['answered','completed','initiated'])));
+$failedCalls   = count(array_filter($callLogs, fn($l) => in_array($l['status'], ['failed','missed','busy','no_answer'])));
+
+require_once __DIR__ . '/../includes/header.php';
+$urlMsg = $_GET['msg'] ?? '';
 ?>
+
 <style>
-.cc-tab{display:inline-flex;align-items:center;padding:10px 16px;font-size:14px;font-weight:500;border-bottom:2px solid transparent;transition:all .2s;border-radius:8px 8px 0 0;cursor:pointer;text-decoration:none;color:#6b7280}
-.cc-tab:hover{color:#374151;background:#f9fafb}
-.cc-tab.active{color:#2563eb;border-color:#2563eb;background:#eff6ff}
-.dial-btn{width:64px;height:64px;border-radius:16px;font-size:24px;font-weight:600;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;user-select:none;border:none}
-.dial-btn:active{transform:scale(.95)}
-@keyframes pulse-ring{0%{transform:scale(1);opacity:1}100%{transform:scale(1.5);opacity:0}}
-.pulse-ring{animation:pulse-ring 1.5s ease-out infinite}
-.health-ok{background:#dcfce7;color:#15803d}.health-warn{background:#fef9c3;color:#a16207}.health-fail{background:#fee2e2;color:#b91c1c}.health-unknown{background:#f3f4f6;color:#6b7280}
+:root { --md-primary:#6366f1; --md-accent:#f59e0b; --md-success:#10b981; --md-danger:#ef4444; }
+.md-tab-btn { padding:8px 18px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; transition:.15s; border:1.5px solid transparent; white-space:nowrap; }
+.md-tab-btn.active { background:var(--md-primary); color:#fff; }
+.md-tab-btn:not(.active) { background:#f8fafc; color:#64748b; border-color:#e2e8f0; }
+.md-tab-btn:not(.active):hover { background:#f1f5f9; color:#374151; }
+.md-card { background:#fff; border-radius:14px; border:1.5px solid #e2e8f0; overflow:hidden; }
+.md-badge { display:inline-flex; align-items:center; padding:2px 10px; border-radius:20px; font-size:11px; font-weight:600; }
+.md-badge.pending  { background:#fef3c7; color:#92400e; }
+.md-badge.approved { background:#d1fae5; color:#065f46; }
+.md-badge.rejected { background:#fee2e2; color:#991b1b; }
+.md-badge.initiated{ background:#e0e7ff; color:#3730a3; }
+.md-badge.answered { background:#d1fae5; color:#065f46; }
+.md-badge.failed   { background:#fee2e2; color:#991b1b; }
+.md-badge.missed   { background:#fef3c7; color:#92400e; }
+.md-input { width:100%; padding:8px 12px; border:1.5px solid #e2e8f0; border-radius:8px; font-size:13px; outline:none; transition:border-color .15s; }
+.md-input:focus { border-color:var(--md-primary); box-shadow:0 0 0 3px rgba(99,102,241,.1); }
+.md-btn { padding:8px 18px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; border:none; transition:.15s; }
+.md-btn-primary { background:var(--md-primary); color:#fff; }
+.md-btn-primary:hover { background:#4f46e5; }
+.md-btn-success { background:var(--md-success); color:#fff; }
+.md-btn-danger  { background:var(--md-danger); color:#fff; }
+.md-btn-secondary { background:#f1f5f9; color:#374151; border:1.5px solid #e2e8f0; }
+.md-label { font-size:12px; font-weight:600; color:#374151; margin-bottom:4px; display:block; }
+.md-section-title { font-size:14px; font-weight:700; color:#1e293b; border-bottom:2px solid #f1f5f9; padding-bottom:8px; margin-bottom:16px; }
+.stat-card { background:#fff; border-radius:12px; border:1.5px solid #e2e8f0; padding:16px 20px; }
+.json-editor { font-family:'Courier New',monospace; font-size:12px; background:#0f172a; color:#e2e8f0; border-radius:8px; padding:12px; resize:vertical; min-height:120px; border:none; width:100%; }
 </style>
 
-<div class="bg-white rounded-t-xl border border-b-0 shadow-sm">
-    <div class="flex items-center gap-1 px-4 pt-3 overflow-x-auto">
-        <a href="?tab=dashboard" class="cc-tab <?= $tab==='dashboard'?'active':'' ?>"><i class="fas fa-tachometer-alt mr-1.5"></i>Dashboard</a>
-        <a href="?tab=channels" class="cc-tab <?= $tab==='channels'?'active':'' ?>"><i class="fas fa-project-diagram mr-1.5"></i>Channels</a>
-        <a href="?tab=history" class="cc-tab <?= $tab==='history'?'active':'' ?>"><i class="fas fa-history mr-1.5"></i>Call History</a>
-        <a href="?tab=dialer" class="cc-tab <?= $tab==='dialer'?'active':'' ?>"><i class="fas fa-phone-alt mr-1.5"></i>Make Call</a>
-        <a href="?tab=numbers" class="cc-tab <?= $tab==='numbers'?'active':'' ?>"><i class="fas fa-server mr-1.5"></i>Numbers & Health</a>
+<div class="p-4 max-w-screen-xl mx-auto">
+
+<?php if ($urlMsg): ?>
+<div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4 text-sm flex items-center gap-2">
+  <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+  <?= htmlspecialchars(urldecode($urlMsg)) ?>
+</div>
+<?php endif; ?>
+<?php if ($msg): ?>
+<div class="<?= $msgType==='error'?'bg-red-50 border-red-200 text-red-700':'bg-green-50 border-green-200 text-green-700' ?> border px-4 py-3 rounded-lg mb-4 text-sm">
+  <?= htmlspecialchars($msg) ?>
+</div>
+<?php endif; ?>
+
+<?php if (!$mdApiKey && $tab !== 'settings'): ?>
+<div class="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 mb-4 flex items-start gap-3">
+  <svg class="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5C2.962 18.333 3.924 20 5.464 20z"/></svg>
+  <div>
+    <p class="text-sm font-semibold text-amber-800">ManyDial API key not configured</p>
+    <p class="text-xs text-amber-600 mt-0.5">Go to <a href="?tab=settings" class="underline font-medium">Settings</a> to add your API key and start using ManyDial features.</p>
+  </div>
+</div>
+<?php endif; ?>
+
+<!-- Header -->
+<div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+  <div>
+    <h1 class="text-xl font-bold text-gray-900 flex items-center gap-2">
+      <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+      ManyDial Call Center
+    </h1>
+    <p class="text-xs text-gray-400 mt-0.5">Automated calls · Call center · Click to call · Caller ID management</p>
+  </div>
+  <?php if ($mdApiKey): ?>
+  <div class="flex items-center gap-2 px-3 py-1.5 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700 font-semibold">
+    <span class="w-2 h-2 rounded-full bg-green-500"></span>
+    API Connected
+  </div>
+  <?php endif; ?>
+</div>
+
+<!-- Stats row -->
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+  <div class="stat-card"><p class="text-2xl font-bold text-gray-900"><?= $totalCalls ?></p><p class="text-xs text-gray-400 mt-0.5">Total Calls</p></div>
+  <div class="stat-card"><p class="text-2xl font-bold text-indigo-600"><?= $todayCalls ?></p><p class="text-xs text-gray-400 mt-0.5">Today</p></div>
+  <div class="stat-card"><p class="text-2xl font-bold text-green-600"><?= $successCalls ?></p><p class="text-xs text-gray-400 mt-0.5">Successful</p></div>
+  <div class="stat-card"><p class="text-2xl font-bold text-red-500"><?= $failedCalls ?></p><p class="text-xs text-gray-400 mt-0.5">Failed/Missed</p></div>
+</div>
+
+<!-- Tabs -->
+<div class="flex flex-wrap gap-2 mb-5 overflow-x-auto pb-1">
+  <?php
+  $tabs = [
+    'dashboard'   => ['📊','Dashboard'],
+    'call-automation'=>['📞','Call Automation'],
+    'click-to-call'=>['🖱','Click to Call'],
+    'call-center' => ['🏢','Call Center'],
+    'agents'      => ['👥','Agents'],
+    'caller-ids'  => ['🪪','Caller IDs'],
+    'templates'   => ['📋','Templates'],
+    'call-logs'   => ['📜','Call Logs'],
+    'settings'    => ['⚙️','Settings'],
+  ];
+  foreach ($tabs as $key => [$icon,$label]):
+  ?>
+  <a href="?tab=<?= $key ?>" class="md-tab-btn <?= $tab===$key?'active':'' ?>">
+    <?= $icon ?> <?= $label ?>
+  </a>
+  <?php endforeach; ?>
+</div>
+
+<!-- ══════════════ DASHBOARD ══════════════ -->
+<?php if ($tab === 'dashboard'): ?>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+  <!-- Recent calls -->
+  <div class="md-card">
+    <div class="px-5 py-3 border-b bg-gray-50 font-semibold text-sm text-gray-700">Recent Calls</div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs">
+        <thead><tr class="bg-gray-50 border-b">
+          <th class="px-4 py-2 text-left text-gray-500">Number</th>
+          <th class="px-4 py-2 text-left text-gray-500">Type</th>
+          <th class="px-4 py-2 text-left text-gray-500">Status</th>
+          <th class="px-4 py-2 text-left text-gray-500">Time</th>
+        </tr></thead>
+        <tbody>
+          <?php foreach (array_slice($callLogs, 0, 10) as $log): ?>
+          <tr class="border-b hover:bg-gray-50">
+            <td class="px-4 py-2 font-mono"><?= e($log['phone_number']) ?></td>
+            <td class="px-4 py-2"><?= ucwords(str_replace('_',' ',$log['call_type'])) ?></td>
+            <td class="px-4 py-2"><span class="md-badge <?= $log['status'] ?>"><?= $log['status'] ?></span></td>
+            <td class="px-4 py-2 text-gray-400"><?= date('d M H:i', strtotime($log['created_at'])) ?></td>
+          </tr>
+          <?php endforeach; ?>
+          <?php if (empty($callLogs)): ?>
+          <tr><td colspan="4" class="px-4 py-8 text-center text-gray-400">No calls yet</td></tr>
+          <?php endif; ?>
+        </tbody>
+      </table>
     </div>
-</div>
-<div class="bg-white rounded-b-xl border border-t-0 shadow-sm p-5 min-h-[500px]">
+  </div>
 
-<?php if ($tab==='dashboard'): ?>
-<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-    <div class="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-4"><div class="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center text-lg"><i class="fas fa-phone-alt"></i></div><div><div class="text-2xl font-bold"><?= $todayCalls ?></div><div class="text-xs text-gray-500">Today's Calls</div></div></div>
-    <div class="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-4"><div class="w-12 h-12 rounded-xl bg-green-100 text-green-600 flex items-center justify-center text-lg"><i class="fas fa-check-circle"></i></div><div><div class="text-2xl font-bold"><?= $todayAnswered ?></div><div class="text-xs text-gray-500">Answered</div></div></div>
-    <div class="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-4"><div class="w-12 h-12 rounded-xl bg-red-100 text-red-600 flex items-center justify-center text-lg"><i class="fas fa-phone-slash"></i></div><div><div class="text-2xl font-bold"><?= $todayMissed ?></div><div class="text-xs text-gray-500">Missed</div></div></div>
-    <div class="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-4"><div class="w-12 h-12 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center text-lg"><i class="fas fa-clock"></i></div><div><div class="text-2xl font-bold"><?= floor($todayDuration/60) ?>:<span class="text-lg"><?= str_pad($todayDuration%60,2,'0',STR_PAD_LEFT) ?></span></div><div class="text-xs text-gray-500">Talk Time</div></div></div>
-</div>
-<div class="grid md:grid-cols-3 gap-5 mb-6">
-    <div class="bg-white rounded-xl border p-5 text-center">
-        <svg width="120" height="120" viewBox="0 0 120 120" class="mx-auto"><circle cx="60" cy="60" r="50" fill="none" stroke="#e5e7eb" stroke-width="10"/><circle cx="60" cy="60" r="50" fill="none" stroke="<?= $todayRate>=80?'#22c55e':($todayRate>=50?'#eab308':'#ef4444') ?>" stroke-width="10" stroke-linecap="round" stroke-dasharray="<?= round($todayRate*3.14) ?> 314" transform="rotate(-90 60 60)"/><text x="60" y="60" text-anchor="middle" dy="8" fill="#1f2937" style="font-size:24px;font-weight:bold"><?= $todayRate ?>%</text></svg>
-        <p class="text-sm text-gray-500 mt-2">Answer Rate</p>
-    </div>
-    <div class="bg-white rounded-xl border p-5">
-        <h4 class="font-semibold text-gray-700 mb-3"><i class="fas fa-project-diagram mr-1.5 text-blue-500"></i>Active Channels (<?= $activeChannels ?>)</h4>
-        <?php if(empty($channels)):?><p class="text-sm text-gray-400 text-center py-4">No channels. <a href="?tab=channels" class="text-blue-500 underline">Add one</a></p>
-        <?php else: foreach($channels as $ch): $ci=['sip'=>'fas fa-headset','whatsapp'=>'fab fa-whatsapp','messenger'=>'fab fa-facebook-messenger','sms'=>'fas fa-sms','viber'=>'fab fa-viber','telegram'=>'fab fa-telegram']; ?>
-        <div class="flex items-center gap-3 py-2 border-b last:border-0"><span class="w-8 h-8 rounded-lg flex items-center justify-center text-sm <?= ($ch['is_active']??0)?'bg-green-100 text-green-600':'bg-gray-100 text-gray-400' ?>"><i class="<?= $ci[$ch['channel_type']??'']??'fas fa-phone' ?>"></i></span><div class="flex-1 min-w-0"><p class="text-sm font-medium text-gray-800 truncate"><?= e($ch['channel_name']??'') ?></p></div><span class="w-2 h-2 rounded-full <?= ($ch['is_active']??0)?'bg-green-500':'bg-gray-300' ?>"></span></div>
-        <?php endforeach; endif; ?>
-    </div>
-    <div class="bg-white rounded-xl border p-5">
-        <h4 class="font-semibold text-gray-700 mb-3"><i class="fas fa-heartbeat mr-1.5 text-red-500"></i>Number Health</h4>
-        <div class="flex gap-3 mb-3"><div class="flex-1 text-center p-2 bg-green-50 rounded-lg"><div class="text-lg font-bold text-green-600"><?= $healthyNumbers ?></div><div class="text-[10px] text-green-500">Healthy</div></div><div class="flex-1 text-center p-2 bg-red-50 rounded-lg"><div class="text-lg font-bold text-red-600"><?= max(0,$activeNumbers-$healthyNumbers) ?></div><div class="text-[10px] text-red-500">Issues</div></div><div class="flex-1 text-center p-2 bg-blue-50 rounded-lg"><div class="text-lg font-bold text-blue-600"><?= $activeNumbers ?></div><div class="text-[10px] text-blue-500">Total</div></div></div>
-        <a href="?tab=numbers" class="text-xs text-blue-500 hover:underline">View all →</a>
-    </div>
-</div>
-<!-- Recent Calls -->
-<div class="bg-white rounded-xl border"><div class="flex items-center justify-between px-4 py-3 border-b"><h4 class="font-semibold text-gray-700"><i class="fas fa-clock mr-1.5"></i>Recent Calls</h4><a href="?tab=history" class="text-xs text-blue-500 hover:underline">View All</a></div>
-<div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-gray-50"><tr><th class="px-4 py-2 text-left text-xs font-medium text-gray-500">Dir</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500">Number</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500">Customer</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500">Status</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500">Duration</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500">Time</th></tr></thead><tbody>
-<?php if(empty($recentCalls)):?><tr><td colspan="6" class="px-4 py-8 text-center text-gray-400">No calls yet</td></tr>
-<?php else: foreach(array_slice($recentCalls,0,15) as $c): $d=$c['direction']??'outbound';$dur=intval($c['duration_seconds']??0);$cs=$c['status']??'initiated'; ?>
-<tr class="border-b hover:bg-gray-50"><td class="px-4 py-2"><?= $d==='inbound'?'<span class="text-green-600 text-xs font-bold">↙IN</span>':'<span class="text-blue-600 text-xs font-bold">↗OUT</span>' ?></td><td class="px-4 py-2 font-mono text-xs"><?= e($d==='inbound'?($c['caller_number']??''):($c['callee_number']??'')) ?></td><td class="px-4 py-2"><?= e($c['customer_name']??'')?: '—' ?></td><td class="px-4 py-2"><span class="text-[10px] font-medium px-2 py-0.5 rounded-full <?= $stColors[$cs]??'bg-gray-100 text-gray-600' ?>"><?= ucfirst($cs) ?></span></td><td class="px-4 py-2 text-xs"><?= $dur>0?floor($dur/60).':'.str_pad($dur%60,2,'0',STR_PAD_LEFT):'—' ?></td><td class="px-4 py-2 text-xs text-gray-500"><?= date('M d, H:i',strtotime($c['started_at']??'now')) ?></td></tr>
-<?php endforeach; endif; ?></tbody></table></div></div>
-
-<?php elseif ($tab==='channels'): ?>
-<div class="flex items-center justify-between mb-5"><div><h3 class="text-lg font-bold text-gray-800">Multi-Channel Configuration</h3><p class="text-xs text-gray-500 mt-0.5">SIP/VoIP, WhatsApp, Messenger, SMS, Viber, Telegram</p></div><button onclick="openChannelModal(0)" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700"><i class="fas fa-plus mr-1"></i>Add Channel</button></div>
-<?php if(empty($channels)):?><div class="text-center py-16"><div class="w-20 h-20 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4"><i class="fas fa-project-diagram text-3xl text-gray-300"></i></div><p class="text-sm text-gray-400 mb-4">No channels yet</p><button onclick="openChannelModal(0)" class="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm">Add Channel</button></div>
-<?php else:?><div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4"><?php foreach($channels as $ch): $cfg=json_decode($ch['config']??'{}',true)?:[];$tm=['sip'=>['fas fa-headset','blue'],'whatsapp'=>['fab fa-whatsapp','green'],'messenger'=>['fab fa-facebook-messenger','indigo'],'sms'=>['fas fa-sms','amber'],'viber'=>['fab fa-viber','purple'],'telegram'=>['fab fa-telegram','cyan']];$ti=$tm[$ch['channel_type']??'']??['fas fa-phone','gray']; ?>
-<div class="bg-white rounded-xl border shadow-sm overflow-hidden hover:shadow-md transition"><div class="p-4"><div class="flex items-start justify-between"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl bg-<?= $ti[1] ?>-100 text-<?= $ti[1] ?>-600 flex items-center justify-center"><i class="<?= $ti[0] ?> text-lg"></i></div><div><h5 class="font-semibold text-gray-800"><?= e($ch['channel_name']??'') ?></h5><p class="text-[10px] text-gray-400"><?= ucfirst($ch['channel_type']??'') ?></p></div></div><span class="w-3 h-3 rounded-full mt-1 <?= ($ch['is_active']??0)?'bg-green-400':'bg-gray-300' ?>"></span></div><?php if(!empty($cfg['phone_number'])):?><div class="mt-3 text-xs text-gray-500"><i class="fas fa-phone-alt mr-1"></i><?= e($cfg['phone_number']) ?></div><?php endif;?></div><div class="border-t px-4 py-2.5 bg-gray-50 flex justify-between items-center"><span class="text-[10px] text-gray-400"><?= date('M d, Y',strtotime($ch['created_at']??'now')) ?></span><div class="flex gap-2"><button onclick='openChannelModal(<?= intval($ch["id"]??0) ?>,<?= htmlspecialchars(json_encode($ch),ENT_QUOTES) ?>)' class="text-xs text-blue-500"><i class="fas fa-edit"></i></button><button onclick="deleteChannel(<?= intval($ch['id']??0) ?>)" class="text-xs text-red-400"><i class="fas fa-trash"></i></button></div></div></div>
-<?php endforeach;?></div><?php endif;?>
-<!-- Channel Modal -->
-<div id="channelModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4"><div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"><div class="p-5 border-b"><h3 class="font-bold text-gray-800" id="channelModalTitle">Add Channel</h3></div><form id="channelForm" class="p-5 space-y-4"><input type="hidden" name="action" value="save_channel"><input type="hidden" name="ch_id" id="chId" value="0"><div class="grid grid-cols-2 gap-4"><div><label class="text-sm font-medium text-gray-700 block mb-1">Type</label><select name="channel_type" id="chType" class="w-full px-3 py-2 border rounded-lg text-sm" required><option value="sip">SIP/VoIP</option><option value="whatsapp">WhatsApp</option><option value="messenger">Messenger</option><option value="sms">SMS</option><option value="viber">Viber</option><option value="telegram">Telegram</option></select></div><div><label class="text-sm font-medium text-gray-700 block mb-1">Name</label><input type="text" name="channel_name" id="chName" class="w-full px-3 py-2 border rounded-lg text-sm" required></div></div><div><label class="text-sm font-medium text-gray-700 block mb-1">Phone</label><input type="text" name="ch_phone_number" id="chPhone" class="w-full px-3 py-2 border rounded-lg text-sm"></div><div class="grid grid-cols-2 gap-4"><div><label class="text-sm font-medium text-gray-700 block mb-1">API Key</label><input type="text" name="ch_api_key" id="chApiKey" class="w-full px-3 py-2 border rounded-lg text-sm"></div><div><label class="text-sm font-medium text-gray-700 block mb-1">API Secret</label><input type="password" name="ch_api_secret" id="chApiSecret" class="w-full px-3 py-2 border rounded-lg text-sm"></div></div><div><label class="text-sm font-medium text-gray-700 block mb-1">Webhook URL</label><input type="url" name="ch_webhook_url" id="chWebhook" class="w-full px-3 py-2 border rounded-lg text-sm"></div><div class="grid grid-cols-2 gap-4"><div><label class="text-sm font-medium text-gray-700 block mb-1">Page/Bot ID</label><input type="text" name="ch_page_id" id="chPageId" class="w-full px-3 py-2 border rounded-lg text-sm"></div><div><label class="text-sm font-medium text-gray-700 block mb-1">Access Token</label><input type="text" name="ch_access_token" id="chToken" class="w-full px-3 py-2 border rounded-lg text-sm"></div></div><div><label class="text-sm font-medium text-gray-700 block mb-1">Extra JSON</label><textarea name="ch_extra" id="chExtra" rows="2" class="w-full px-3 py-2 border rounded-lg text-sm font-mono"></textarea></div><div class="flex items-center gap-4"><label class="flex items-center gap-2"><input type="checkbox" name="ch_active" id="chActive" checked class="rounded"><span class="text-sm">Active</span></label><div><label class="text-sm">Sort:</label><input type="number" name="ch_sort_order" id="chSort" value="0" class="w-16 px-2 py-1 border rounded text-sm ml-1"></div></div></form><div class="p-5 border-t bg-gray-50 flex justify-end gap-3"><button onclick="closeChannelModal()" class="px-4 py-2 border rounded-lg text-sm text-gray-600">Cancel</button><button onclick="saveChannel()" class="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">Save</button></div></div></div>
-
-<?php elseif ($tab==='history'): ?>
-<div class="flex items-center justify-between mb-4"><h3 class="text-lg font-bold text-gray-800">Call History & Recordings</h3><button onclick="openLogCallModal()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700"><i class="fas fa-plus mr-1"></i>Log Call</button></div>
-<form method="GET" class="bg-gray-50 rounded-xl p-4 mb-4"><input type="hidden" name="tab" value="history"><div class="flex flex-wrap gap-3 items-end"><div><label class="text-xs text-gray-500 block mb-1">Search</label><input type="text" name="q" value="<?= e($_GET['q']??'') ?>" class="px-3 py-1.5 border rounded-lg text-sm w-48" placeholder="Phone, name..."></div><div><label class="text-xs text-gray-500 block mb-1">Direction</label><select name="dir" class="px-3 py-1.5 border rounded-lg text-sm"><option value="">All</option><option value="inbound" <?= ($_GET['dir']??'')==='inbound'?'selected':'' ?>>In</option><option value="outbound" <?= ($_GET['dir']??'')==='outbound'?'selected':'' ?>>Out</option></select></div><div><label class="text-xs text-gray-500 block mb-1">Status</label><select name="status" class="px-3 py-1.5 border rounded-lg text-sm"><option value="">All</option><option value="completed" <?= ($_GET['status']??'')==='completed'?'selected':'' ?>>Completed</option><option value="missed" <?= ($_GET['status']??'')==='missed'?'selected':'' ?>>Missed</option><option value="no_answer" <?= ($_GET['status']??'')==='no_answer'?'selected':'' ?>>No Answer</option></select></div><div><label class="text-xs text-gray-500 block mb-1">From</label><input type="date" name="from" value="<?= e($_GET['from']??'') ?>" class="px-3 py-1.5 border rounded-lg text-sm"></div><div><label class="text-xs text-gray-500 block mb-1">To</label><input type="date" name="to" value="<?= e($_GET['to']??'') ?>" class="px-3 py-1.5 border rounded-lg text-sm"></div><button type="submit" class="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm"><i class="fas fa-search mr-1"></i>Filter</button><a href="?tab=history" class="px-3 py-1.5 border rounded-lg text-sm text-gray-500">Clear</a></div></form>
-<div class="overflow-x-auto rounded-xl border"><table class="w-full text-sm"><thead class="bg-gray-50"><tr><th class="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Dir</th><th class="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Ch</th><th class="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Number</th><th class="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Customer</th><th class="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Agent</th><th class="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Status</th><th class="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Dur</th><th class="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Rec</th><th class="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Time</th><th class="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Notes</th><th class="px-3 py-2.5"></th></tr></thead><tbody>
-<?php $dc=!empty($filteredCalls)?$filteredCalls:$recentCalls; if(empty($dc)):?><tr><td colspan="11" class="px-4 py-12 text-center text-gray-400">No calls found</td></tr>
-<?php else: foreach($dc as $c): $d=$c['direction']??'outbound';$dur=intval($c['duration_seconds']??0);$cs=$c['status']??'initiated'; ?>
-<tr class="border-b hover:bg-gray-50"><td class="px-3 py-2"><?= $d==='inbound'?'<span class="text-green-600 text-xs font-bold">↙IN</span>':'<span class="text-blue-600 text-xs font-bold">↗OUT</span>' ?></td><td class="px-3 py-2 text-xs text-gray-500"><?= ucfirst($c['channel_type']??'sip') ?></td><td class="px-3 py-2 font-mono text-xs"><?= e($d==='inbound'?($c['caller_number']??''):($c['callee_number']??'')) ?></td><td class="px-3 py-2 text-xs"><?= e($c['customer_name']??'')?: '—' ?></td><td class="px-3 py-2 text-xs text-gray-500"><?= e($c['agent_name']??'')?: '—' ?></td><td class="px-3 py-2"><span class="text-[10px] font-medium px-2 py-0.5 rounded-full <?= $stColors[$cs]??'bg-gray-100 text-gray-600' ?>"><?= ucfirst($cs) ?></span></td><td class="px-3 py-2 text-xs"><?= $dur>0?floor($dur/60).':'.str_pad($dur%60,2,'0',STR_PAD_LEFT):'—' ?></td><td class="px-3 py-2"><?php if(!empty($c['recording_url'])):?><a href="<?= e($c['recording_url']) ?>" target="_blank" class="text-blue-500 text-xs"><i class="fas fa-play-circle"></i></a><?php else:?><span class="text-gray-300 text-xs">—</span><?php endif;?></td><td class="px-3 py-2 text-xs text-gray-500"><?= date('M d H:i',strtotime($c['started_at']??'now')) ?></td><td class="px-3 py-2 text-xs text-gray-500 max-w-[100px] truncate"><?= e($c['notes']??'') ?></td><td class="px-3 py-2"><button onclick="deleteCallLog(<?= intval($c['id']??0) ?>)" class="text-red-400 text-xs"><i class="fas fa-trash"></i></button></td></tr>
-<?php endforeach; endif;?></tbody></table></div>
-<!-- Log Modal --><div id="logCallModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4"><div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"><div class="p-5 border-b"><h3 class="font-bold">Log a Call</h3></div><form id="logCallForm" class="p-5 space-y-4"><input type="hidden" name="action" value="log_call"><div class="grid grid-cols-2 gap-4"><div><label class="text-sm font-medium block mb-1">Direction</label><select name="log_direction" class="w-full px-3 py-2 border rounded-lg text-sm"><option value="outbound">Out</option><option value="inbound">In</option></select></div><div><label class="text-sm font-medium block mb-1">Channel</label><select name="log_channel_type" class="w-full px-3 py-2 border rounded-lg text-sm"><option value="sip">Phone</option><option value="whatsapp">WhatsApp</option><option value="sms">SMS</option></select></div></div><div class="grid grid-cols-2 gap-4"><div><label class="text-sm font-medium block mb-1">Phone*</label><input type="text" name="log_callee" class="w-full px-3 py-2 border rounded-lg text-sm" required></div><div><label class="text-sm font-medium block mb-1">Customer</label><input type="text" name="log_customer_name" class="w-full px-3 py-2 border rounded-lg text-sm"></div></div><div class="grid grid-cols-3 gap-4"><div><label class="text-sm font-medium block mb-1">Status</label><select name="log_status" class="w-full px-3 py-2 border rounded-lg text-sm"><option value="completed">Completed</option><option value="missed">Missed</option><option value="no_answer">No Answer</option><option value="busy">Busy</option></select></div><div><label class="text-sm font-medium block mb-1">Duration(s)</label><input type="number" name="log_duration" value="0" class="w-full px-3 py-2 border rounded-lg text-sm"></div><div><label class="text-sm font-medium block mb-1">Order#</label><input type="number" name="log_order_id" class="w-full px-3 py-2 border rounded-lg text-sm"></div></div><div><label class="text-sm font-medium block mb-1">Notes</label><textarea name="log_notes" rows="2" class="w-full px-3 py-2 border rounded-lg text-sm"></textarea></div><div><label class="text-sm font-medium block mb-1">Tags</label><input type="text" name="log_tags" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="follow-up, payment..."></div></form><div class="p-5 border-t bg-gray-50 flex justify-end gap-3"><button onclick="document.getElementById('logCallModal').classList.add('hidden')" class="px-4 py-2 border rounded-lg text-sm">Cancel</button><button onclick="saveCallLog()" class="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">Save</button></div></div></div>
-
-<?php elseif ($tab==='dialer'): ?>
-<script src="https://cdn.jsdelivr.net/npm/jssip/dist/jssip.min.js" onerror="this.src='https://unpkg.com/jssip@3.10.0/lib/JsSIP.js'"></script>
-<div class="max-w-4xl mx-auto">
-<div id="sipStatusBar" class="mb-4 rounded-xl border p-3 bg-gray-50"><div class="flex items-center justify-between"><div class="flex items-center gap-3"><div id="sipStatusDot" class="w-3 h-3 rounded-full bg-gray-400"></div><span id="sipStatusText" class="text-sm text-gray-500">Not connected — Select a number below</span></div><div class="flex gap-2"><button onclick="browserWsProbe()" id="btnWsProbe" class="text-xs text-blue-500 hover:text-blue-700 border border-blue-200 px-2 py-1 rounded"><i class="fas fa-stethoscope mr-1"></i>Test WebSocket</button><button onclick="sipDisconnect()" id="btnSipDisconnect" class="text-xs text-red-500 hidden"><i class="fas fa-plug mr-1"></i>Disconnect</button></div></div></div>
-<div class="grid md:grid-cols-5 gap-6">
-<div class="md:col-span-3 bg-white rounded-2xl border shadow-sm p-6">
-    <h4 class="font-bold text-gray-800 text-center mb-1"><i class="fas fa-phone-alt mr-1.5 text-green-500"></i>Direct Call</h4>
-    <p class="text-[10px] text-center text-gray-400 mb-4">WebRTC SIP — calls from your browser via Cloud PBX</p>
-    <div class="mb-4"><label class="text-xs text-gray-500 block mb-1">Call from (SIP Number):</label><select id="dialFromNumber" class="w-full px-3 py-2 border rounded-lg text-sm" onchange="onSelectSipNumber()"><option value="">— Select SIP number —</option><?php foreach($numbers as $n):if($n['is_active']??0):?><option value="<?= intval($n['id']??0) ?>"><?= e(($n['label']??'')?:($n['number']??'')) ?> — <?= e($n['provider']??'SIP') ?> (<?= strtoupper($n['pbx_type']??'generic') ?>)</option><?php endif;endforeach;?></select></div>
-    <div class="bg-gray-50 rounded-xl p-4 mb-4"><input type="text" id="dialNumber" class="w-full text-2xl font-mono text-center border-0 bg-transparent focus:outline-none tracking-wider" placeholder="Enter number..."></div>
-    <div class="grid grid-cols-3 gap-3 mb-4 max-w-[240px] mx-auto"><?php foreach(['1','2','3','4','5','6','7','8','9','*','0','#'] as $k):?><button onclick="dialPress('<?= $k ?>')" class="dial-btn bg-gray-100 text-gray-800 hover:bg-gray-200"><?= $k ?></button><?php endforeach;?></div>
-    <div class="flex gap-3 max-w-[240px] mx-auto"><button onclick="dialBackspace()" class="flex-1 dial-btn bg-gray-100 text-gray-600 hover:bg-gray-200"><i class="fas fa-backspace"></i></button><button onclick="startSipCall()" id="btnStartCall" class="flex-[2] dial-btn bg-green-500 text-white hover:bg-green-600"><i class="fas fa-phone-alt"></i></button><button onclick="endSipCall()" id="btnEndCall" class="flex-[2] dial-btn bg-red-500 text-white hover:bg-red-600 hidden"><i class="fas fa-phone-slash"></i></button></div>
-    <div id="callStatusBar" class="mt-4 hidden"><div class="bg-green-50 border border-green-200 rounded-xl p-3 text-center"><div class="inline-block relative"><div class="w-3 h-3 bg-green-500 rounded-full inline-block"></div><div class="w-3 h-3 bg-green-500 rounded-full absolute top-0 left-0 pulse-ring"></div></div><span id="callStatusText" class="text-sm font-medium text-green-700 ml-2">Connecting...</span><div id="callTimer" class="text-xl font-mono font-bold text-green-800 mt-1">00:00</div></div></div>
-    <audio id="remoteAudio" autoplay></audio>
-</div>
-<div class="md:col-span-2 space-y-4">
-    <div class="bg-white rounded-2xl border shadow-sm p-5"><h4 class="font-semibold text-gray-700 mb-3"><i class="fas fa-bolt mr-1.5 text-amber-500"></i>Quick Dial</h4><div class="relative mb-3"><input type="text" id="quickDialSearch" class="w-full px-3 py-2 border rounded-lg text-sm pl-9" placeholder="Search customer..." oninput="quickDialLookup(this.value)"><i class="fas fa-search absolute left-3 top-2.5 text-gray-400 text-sm"></i></div><div id="quickDialResults" class="space-y-1 max-h-48 overflow-y-auto"></div></div>
-    <div id="activeCallNotes" class="bg-white rounded-2xl border shadow-sm p-5 hidden"><h4 class="font-semibold text-gray-700 mb-3"><i class="fas fa-sticky-note mr-1.5 text-yellow-500"></i>Call Notes</h4><textarea id="callNotes" rows="3" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Notes..."></textarea><select id="callDisposition" class="w-full px-3 py-1.5 border rounded-lg text-xs mt-2"><option value="">Tag...</option><option value="follow-up">Follow-up</option><option value="resolved">Resolved</option><option value="payment">Payment</option><option value="complaint">Complaint</option><option value="order-query">Order query</option></select></div>
-    <div class="bg-white rounded-2xl border shadow-sm p-5"><h4 class="font-semibold text-gray-700 mb-3"><i class="fas fa-history mr-1.5 text-gray-400"></i>Recent</h4><div class="space-y-1 max-h-52 overflow-y-auto"><?php foreach(array_slice($recentCalls,0,8) as $rc):$rn=($rc['callee_number']??'')?:($rc['caller_number']??'');$rok=($rc['status']??'')==='completed';?><button onclick="document.getElementById('dialNumber').value='<?= e($rn) ?>'" class="w-full text-left flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50"><div class="w-8 h-8 rounded-lg <?= $rok?'bg-green-50':'bg-red-50' ?> flex items-center justify-center"><i class="fas fa-phone-alt text-xs <?= $rok?'text-green-500':'text-red-500' ?>"></i></div><div class="flex-1 min-w-0"><p class="text-sm text-gray-800 truncate"><?= e(($rc['customer_name']??'')?:$rn) ?></p><p class="text-[10px] text-gray-400"><?= date('M d, H:i',strtotime($rc['started_at']??'now')) ?></p></div></button><?php endforeach;if(empty($recentCalls)):?><p class="text-xs text-gray-400 text-center py-4">No recent calls</p><?php endif;?></div></div>
-</div></div></div>
-
-<?php elseif ($tab==='numbers'): ?>
-<div class="flex items-center justify-between mb-5"><div><h3 class="text-lg font-bold text-gray-800">IP Numbers & Health Check</h3><p class="text-xs text-gray-500 mt-0.5">Add your SIP credentials — Server IP, Username, Password — that's it</p></div><div class="flex gap-2"><button onclick="healthCheckAll()" class="bg-green-50 text-green-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-100" id="btnHealthAll"><i class="fas fa-heartbeat mr-1"></i>Check All</button><button onclick="openNumberModal(0)" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700"><i class="fas fa-plus mr-1"></i>Add Number</button></div></div>
-<div class="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5"><h5 class="font-semibold text-blue-800 text-sm mb-2"><i class="fas fa-info-circle mr-1"></i>Quick Setup</h5><p class="text-xs text-blue-700">Just enter your <strong>Server IP</strong>, <strong>Username</strong>, and <strong>Password</strong> — we'll auto-detect the WebSocket port and configure everything else. Click "Auto-Detect Ports" in the form to scan your server.</p></div>
-<?php if(empty($numbers)):?><div class="text-center py-16"><div class="w-20 h-20 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4"><i class="fas fa-server text-3xl text-gray-300"></i></div><p class="text-sm text-gray-400 mb-4">Add your SIP credentials to start calling</p><button onclick="openNumberModal(0)" class="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm">Add Number</button></div>
-<?php else:?><div class="space-y-3"><?php foreach($numbers as $n): $hs=$n['last_health_status']??'unknown'; $hi=['ok'=>'fa-check-circle','warn'=>'fa-exclamation-triangle','fail'=>'fa-times-circle','unknown'=>'fa-question-circle']; $hb=['ok'=>'bg-green-50 border-green-200','warn'=>'bg-yellow-50 border-yellow-200','fail'=>'bg-red-50 border-red-200','unknown'=>'bg-gray-50 border-gray-200']; $pbx=$n['pbx_type']??'generic'; $pc=['3cx'=>'bg-blue-100 text-blue-700','freepbx'=>'bg-orange-100 text-orange-700','asterisk'=>'bg-red-100 text-red-700','voipbd'=>'bg-green-100 text-green-700','generic'=>'bg-gray-100 text-gray-600']; ?>
-<div class="rounded-xl border <?= $hb[$hs]??$hb['unknown'] ?> p-4" id="numRow_<?= intval($n['id']??0) ?>"><div class="flex items-center justify-between flex-wrap gap-3"><div class="flex items-center gap-4"><div class="w-10 h-10 rounded-xl health-<?= $hs ?> flex items-center justify-center"><i class="fas <?= $hi[$hs]??$hi['unknown'] ?> text-lg"></i></div><div><div class="flex items-center gap-2 flex-wrap"><span class="font-bold text-gray-900 font-mono"><?= e($n['number']??'') ?></span><?php if(!empty($n['label'])):?><span class="text-xs bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded"><?= e($n['label']) ?></span><?php endif;?><span class="text-[10px] font-semibold px-1.5 py-0.5 rounded <?= $pc[$pbx]??$pc['generic'] ?>"><?= strtoupper($pbx) ?></span><?php if(!($n['is_active']??1)):?><span class="text-[10px] bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded">OFF</span><?php endif;?><?php if(intval($n['pw_len']??0)>0):?><span class="text-[10px] bg-green-100 text-green-600 px-1.5 py-0.5 rounded"><i class="fas fa-key"></i> PW</span><?php else:?><span class="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded"><i class="fas fa-exclamation-triangle"></i> No PW</span><?php endif;?></div><p class="text-xs text-gray-500 mt-0.5"><?= e($n['provider']??'') ?> · <span class="font-mono"><?= e($n['sip_server']??'') ?>:<?= intval($n['sip_port']??5060) ?></span> · <?= strtoupper($n['sip_transport']??'wss') ?><?php if(!empty($n['ws_uri'])):?> · <span class="text-blue-500 font-mono text-[10px]"><?= e($n['ws_uri']) ?></span><?php endif;?></p></div></div><div class="flex items-center gap-3"><div class="text-right" id="healthInfo_<?= intval($n['id']??0) ?>"><?php if(!empty($n['last_health_check'])):?><p class="text-xs font-medium health-<?= $hs ?> px-2 py-0.5 rounded inline-block"><?= ucfirst($hs) ?></p><p class="text-[10px] text-gray-400 mt-0.5"><?= date('M d, H:i',strtotime($n['last_health_check'])) ?></p><?php if(!empty($n['last_health_message'])):?><p class="text-[10px] text-gray-500 mt-0.5 max-w-xs truncate" title="<?= e($n['last_health_message']) ?>"><?= e($n['last_health_message']) ?></p><?php endif; else:?><p class="text-xs text-gray-400">Never checked</p><?php endif;?></div><?php $nSafe = $n; unset($nSafe['sip_password']); // Don't expose password in HTML ?>
-<div class="flex gap-1"><button onclick="healthCheckSingle(<?= intval($n['id']??0) ?>)" class="p-2 rounded-lg hover:bg-white text-green-600 text-sm"><i class="fas fa-heartbeat"></i></button><button onclick='openNumberModal(<?= intval($n["id"]??0) ?>,<?= htmlspecialchars(json_encode($nSafe),ENT_QUOTES) ?>)' class="p-2 rounded-lg hover:bg-white text-blue-500 text-sm"><i class="fas fa-edit"></i></button><button onclick="deleteNumber(<?= intval($n['id']??0) ?>)" class="p-2 rounded-lg hover:bg-white text-red-400 text-sm"><i class="fas fa-trash"></i></button></div></div></div></div>
-<?php endforeach;?></div><?php endif;?>
-<!-- Number Modal -->
-<div id="numberModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
-<div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-<div class="p-5 border-b flex items-center justify-between">
-    <h3 class="font-bold text-gray-800" id="numberModalTitle">Add SIP Number</h3>
-    <button onclick="closeNumberModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
-</div>
-<form id="numberForm" class="p-5 space-y-4">
-    <input type="hidden" name="action" value="save_number">
-    <input type="hidden" name="num_id" id="numId" value="0">
-    <input type="hidden" name="num_pbx_type" id="numPbxType" value="generic">
-    <input type="hidden" name="num_channel_id" id="numChannelId" value="0">
-
-    <!-- Quick Setup: Only 3 fields needed -->
-    <div class="bg-green-50 border border-green-200 rounded-xl p-4">
-        <h5 class="font-semibold text-green-800 text-sm mb-3"><i class="fas fa-bolt mr-1.5"></i>SIP Credentials</h5>
-        <div class="space-y-3">
-            <div>
-                <label class="text-sm font-medium text-gray-700 block mb-1">Server / Domain IP <span class="text-red-400">*</span></label>
-                <input type="text" name="num_sip_server" id="numSipServer" class="w-full px-3 py-2.5 border rounded-lg text-sm font-mono" required placeholder="123.0.31.250 or sip.provider.com">
-            </div>
-            <div>
-                <label class="text-sm font-medium text-gray-700 block mb-1">Username <span class="text-red-400">*</span></label>
-                <input type="text" name="num_sip_username" id="numSipUser" class="w-full px-3 py-2.5 border rounded-lg text-sm font-mono" required placeholder="09644228011">
-            </div>
-            <div>
-                <label class="text-sm font-medium text-gray-700 block mb-1">Password <span class="text-red-400">*</span></label>
-                <div class="relative">
-                    <input type="password" name="num_sip_password" id="numSipPass" class="w-full px-3 py-2.5 border rounded-lg text-sm pr-20" placeholder="Enter password">
-                    <button type="button" onclick="const p=document.getElementById('numSipPass');p.type=p.type==='password'?'text':'password';this.innerHTML=p.type==='password'?'<i class=\'fas fa-eye\'></i>':'<i class=\'fas fa-eye-slash\'></i>'" class="absolute right-2 top-2.5 text-gray-400 hover:text-gray-600 text-sm px-1"><i class="fas fa-eye"></i></button>
-                </div>
-                <div id="numPassHint" class="text-[10px] mt-1 hidden"></div>
-            </div>
+  <!-- Quick actions -->
+  <div class="space-y-4">
+    <div class="md-card p-5">
+      <h3 class="md-section-title">Quick Call</h3>
+      <form method="POST" class="space-y-3">
+        <input type="hidden" name="action" value="create_call_automation">
+        <div>
+          <label class="md-label">Caller ID</label>
+          <select name="caller_id" class="md-input" required>
+            <option value="">Select...</option>
+            <?php foreach ($callerIds as $cid): ?>
+            <option value="<?= e($cid['caller_id']) ?>" <?= $cid['caller_id']===$mdDefaultCaller?'selected':'' ?>>
+              <?= e($cid['label'] ?: $cid['caller_id']) ?>
+            </option>
+            <?php endforeach; ?>
+            <?php if ($mdDefaultCaller && empty($callerIds)): ?>
+            <option value="<?= e($mdDefaultCaller) ?>" selected><?= e($mdDefaultCaller) ?></option>
+            <?php endif; ?>
+          </select>
         </div>
+        <div>
+          <label class="md-label">Phone Number to Call</label>
+          <input type="text" name="phone_number" class="md-input" placeholder="+8801XXXXXXXXX" required>
+        </div>
+        <div>
+          <label class="md-label">Duration per call (minutes)</label>
+          <input type="number" name="per_call_duration" value="<?= $mdDefaultDuration ?>" min="1" max="30" class="md-input">
+        </div>
+        <div>
+          <label class="md-label">Messages (JSON)</label>
+          <textarea name="messages_json" class="json-editor" rows="6" required placeholder='[{"welcome":"Hello, this is a test call.","repeat":1,"sms":"Thank you for calling.","forward":"+880XXXXXXXXX","menuMessage1":"Press 1 for orders, Press 2 to cancel.","repeat1":2,"noCall1":"no","noCall1Message":"Our team will contact you."}]'></textarea>
+          <p class="text-[10px] text-gray-400 mt-1">JSON array. See <a href="?tab=call-automation" class="text-indigo-500">Call Automation</a> for full structure.</p>
+        </div>
+        <input type="hidden" name="delivery_hook" value="<?= e($mdDeliveryHook) ?>">
+        <button type="submit" class="md-btn md-btn-primary w-full">📞 Initiate Call</button>
+      </form>
     </div>
 
-    <!-- Port Scan Button + Result -->
-    <button type="button" onclick="scanServerPorts()" id="btnScanPorts" class="w-full py-2.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg text-sm font-medium text-blue-700 transition">
-        <i class="fas fa-search mr-1.5"></i>Auto-Detect Ports & Configure
-    </button>
-    <div id="scanResult" class="hidden"></div>
+    <!-- Caller IDs summary -->
+    <div class="md-card p-5">
+      <h3 class="md-section-title">Caller IDs (<?= count($callerIds) ?>)</h3>
+      <div class="space-y-2">
+        <?php foreach (array_slice($callerIds, 0, 5) as $cid): ?>
+        <div class="flex items-center justify-between text-xs">
+          <span class="font-mono text-gray-700"><?= e($cid['caller_id']) ?></span>
+          <span class="md-badge <?= $cid['status'] ?>"><?= $cid['status'] ?></span>
+        </div>
+        <?php endforeach; ?>
+        <?php if (empty($callerIds)): ?>
+        <p class="text-xs text-gray-400 text-center py-2">No caller IDs registered yet</p>
+        <?php endif; ?>
+        <a href="?tab=caller-ids" class="block text-center text-xs text-indigo-500 hover:text-indigo-700 mt-2">Manage Caller IDs →</a>
+      </div>
+    </div>
+  </div>
+</div>
 
-    <!-- Optional Label -->
-    <div class="grid grid-cols-2 gap-3">
-        <div><label class="text-xs text-gray-500 block mb-1">Label (optional)</label><input type="text" name="num_label" id="numLabel" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Main Line"></div>
-        <div><label class="text-xs text-gray-500 block mb-1">Provider (optional)</label><input type="text" name="num_provider" id="numProvider" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="My SIP"></div>
+<!-- ══════════════ CALL AUTOMATION ══════════════ -->
+<?php elseif ($tab === 'call-automation'): ?>
+<div class="grid grid-cols-1 xl:grid-cols-5 gap-5">
+  <!-- Form -->
+  <div class="xl:col-span-3 md-card p-5">
+    <h2 class="md-section-title">Trigger Call Automation</h2>
+    <form method="POST" class="space-y-4">
+      <input type="hidden" name="action" value="create_call_automation">
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="md-label">Caller ID *</label>
+          <select name="caller_id" class="md-input" required>
+            <option value="">Select Caller ID...</option>
+            <?php foreach ($callerIds as $cid): ?>
+            <option value="<?= e($cid['caller_id']) ?>" <?= $cid['caller_id']===$mdDefaultCaller?'selected':'' ?>>
+              <?= e($cid['label'] ?: $cid['caller_id']) ?>
+            </option>
+            <?php endforeach; ?>
+            <?php if ($mdDefaultCaller): ?><option value="<?= e($mdDefaultCaller) ?>">Default: <?= e($mdDefaultCaller) ?></option><?php endif; ?>
+          </select>
+        </div>
+        <div>
+          <label class="md-label">Phone Number *</label>
+          <input type="text" name="phone_number" class="md-input" placeholder="+8801XXXXXXXXX" required>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="md-label">Per Call Duration (min)</label>
+          <input type="number" name="per_call_duration" value="5" min="1" max="30" class="md-input">
+        </div>
+        <div>
+          <label class="md-label">Delivery Hook (webhook URL)</label>
+          <input type="url" name="delivery_hook" value="<?= e($mdDeliveryHook) ?>" class="md-input" placeholder="https://your-site.com/webhook">
+        </div>
+      </div>
+      <div>
+        <label class="md-label">Custom Payload (optional)</label>
+        <input type="text" name="call_payload" class="md-input" placeholder='{"orderId":"123","customer":"John"}'>
+      </div>
+
+      <!-- Messages JSON builder -->
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <label class="md-label mb-0">Messages JSON *</label>
+          <button type="button" onclick="loadSampleMessages()" class="text-xs text-indigo-500 hover:text-indigo-700">Load Sample</button>
+        </div>
+        <textarea name="messages_json" id="messagesJson" class="json-editor" rows="12" required></textarea>
+        <p class="text-[10px] text-gray-400 mt-1">Must be a valid JSON array. Use the structure reference on the right.</p>
+      </div>
+
+      <!-- Buttons JSON (optional) -->
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <label class="md-label mb-0">Buttons JSON (optional)</label>
+          <button type="button" onclick="loadSampleButtons()" class="text-xs text-indigo-500 hover:text-indigo-700">Load Sample</button>
+        </div>
+        <textarea name="buttons_json" id="buttonsJson" class="json-editor" rows="6"></textarea>
+      </div>
+
+      <div class="flex gap-3 pt-2">
+        <button type="submit" class="md-btn md-btn-primary flex-1">📞 Initiate Call Automation</button>
+        <button type="button" onclick="validateJson()" class="md-btn md-btn-secondary">✓ Validate JSON</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Reference -->
+  <div class="xl:col-span-2 space-y-4">
+    <div class="md-card p-5">
+      <h3 class="md-section-title">Messages Object Structure</h3>
+      <div class="space-y-2 text-xs">
+        <?php
+        $fields = [
+          ['welcome','Welcome message when call is answered'],
+          ['repeat','Times to repeat the welcome (default:1)'],
+          ['sms','SMS sent when customer answers'],
+          ['forward','Forward number after welcome message'],
+          ['menuMessage1','Prompt for press 1'],
+          ['repeat1','Repeat count for menuMessage1'],
+          ['noCall1','Send SMS after press 1 (yes/no)'],
+          ['noCall1Message','SMS content for press 1'],
+          ['menuMessage2','Prompt for press 2'],
+          ['repeat2','Repeat count for menuMessage2'],
+          ['noCall2','Send SMS after press 2 (yes/no)'],
+          ['noCall2Message','SMS for press 2'],
+          ['smsct1','SMS when customer presses 1 again'],
+          ['noCall3','Send SMS after press 3'],
+          ['smsMessage2','SMS after menuMessage2 played'],
+        ];
+        foreach ($fields as [$key,$desc]): ?>
+        <div class="flex gap-2">
+          <code class="text-indigo-400 bg-slate-800 px-1.5 py-0.5 rounded text-[10px] flex-shrink-0"><?= $key ?></code>
+          <span class="text-gray-500"><?= $desc ?></span>
+        </div>
+        <?php endforeach; ?>
+      </div>
     </div>
 
-    <!-- Hidden defaults that get auto-filled -->
-    <input type="hidden" name="num_number" id="numNumber" value="">
-    <input type="hidden" name="num_sip_port" id="numSipPort" value="5060">
-    <input type="hidden" name="num_ws_uri" id="numWsUri" value="">
-    <input type="hidden" name="num_sip_transport" id="numSipTransport" value="wss">
-    <input type="hidden" name="num_sip_realm" id="numSipRealm" value="">
-    <input type="hidden" name="num_caller_id" id="numCallerId" value="">
-    <input type="hidden" name="num_stun_server" id="numStun" value="stun:stun.l.google.com:19302">
-    <input type="hidden" name="num_turn_server" id="numTurn" value="">
-    <input type="hidden" name="num_turn_user" id="numTurnUser" value="">
-    <input type="hidden" name="num_turn_pass" id="numTurnPass" value="">
-    <input type="hidden" name="num_active" id="numActive" value="1">
+    <div class="md-card p-5">
+      <h3 class="md-section-title">Delivery Hook Response</h3>
+      <div class="space-y-1.5 text-xs text-gray-500">
+        <div><code class="text-indigo-400 text-[10px]">callbackhook</code> — Your reference string</div>
+        <div><code class="text-indigo-400 text-[10px]">callerid</code> — The caller ID used</div>
+        <div><code class="text-indigo-400 text-[10px]">number</code> — Called number</div>
+        <div><code class="text-indigo-400 text-[10px]">buttons</code> — Options pressed by user</div>
+        <div><code class="text-indigo-400 text-[10px]">userResponse</code> — Sequence of presses</div>
+        <div><code class="text-indigo-400 text-[10px]">actions</code> — All actions taken</div>
+        <div><code class="text-indigo-400 text-[10px]">sms</code> — SMS messages sent</div>
+        <div><code class="text-indigo-400 text-[10px]">duration</code> — Call duration (ms)</div>
+        <div><code class="text-indigo-400 text-[10px]">status</code> — NO_ANSWER / ANSWER / ELSE</div>
+        <div><code class="text-indigo-400 text-[10px]">forwardNumber</code> — Forward destination</div>
+        <div><code class="text-indigo-400 text-[10px]">recordAudioUrl</code> — Recording URL</div>
+      </div>
+    </div>
 
-    <!-- Advanced Toggle -->
-    <div>
-        <button type="button" onclick="document.getElementById('advancedSection').classList.toggle('hidden')" class="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
-            <i class="fas fa-cog"></i> Advanced Settings
-            <i class="fas fa-chevron-down text-[8px]"></i>
+    <!-- Quick template loader -->
+    <?php if ($templates): ?>
+    <div class="md-card p-5">
+      <h3 class="md-section-title">Load from Template</h3>
+      <div class="space-y-2">
+        <?php foreach ($templates as $tpl): ?>
+        <button type="button" onclick="loadTemplate(<?= htmlspecialchars(json_encode($tpl)) ?>)"
+          class="w-full text-left px-3 py-2 bg-gray-50 hover:bg-indigo-50 rounded-lg text-xs font-medium text-gray-700 border border-gray-200 transition">
+          📋 <?= e($tpl['name']) ?> <span class="text-gray-400 font-normal">(<?= e($tpl['caller_id']) ?>)</span>
         </button>
-        <div id="advancedSection" class="hidden mt-3 space-y-3 bg-gray-50 rounded-xl p-4 border">
-            <div class="grid grid-cols-3 gap-3">
-                <div><label class="text-xs text-gray-500 block mb-1">SIP Port</label><input type="number" id="numSipPortAdv" value="5060" class="w-full px-3 py-2 border rounded-lg text-sm" onchange="document.getElementById('numSipPort').value=this.value"></div>
-                <div><label class="text-xs text-gray-500 block mb-1">Transport</label>
-                    <select id="numSipTransportAdv" class="w-full px-3 py-2 border rounded-lg text-sm" onchange="document.getElementById('numSipTransport').value=this.value">
-                        <option value="wss">WSS</option><option value="ws">WS</option><option value="tcp">TCP</option><option value="udp">UDP</option>
-                    </select></div>
-                <div><label class="text-xs text-gray-500 block mb-1">SIP Realm</label><input type="text" id="numSipRealmAdv" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Auto" onchange="document.getElementById('numSipRealm').value=this.value"></div>
-            </div>
-            <div><label class="text-xs text-gray-500 block mb-1">WebSocket URI</label><input type="text" id="numWsUriAdv" class="w-full px-3 py-2 border rounded-lg text-sm font-mono" placeholder="Auto-detected" onchange="document.getElementById('numWsUri').value=this.value"></div>
-            <div class="grid grid-cols-2 gap-3">
-                <div><label class="text-xs text-gray-500 block mb-1">Caller ID</label><input type="text" id="numCallerIdAdv" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Same as username" onchange="document.getElementById('numCallerId').value=this.value"></div>
-                <div><label class="text-xs text-gray-500 block mb-1">STUN Server</label><input type="text" id="numStunAdv" value="stun:stun.l.google.com:19302" class="w-full px-3 py-2 border rounded-lg text-sm" onchange="document.getElementById('numStun').value=this.value"></div>
-            </div>
-            <div class="grid grid-cols-3 gap-3">
-                <div><label class="text-xs text-gray-500 block mb-1">TURN Server</label><input type="text" id="numTurnAdv" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Optional" onchange="document.getElementById('numTurn').value=this.value"></div>
-                <div><label class="text-xs text-gray-500 block mb-1">TURN User</label><input type="text" id="numTurnUserAdv" class="w-full px-3 py-2 border rounded-lg text-sm" onchange="document.getElementById('numTurnUser').value=this.value"></div>
-                <div><label class="text-xs text-gray-500 block mb-1">TURN Pass</label><input type="password" id="numTurnPassAdv" class="w-full px-3 py-2 border rounded-lg text-sm" onchange="document.getElementById('numTurnPass').value=this.value"></div>
-            </div>
-            <div><label class="text-xs text-gray-500 block mb-1">PBX Type</label>
-                <select id="numPbxTypeAdv" class="w-full px-3 py-2 border rounded-lg text-sm" onchange="document.getElementById('numPbxType').value=this.value">
-                    <option value="generic">Generic SIP</option><option value="3cx">3CX</option><option value="freepbx">FreePBX</option><option value="asterisk">Asterisk</option><option value="voipbd">VoIP Bangladesh</option>
-                </select></div>
-        </div>
+        <?php endforeach; ?>
+      </div>
     </div>
-</form>
-<div class="p-5 border-t bg-gray-50 flex justify-end gap-3">
-    <button onclick="closeNumberModal()" class="px-4 py-2 border rounded-lg text-sm text-gray-600 hover:bg-gray-100">Cancel</button>
-    <button onclick="saveNumber()" class="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"><i class="fas fa-save mr-1"></i>Save & Connect</button>
+    <?php endif; ?>
+  </div>
 </div>
-</div></div>
 
-<?php endif;?>
+<!-- ══════════════ CLICK TO CALL ══════════════ -->
+<?php elseif ($tab === 'click-to-call'): ?>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+  <div class="md-card p-5">
+    <h2 class="md-section-title">Click to Call</h2>
+    <p class="text-xs text-gray-500 mb-4">Initiate a call from an agent to a customer number using the registered Caller ID and agent email.</p>
+    <div id="ctcResult" class="hidden mb-4 p-3 rounded-lg text-sm"></div>
+    <form id="ctcForm" class="space-y-4">
+      <input type="hidden" name="action" value="click_to_call">
+      <div>
+        <label class="md-label">Caller ID *</label>
+        <select name="ctc_caller_id" class="md-input" required>
+          <option value="">Select Caller ID...</option>
+          <?php foreach ($callerIds as $cid): ?>
+          <option value="<?= e($cid['caller_id']) ?>" <?= $cid['caller_id']===$mdDefaultCaller?'selected':'' ?>>
+            <?= e($cid['label'] ?: $cid['caller_id']) ?>
+          </option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <div>
+        <label class="md-label">Agent Email *</label>
+        <select name="ctc_email" class="md-input">
+          <option value="">Select Agent...</option>
+          <?php foreach ($agents as $ag): ?>
+          <option value="<?= e($ag['email']) ?>"><?= e($ag['name']) ?> (<?= e($ag['email']) ?>)</option>
+          <?php endforeach; ?>
+        </select>
+        <p class="text-[10px] text-gray-400 mt-1">Or type manually:</p>
+        <input type="email" name="ctc_email_manual" class="md-input mt-1" placeholder="agent@example.com" oninput="this.previousElementSibling.previousElementSibling.value=''">
+      </div>
+      <div>
+        <label class="md-label">Customer Number * <span class="text-gray-400 font-normal">(start with 01 not +88)</span></label>
+        <input type="text" name="ctc_number" class="md-input" placeholder="01934567890" required>
+      </div>
+      <div>
+        <label class="md-label">Custom Payload (optional)</label>
+        <input type="text" name="ctc_payload" class="md-input" placeholder='{"orderId":"123","customer":"John Doe"}'>
+      </div>
+      <button type="button" onclick="doClickToCall()" class="md-btn md-btn-primary w-full">
+        📞 Initiate Click to Call
+      </button>
+    </form>
+  </div>
+
+  <div class="space-y-4">
+    <div class="md-card p-5">
+      <h3 class="md-section-title">How it works</h3>
+      <div class="space-y-3 text-sm text-gray-600">
+        <div class="flex gap-3">
+          <span class="w-6 h-6 bg-indigo-100 text-indigo-700 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold">1</span>
+          <p>Agent selects a customer from the call center interface or this form</p>
+        </div>
+        <div class="flex gap-3">
+          <span class="w-6 h-6 bg-indigo-100 text-indigo-700 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold">2</span>
+          <p>ManyDial calls the agent first via the registered call center</p>
+        </div>
+        <div class="flex gap-3">
+          <span class="w-6 h-6 bg-indigo-100 text-indigo-700 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold">3</span>
+          <p>Once agent picks up, ManyDial dials the customer number</p>
+        </div>
+        <div class="flex gap-3">
+          <span class="w-6 h-6 bg-indigo-100 text-indigo-700 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold">4</span>
+          <p>Call is bridged — agent and customer are connected</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent click-to-call logs -->
+    <div class="md-card">
+      <div class="px-5 py-3 border-b text-sm font-semibold text-gray-700">Recent Click-to-Call</div>
+      <div class="divide-y">
+        <?php
+        $ctcLogs = array_filter($callLogs, fn($l) => $l['call_type'] === 'click_to_call');
+        foreach (array_slice($ctcLogs, 0, 5) as $log): ?>
+        <div class="px-4 py-2.5 flex items-center justify-between text-xs">
+          <div>
+            <div class="font-mono font-medium"><?= e($log['phone_number']) ?></div>
+            <div class="text-gray-400"><?= e($log['agent_email']) ?></div>
+          </div>
+          <div class="text-right">
+            <span class="md-badge <?= $log['status'] ?>"><?= $log['status'] ?></span>
+            <div class="text-gray-400 mt-0.5"><?= date('d M H:i', strtotime($log['created_at'])) ?></div>
+          </div>
+        </div>
+        <?php endforeach; ?>
+        <?php if (empty($ctcLogs)): ?>
+        <div class="px-4 py-6 text-center text-xs text-gray-400">No click-to-call records</div>
+        <?php endif; ?>
+      </div>
+    </div>
+  </div>
 </div>
-<?php include __DIR__.'/../includes/footer.php'; ?>
+
+<!-- ══════════════ CALL CENTER MANAGEMENT ══════════════ -->
+<?php elseif ($tab === 'call-center'): ?>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+  <!-- Create Call Center -->
+  <div class="md-card p-5">
+    <h2 class="md-section-title">Create Call Center</h2>
+    <form method="POST" class="space-y-4">
+      <input type="hidden" name="action" value="create_call_center">
+      <div>
+        <label class="md-label">Caller ID * <span class="text-gray-400 font-normal">(+XXXXXXXXXXXXX)</span></label>
+        <select name="cc_caller_id" class="md-input" required onchange="document.getElementById('ccCallerIdInput').value=this.value">
+          <option value="">Select...</option>
+          <?php foreach ($callerIds as $cid): ?>
+          <option value="<?= e($cid['caller_id']) ?>"><?= e($cid['label'] ?: $cid['caller_id']) ?></option>
+          <?php endforeach; ?>
+        </select>
+        <input type="text" id="ccCallerIdInput" name="cc_caller_id_manual" class="md-input mt-1" placeholder="Or type: +8809600000000" oninput="this.previousElementSibling.value=''">
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="md-label">Call Prefix</label>
+          <input type="text" name="cc_call_prefix" class="md-input" placeholder="000" value="000">
+        </div>
+        <div>
+          <label class="md-label">Max Agents</label>
+          <input type="number" name="cc_total_agents" class="md-input" value="5" min="1">
+        </div>
+      </div>
+      <div>
+        <label class="md-label">Status Hook URL</label>
+        <input type="url" name="cc_status_hook" class="md-input" placeholder="https://your-site.com/cc-status">
+      </div>
+      <div>
+        <label class="md-label">End Call Hook URL</label>
+        <input type="url" name="cc_endcall_hook" class="md-input" placeholder="https://your-site.com/cc-endcall">
+      </div>
+      <div>
+        <label class="md-label">Redirect URL (on new agent)</label>
+        <input type="url" name="cc_redirect_url" class="md-input" placeholder="https://your-site.com/call-center">
+      </div>
+      <div>
+        <label class="md-label">Domain URL</label>
+        <input type="url" name="cc_domain_url" class="md-input" placeholder="https://your-site.com/call-center">
+      </div>
+      <button type="submit" class="md-btn md-btn-primary w-full">🏢 Create Call Center</button>
+    </form>
+  </div>
+
+  <!-- Renew + iFrame embed -->
+  <div class="space-y-4">
+    <div class="md-card p-5">
+      <h2 class="md-section-title">Renew Call Center</h2>
+      <form method="POST" class="space-y-4">
+        <input type="hidden" name="action" value="renew_call_center">
+        <div>
+          <label class="md-label">Caller ID</label>
+          <select name="cc_caller_id" class="md-input">
+            <?php foreach ($callerIds as $cid): ?>
+            <option value="<?= e($cid['caller_id']) ?>"><?= e($cid['label'] ?: $cid['caller_id']) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div>
+          <label class="md-label">New Expire Date (YYYY-MM-DD)</label>
+          <input type="date" name="cc_expire_date" class="md-input" value="<?= date('Y-m-d', strtotime('+1 year')) ?>">
+        </div>
+        <button type="submit" class="md-btn md-btn-success w-full">🔄 Renew Call Center</button>
+      </form>
+    </div>
+
+    <div class="md-card p-5">
+      <h3 class="md-section-title">Embed Call Center iFrame</h3>
+      <p class="text-xs text-gray-500 mb-3">Embed the ManyDial call center directly into your admin panel.</p>
+      <div>
+        <label class="md-label">Agent Email</label>
+        <input type="email" id="iframeEmail" class="md-input" placeholder="agent@example.com">
+      </div>
+      <div class="mt-3">
+        <label class="md-label">Caller ID</label>
+        <select id="iframeCallerId" class="md-input">
+          <?php foreach ($callerIds as $cid): ?>
+          <option value="<?= e($cid['caller_id']) ?>"><?= e($cid['caller_id']) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <button type="button" onclick="loadCCIframe()" class="md-btn md-btn-primary mt-3 w-full">Load Call Center</button>
+      <div id="ccIframeWrap" class="hidden mt-4">
+        <iframe id="ccIframe" style="width:100%;height:600px;border:1.5px solid #e2e8f0;border-radius:10px;" src="about:blank"></iframe>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ AGENTS ══════════════ -->
+<?php elseif ($tab === 'agents'): ?>
+<div class="grid grid-cols-1 xl:grid-cols-3 gap-5">
+  <!-- Agent form -->
+  <div class="md-card p-5">
+    <h2 class="md-section-title">Add Agent</h2>
+    <form method="POST" class="space-y-3">
+      <input type="hidden" name="action" value="create_agent">
+      <div>
+        <label class="md-label">Caller ID *</label>
+        <select name="ag_caller_id" class="md-input" required>
+          <?php foreach ($callerIds as $cid): ?>
+          <option value="<?= e($cid['caller_id']) ?>"><?= e($cid['label'] ?: $cid['caller_id']) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <div>
+        <label class="md-label">Name *</label>
+        <input type="text" name="ag_name" class="md-input" placeholder="John Doe" required>
+      </div>
+      <div>
+        <label class="md-label">Email *</label>
+        <input type="email" name="ag_email" class="md-input" placeholder="agent@example.com" required>
+      </div>
+      <div>
+        <label class="md-label">Phone *</label>
+        <input type="text" name="ag_phone" class="md-input" placeholder="+8801XXXXXXXXX">
+      </div>
+      <div>
+        <label class="md-label">Password *</label>
+        <input type="password" name="ag_password" class="md-input" placeholder="••••••••" required>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="md-label">Direction</label>
+          <select name="ag_direction" class="md-input">
+            <option value="both">Both</option>
+            <option value="inbound">Inbound</option>
+            <option value="outbound">Outbound</option>
+          </select>
+        </div>
+        <div>
+          <label class="md-label">Phone Type</label>
+          <select name="ag_phone_type" class="md-input">
+            <option value="WEBPHONE">Web Phone</option>
+            <option value="CELLPHONE">Cell Phone</option>
+            <option value="SOFTPHONE">Soft Phone</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="md-label">Auto Connect</label>
+          <select name="ag_auto_connect" class="md-input">
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+          </select>
+        </div>
+        <div>
+          <label class="md-label">Expires On</label>
+          <input type="date" name="ag_expires" class="md-input" value="<?= date('Y-m-d', strtotime('+1 year')) ?>">
+        </div>
+      </div>
+      <button type="submit" class="md-btn md-btn-primary w-full">👤 Create Agent</button>
+    </form>
+  </div>
+
+  <!-- Agent list -->
+  <div class="xl:col-span-2 md-card">
+    <div class="px-5 py-3 border-b font-semibold text-sm text-gray-700">
+      Agents (<?= count($agents) ?>)
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs">
+        <thead><tr class="bg-gray-50 border-b">
+          <th class="px-4 py-2 text-left">Name</th>
+          <th class="px-4 py-2 text-left">Email</th>
+          <th class="px-4 py-2 text-left">Caller ID</th>
+          <th class="px-4 py-2 text-left">Type</th>
+          <th class="px-4 py-2 text-left">Expires</th>
+          <th class="px-4 py-2 text-left">Actions</th>
+        </tr></thead>
+        <tbody>
+          <?php foreach ($agents as $ag): ?>
+          <tr class="border-b hover:bg-gray-50">
+            <td class="px-4 py-2 font-medium"><?= e($ag['name']) ?></td>
+            <td class="px-4 py-2 text-gray-500"><?= e($ag['email']) ?></td>
+            <td class="px-4 py-2 font-mono text-[11px]"><?= e($ag['caller_id']) ?></td>
+            <td class="px-4 py-2"><?= e($ag['phone_type']) ?></td>
+            <td class="px-4 py-2 <?= $ag['expires_at'] && $ag['expires_at'] < date('Y-m-d') ? 'text-red-500 font-medium' : 'text-gray-500' ?>">
+              <?= $ag['expires_at'] ? date('d M Y', strtotime($ag['expires_at'])) : '—' ?>
+            </td>
+            <td class="px-4 py-2">
+              <form method="POST" class="inline" onsubmit="return confirm('Delete this agent?')">
+                <input type="hidden" name="action" value="delete_agent">
+                <input type="hidden" name="ag_caller_id" value="<?= e($ag['caller_id']) ?>">
+                <input type="hidden" name="ag_email" value="<?= e($ag['email']) ?>">
+                <input type="hidden" name="ag_local_id" value="<?= $ag['id'] ?>">
+                <button type="submit" class="text-red-500 hover:text-red-700 text-[10px] font-medium px-2 py-1 rounded border border-red-200 hover:bg-red-50">Delete</button>
+              </form>
+            </td>
+          </tr>
+          <?php endforeach; ?>
+          <?php if (empty($agents)): ?>
+          <tr><td colspan="6" class="px-4 py-8 text-center text-gray-400">No agents yet. Create your first agent above.</td></tr>
+          <?php endif; ?>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ CALLER IDs ══════════════ -->
+<?php elseif ($tab === 'caller-ids'): ?>
+<div class="grid grid-cols-1 xl:grid-cols-5 gap-5">
+  <!-- Registration form -->
+  <div class="xl:col-span-2 md-card p-5">
+    <h2 class="md-section-title">Register New Caller ID</h2>
+    <form method="POST" enctype="multipart/form-data" class="space-y-3">
+      <input type="hidden" name="action" value="register_caller_id">
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="md-label">Owner Name *</label>
+          <input type="text" name="ownerName" class="md-input" required placeholder="Full name">
+        </div>
+        <div>
+          <label class="md-label">Business Name *</label>
+          <input type="text" name="businessName" class="md-input" required placeholder="Firm name">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="md-label">Email *</label>
+          <input type="email" name="email" class="md-input" required>
+        </div>
+        <div>
+          <label class="md-label">Phone (Caller ID) *</label>
+          <input type="text" name="phone" class="md-input" required placeholder="+8809600000000">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="md-label">NID / Passport No *</label>
+          <input type="text" name="nid" class="md-input" required>
+        </div>
+        <div>
+          <label class="md-label">Date of Birth *</label>
+          <input type="date" name="dob" class="md-input" required>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="md-label">Father's Name *</label>
+          <input type="text" name="fatherName" class="md-input" required>
+        </div>
+        <div>
+          <label class="md-label">Gender *</label>
+          <select name="genderDivision" class="md-input" required>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="md-label">Country Code (Chr)</label>
+          <input type="text" name="countryChrCode" class="md-input" value="BD" placeholder="BD">
+        </div>
+        <div>
+          <label class="md-label">Full Address No</label>
+          <input type="text" name="fullNo" class="md-input" placeholder="Flat 2">
+        </div>
+      </div>
+      <div>
+        <label class="md-label">Doc (Address)</label>
+        <input type="text" name="doc" class="md-input" placeholder="Street address">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="md-label">Name/Firm</label>
+          <input type="text" name="nameOrFirmName" class="md-input" placeholder="User 1">
+        </div>
+        <div>
+          <label class="md-label">State/Village</label>
+          <input type="text" name="stateOrVillage" class="md-input" placeholder="Dhaka">
+        </div>
+      </div>
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <label class="md-label">District</label>
+          <input type="text" name="district" class="md-input" placeholder="Dhaka">
+        </div>
+        <div>
+          <label class="md-label">Upazila</label>
+          <input type="text" name="upazilaThan" class="md-input" placeholder="Savar">
+        </div>
+        <div>
+          <label class="md-label">Post Code</label>
+          <input type="text" name="postCode" class="md-input" placeholder="012">
+        </div>
+      </div>
+      <div>
+        <label class="md-label">Passport/ID Image URL</label>
+        <input type="text" name="passportOrIdImage" class="md-input" placeholder="https://...">
+      </div>
+      <div>
+        <label class="md-label">Signature (image file, optional)</label>
+        <input type="file" name="signature" class="md-input py-1.5" accept="image/*">
+      </div>
+      <div>
+        <label class="md-label">Redirect Callback URL</label>
+        <input type="url" name="redirectingCallback" class="md-input" placeholder="https://your-site.com/callback">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="md-label">SMS Enabled</label>
+          <select name="smsEnabled" class="md-input">
+            <option value="No">No</option>
+            <option value="Yes">Yes</option>
+          </select>
+        </div>
+        <div>
+          <label class="md-label">Caller Payload</label>
+          <input type="text" name="callerPayload" class="md-input" placeholder="Sample payload">
+        </div>
+      </div>
+      <button type="submit" class="md-btn md-btn-primary w-full">🪪 Submit Registration</button>
+    </form>
+  </div>
+
+  <!-- Existing caller IDs -->
+  <div class="xl:col-span-3 md-card">
+    <div class="px-5 py-3 border-b font-semibold text-sm text-gray-700">Registered Caller IDs (<?= count($callerIds) ?>)</div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs">
+        <thead><tr class="bg-gray-50 border-b">
+          <th class="px-4 py-2 text-left">Label</th>
+          <th class="px-4 py-2 text-left">Caller ID</th>
+          <th class="px-4 py-2 text-left">Business</th>
+          <th class="px-4 py-2 text-left">Status</th>
+          <th class="px-4 py-2 text-left">Registered</th>
+        </tr></thead>
+        <tbody>
+          <?php foreach ($callerIds as $cid): ?>
+          <tr class="border-b hover:bg-gray-50">
+            <td class="px-4 py-2 font-medium"><?= e($cid['label']) ?></td>
+            <td class="px-4 py-2 font-mono text-[11px]"><?= e($cid['caller_id']) ?></td>
+            <td class="px-4 py-2 text-gray-500"><?= e($cid['business_name']) ?></td>
+            <td class="px-4 py-2"><span class="md-badge <?= $cid['status'] ?>"><?= $cid['status'] ?></span></td>
+            <td class="px-4 py-2 text-gray-400"><?= date('d M Y', strtotime($cid['created_at'])) ?></td>
+          </tr>
+          <?php endforeach; ?>
+          <?php if (empty($callerIds)): ?>
+          <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">No caller IDs registered. Use the form to register one.</td></tr>
+          <?php endif; ?>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ TEMPLATES ══════════════ -->
+<?php elseif ($tab === 'templates'): ?>
+<div class="grid grid-cols-1 xl:grid-cols-5 gap-5">
+  <div class="xl:col-span-2 md-card p-5">
+    <h2 class="md-section-title" id="tplFormTitle">New Template</h2>
+    <form method="POST" id="tplForm" class="space-y-3">
+      <input type="hidden" name="action" value="save_template">
+      <input type="hidden" name="tpl_id" id="tplId" value="0">
+      <div>
+        <label class="md-label">Template Name *</label>
+        <input type="text" name="tpl_name" id="tplName" class="md-input" required placeholder="Order confirmation call">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="md-label">Caller ID *</label>
+          <select name="tpl_caller_id" id="tplCallerId" class="md-input" required>
+            <?php foreach ($callerIds as $cid): ?>
+            <option value="<?= e($cid['caller_id']) ?>"><?= e($cid['caller_id']) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div>
+          <label class="md-label">Duration (min)</label>
+          <input type="number" name="tpl_duration" id="tplDuration" class="md-input" value="5" min="1">
+        </div>
+      </div>
+      <div>
+        <label class="md-label">Messages JSON *</label>
+        <textarea name="tpl_messages" id="tplMessages" class="json-editor" rows="8" required placeholder="[]"></textarea>
+      </div>
+      <div>
+        <label class="md-label">Buttons JSON (optional)</label>
+        <textarea name="tpl_buttons" id="tplButtons" class="json-editor" rows="4" placeholder="null or []"></textarea>
+      </div>
+      <div>
+        <label class="md-label">Delivery Hook URL</label>
+        <input type="url" name="tpl_delivery_hook" id="tplHook" class="md-input" value="<?= e($mdDeliveryHook) ?>">
+      </div>
+      <div>
+        <label class="md-label">Call Payload</label>
+        <input type="text" name="tpl_call_payload" id="tplPayload" class="md-input">
+      </div>
+      <div class="flex gap-3">
+        <button type="submit" class="md-btn md-btn-primary flex-1">💾 Save Template</button>
+        <button type="button" onclick="resetTplForm()" class="md-btn md-btn-secondary">✕ Clear</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="xl:col-span-3 md-card">
+    <div class="px-5 py-3 border-b font-semibold text-sm text-gray-700">Templates (<?= count($templates) ?>)</div>
+    <div class="divide-y">
+      <?php foreach ($templates as $tpl): ?>
+      <div class="p-4 hover:bg-gray-50">
+        <div class="flex items-start justify-between gap-3">
+          <div class="flex-1 min-w-0">
+            <div class="font-semibold text-sm text-gray-800"><?= e($tpl['name']) ?></div>
+            <div class="text-xs text-gray-500 mt-0.5">
+              Caller: <span class="font-mono"><?= e($tpl['caller_id']) ?></span>
+              · Duration: <?= $tpl['per_call_duration'] ?>min
+              <?php if ($tpl['delivery_hook']): ?> · Hook: <?= e(parse_url($tpl['delivery_hook'],PHP_URL_HOST)) ?><?php endif; ?>
+            </div>
+          </div>
+          <div class="flex gap-2 flex-shrink-0">
+            <button onclick="editTemplate(<?= htmlspecialchars(json_encode($tpl)) ?>)"
+              class="md-btn md-btn-secondary text-xs py-1 px-3">Edit</button>
+            <button onclick="useTemplate(<?= htmlspecialchars(json_encode($tpl)) ?>)"
+              class="md-btn md-btn-primary text-xs py-1 px-3">📞 Use</button>
+            <form method="POST" class="inline" onsubmit="return confirm('Delete template?')">
+              <input type="hidden" name="action" value="delete_template">
+              <input type="hidden" name="tpl_id" value="<?= $tpl['id'] ?>">
+              <button type="submit" class="md-btn md-btn-danger text-xs py-1 px-3">✕</button>
+            </form>
+          </div>
+        </div>
+      </div>
+      <?php endforeach; ?>
+      <?php if (empty($templates)): ?>
+      <div class="p-8 text-center text-sm text-gray-400">No templates yet. Create one using the form.</div>
+      <?php endif; ?>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ CALL LOGS ══════════════ -->
+<?php elseif ($tab === 'call-logs'): ?>
+<div class="md-card">
+  <div class="px-5 py-3 border-b flex items-center justify-between">
+    <div class="font-semibold text-sm text-gray-700">Call Logs (<?= count($callLogs) ?>)</div>
+    <div class="flex gap-2">
+      <input type="text" id="logSearch" oninput="filterLogs()" placeholder="Search number, type..." class="md-input w-48 text-xs py-1.5">
+      <select id="logStatus" onchange="filterLogs()" class="md-input w-32 text-xs py-1.5">
+        <option value="">All status</option>
+        <option>initiated</option><option>answered</option><option>completed</option>
+        <option>missed</option><option>failed</option><option>busy</option><option>no_answer</option>
+      </select>
+    </div>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-xs" id="logsTable">
+      <thead><tr class="bg-gray-50 border-b">
+        <th class="px-4 py-2 text-left">Time</th>
+        <th class="px-4 py-2 text-left">Type</th>
+        <th class="px-4 py-2 text-left">Number</th>
+        <th class="px-4 py-2 text-left">Caller ID</th>
+        <th class="px-4 py-2 text-left">Customer</th>
+        <th class="px-4 py-2 text-left">Order</th>
+        <th class="px-4 py-2 text-left">Status</th>
+        <th class="px-4 py-2 text-left">Details</th>
+      </tr></thead>
+      <tbody>
+        <?php foreach ($callLogs as $log):
+          $hookData = $log['delivery_hook_payload'] ? json_decode($log['delivery_hook_payload'], true) : null;
+        ?>
+        <tr class="border-b hover:bg-gray-50 log-row" data-search="<?= strtolower(e($log['phone_number'].' '.$log['call_type'].' '.$log['caller_id'])) ?>" data-status="<?= $log['status'] ?>">
+          <td class="px-4 py-2 text-gray-400 whitespace-nowrap"><?= date('d M H:i', strtotime($log['created_at'])) ?></td>
+          <td class="px-4 py-2 capitalize"><?= str_replace('_',' ',$log['call_type']) ?></td>
+          <td class="px-4 py-2 font-mono font-medium"><?= e($log['phone_number']) ?></td>
+          <td class="px-4 py-2 font-mono text-[10px]"><?= e($log['caller_id']) ?></td>
+          <td class="px-4 py-2"><?= e($log['cname'] ?? '—') ?></td>
+          <td class="px-4 py-2"><?= e($log['order_number'] ?? '—') ?></td>
+          <td class="px-4 py-2"><span class="md-badge <?= $log['status'] ?>"><?= $log['status'] ?></span></td>
+          <td class="px-4 py-2">
+            <?php if ($hookData): ?>
+            <button onclick="showLogDetail(this)" data-detail="<?= htmlspecialchars(json_encode($hookData)) ?>"
+              class="text-indigo-500 hover:text-indigo-700 text-[10px] font-medium px-2 py-0.5 border border-indigo-200 rounded">
+              View
+            </button>
+            <?php else: ?><span class="text-gray-300">—</span><?php endif; ?>
+          </td>
+        </tr>
+        <?php endforeach; ?>
+        <?php if (empty($callLogs)): ?>
+        <tr><td colspan="8" class="px-4 py-8 text-center text-gray-400">No call logs yet</td></tr>
+        <?php endif; ?>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Log detail modal -->
+<div id="logDetailModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onclick="if(event.target===this)this.classList.add('hidden')">
+  <div class="bg-gray-900 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden">
+    <div class="px-5 py-3 border-b border-gray-700 flex items-center justify-between">
+      <h3 class="text-white font-semibold text-sm">Call Detail</h3>
+      <button onclick="document.getElementById('logDetailModal').classList.add('hidden')" class="text-gray-400 hover:text-white">✕</button>
+    </div>
+    <pre id="logDetailContent" class="p-5 text-green-400 text-xs overflow-auto max-h-[calc(80vh-60px)] font-mono"></pre>
+  </div>
+</div>
+
+<!-- ══════════════ SETTINGS ══════════════ -->
+<?php elseif ($tab === 'settings'): ?>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+  <div class="md-card p-5">
+    <h2 class="md-section-title">ManyDial API Configuration</h2>
+    <form method="POST" class="space-y-4">
+      <input type="hidden" name="action" value="save_settings">
+      <div>
+        <label class="md-label">ManyDial API Key *</label>
+        <input type="text" name="md_api_key" value="<?= e($mdApiKey) ?>" class="md-input font-mono" placeholder="YOUR_SECRET_KEY" required>
+        <p class="text-[10px] text-gray-400 mt-1">Sent as <code>x-api-key</code> header with every API request</p>
+      </div>
+      <div>
+        <label class="md-label">Default Delivery Hook URL</label>
+        <input type="url" name="md_delivery_hook" value="<?= e($mdDeliveryHook) ?>" class="md-input" placeholder="https://khatibangla.com/api/md-webhook.php">
+        <p class="text-[10px] text-gray-400 mt-1">Webhook URL that receives call completion data from ManyDial</p>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="md-label">Default Caller ID</label>
+          <input type="text" name="md_default_caller_id" value="<?= e($mdDefaultCaller) ?>" class="md-input font-mono" placeholder="+8809600000000">
+        </div>
+        <div>
+          <label class="md-label">Default Call Duration (min)</label>
+          <input type="number" name="md_default_duration" value="<?= $mdDefaultDuration ?>" min="1" max="30" class="md-input">
+        </div>
+      </div>
+      <button type="submit" class="md-btn md-btn-primary w-full">💾 Save Settings</button>
+    </form>
+  </div>
+
+  <div class="space-y-4">
+    <!-- Test connection -->
+    <div class="md-card p-5">
+      <h3 class="md-section-title">Test API Connection</h3>
+      <button type="button" onclick="testApiConnection()" class="md-btn md-btn-secondary w-full">🔌 Test Connection</button>
+      <div id="testResult" class="hidden mt-3 p-3 rounded-lg text-xs font-mono"></div>
+    </div>
+
+    <!-- Webhook info -->
+    <div class="md-card p-5">
+      <h3 class="md-section-title">Webhook Endpoint</h3>
+      <p class="text-xs text-gray-500 mb-3">Point ManyDial to this URL to receive delivery reports:</p>
+      <div class="bg-gray-900 rounded-lg p-3 font-mono text-xs text-green-400 flex items-center justify-between gap-2">
+        <span id="webhookUrl"><?= rtrim(SITE_URL,'/') ?>/api/md-webhook.php</span>
+        <button onclick="copyWebhook()" class="text-gray-400 hover:text-white flex-shrink-0">📋</button>
+      </div>
+      <p class="text-[10px] text-gray-400 mt-2">This endpoint processes ManyDial's delivery hook responses and updates call logs automatically.</p>
+    </div>
+
+    <!-- API endpoints reference -->
+    <div class="md-card p-5">
+      <h3 class="md-section-title">API Endpoints</h3>
+      <div class="space-y-2 text-xs">
+        <?php
+        $endpoints = [
+          ['POST','Caller ID Registration','/portal/callerid','caller-ids'],
+          ['POST','Call Automation','/portal/callIdDispatch','call-automation'],
+          ['POST','Call Center Create','/portal/call-center','call-center'],
+          ['POST','Call Center Renew','/portal/call-center/renew','call-center'],
+          ['POST','Agent Create','/portal/agent-request','agents'],
+          ['DELETE','Agent Delete','/portal/agents/delete','agents'],
+          ['GET','Agent List','/portal/call-center/agent-list','agents'],
+          ['POST','Click to Call','/portal/click-to-call','click-to-call'],
+        ];
+        foreach ($endpoints as [$method,$label,$path,$tabLink]): ?>
+        <div class="flex items-center gap-2">
+          <span class="px-1.5 py-0.5 rounded text-[10px] font-bold <?= $method==='POST'?'bg-blue-100 text-blue-700':($method==='DELETE'?'bg-red-100 text-red-700':'bg-green-100 text-green-700') ?>"><?= $method ?></span>
+          <a href="?tab=<?= $tabLink ?>" class="text-indigo-500 hover:text-indigo-700 font-medium"><?= $label ?></a>
+          <code class="text-gray-400 text-[10px]"><?= $path ?></code>
+        </div>
+        <?php endforeach; ?>
+      </div>
+    </div>
+  </div>
+</div>
+<?php endif; ?>
+
+</div>
 
 <script>
-async function ccPost(d){const fd=new FormData();for(const[k,v]of Object.entries(d))fd.append(k,v);try{const r=await fetch(location.pathname,{method:'POST',body:fd});return await r.json();}catch(e){return{success:false};}}
-// Channels
-function openChannelModal(id,data){document.getElementById('channelModalTitle').textContent=id?'Edit Channel':'Add Channel';document.getElementById('chId').value=id||0;if(data){const cfg=typeof data.config==='string'?JSON.parse(data.config||'{}'):(data.config||{});document.getElementById('chType').value=data.channel_type||'sip';document.getElementById('chName').value=data.channel_name||'';document.getElementById('chPhone').value=cfg.phone_number||'';document.getElementById('chApiKey').value=cfg.api_key||'';document.getElementById('chApiSecret').value=cfg.api_secret||'';document.getElementById('chWebhook').value=cfg.webhook_url||'';document.getElementById('chPageId').value=cfg.page_id||'';document.getElementById('chToken').value=cfg.access_token||'';document.getElementById('chExtra').value=cfg.extra||'';document.getElementById('chActive').checked=data.is_active==1;document.getElementById('chSort').value=data.sort_order||0;}else{document.getElementById('channelForm').reset();document.getElementById('chId').value=0;}document.getElementById('channelModal').classList.remove('hidden');}
-function closeChannelModal(){document.getElementById('channelModal').classList.add('hidden');}
-async function saveChannel(){const fd=new FormData(document.getElementById('channelForm'));const r=await fetch(location.pathname,{method:'POST',body:fd});const j=await r.json();if(j.success)location.reload();else alert(j.message||'Error');}
-async function deleteChannel(id){if(!confirm('Delete?'))return;const j=await ccPost({action:'delete_channel',ch_id:id});if(j.success)location.reload();}
-// Numbers — Simplified
-function openNumberModal(id,data){
-    document.getElementById('numberModalTitle').textContent=id?'Edit Number':'Add SIP Number';
-    document.getElementById('numId').value=id||0;
-    document.getElementById('scanResult').classList.add('hidden');
-    document.getElementById('scanResult').innerHTML='';
-    if(document.getElementById('advancedSection'))document.getElementById('advancedSection').classList.add('hidden');
-    const hint=document.getElementById('numPassHint');
-    if(data){
-        document.getElementById('numSipServer').value=data.sip_server||'';
-        document.getElementById('numSipUser').value=data.sip_username||'';
-        document.getElementById('numSipPass').value='';
-        document.getElementById('numLabel').value=data.label||'';
-        document.getElementById('numProvider').value=data.provider||'';
-        document.getElementById('numNumber').value=data.number||'';
-        document.getElementById('numSipPort').value=data.sip_port||5060;
-        document.getElementById('numWsUri').value=data.ws_uri||'';
-        document.getElementById('numSipTransport').value=data.sip_transport||'wss';
-        document.getElementById('numSipRealm').value=data.sip_realm||'';
-        document.getElementById('numCallerId').value=data.caller_id||'';
-        document.getElementById('numStun').value=data.stun_server||'stun:stun.l.google.com:19302';
-        document.getElementById('numTurn').value=data.turn_server||'';
-        document.getElementById('numTurnUser').value=data.turn_user||'';
-        document.getElementById('numTurnPass').value='';
-        document.getElementById('numPbxType').value=data.pbx_type||'generic';
-        document.getElementById('numChannelId').value=data.channel_id||0;
-        document.getElementById('numActive').value=data.is_active==1?'1':'0';
-        // Show password status
-        const hasPw=parseInt(data.pw_len||0)>0;
-        if(hint){hint.classList.remove('hidden');hint.innerHTML=hasPw?'<span class="text-green-600"><i class="fas fa-check-circle mr-1"></i>Password saved ('+data.pw_len+' chars). Leave empty to keep, or type new one to change.</span>':'<span class="text-red-500"><i class="fas fa-exclamation-triangle mr-1"></i>No password saved! Enter your SIP password.</span>';}
-        // Sync advanced fields
-        const adv={numSipPortAdv:'numSipPort',numSipTransportAdv:'numSipTransport',numSipRealmAdv:'numSipRealm',numWsUriAdv:'numWsUri',numCallerIdAdv:'numCallerId',numStunAdv:'numStun',numTurnAdv:'numTurn',numTurnUserAdv:'numTurnUser',numPbxTypeAdv:'numPbxType'};
-        for(const[a,h]of Object.entries(adv)){const el=document.getElementById(a);if(el)el.value=document.getElementById(h)?.value||'';}
-    } else {
-        document.getElementById('numberForm').reset();
-        document.getElementById('numId').value=0;
-        if(hint){hint.classList.remove('hidden');hint.innerHTML='<span class="text-gray-400">Enter your SIP password (e.g. ASD@#45d)</span>';}
-        document.getElementById('numActive').value='1';
-        document.getElementById('numSipPort').value='5060';
-        document.getElementById('numSipTransport').value='wss';
-        document.getElementById('numStun').value='stun:stun.l.google.com:19302';
-    }
-    document.getElementById('numberModal').classList.remove('hidden');
-}
-function closeNumberModal(){document.getElementById('numberModal').classList.add('hidden');}
-async function saveNumber(){
-    // Auto-fill number from username if empty
-    const un=document.getElementById('numSipUser')?.value||'';
-    if(!document.getElementById('numNumber').value)document.getElementById('numNumber').value=un;
-    if(!document.getElementById('numCallerId').value)document.getElementById('numCallerId').value=un;
-    if(!document.getElementById('numSipRealm').value)document.getElementById('numSipRealm').value=document.getElementById('numSipServer')?.value||'';
-    const fd=new FormData(document.getElementById('numberForm'));
-    const r=await fetch(location.pathname,{method:'POST',body:fd});const j=await r.json();
-    if(j.success){
-        // Show password confirmation
-        if(j.password_saved){
-            console.log('[SIP] Number saved. Password stored ('+j.password_length+' chars)');
-        } else {
-            console.warn('[SIP] Number saved but NO PASSWORD stored!');
-        }
-        location.reload();
-    } else alert(j.message||'Error');
-}
-async function deleteNumber(id){if(!confirm('Delete?'))return;const j=await ccPost({action:'delete_number',num_id:id});if(j.success)location.reload();}
-// Port Scan
-async function scanServerPorts(){
-    const server=document.getElementById('numSipServer')?.value?.trim();
-    if(!server){alert('Enter the Server IP first');return;}
-    const btn=document.getElementById('btnScanPorts');
-    btn.innerHTML='<i class="fas fa-spinner fa-spin mr-1.5"></i>Scanning ports...';btn.disabled=true;
-    const box=document.getElementById('scanResult');box.classList.remove('hidden');
-    box.innerHTML='<div class="bg-gray-50 border rounded-xl p-3 text-xs text-gray-500"><i class="fas fa-spinner fa-spin mr-1"></i>Scanning 10 common SIP/WebSocket ports on '+server+'...</div>';
-    const j=await ccPost({action:'port_scan',scan_server:server});
-    btn.innerHTML='<i class="fas fa-search mr-1.5"></i>Auto-Detect Ports & Configure';btn.disabled=false;
-    if(!j.success){box.innerHTML='<div class="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-600"><i class="fas fa-times-circle mr-1"></i>'+(j.message||'Scan failed')+'</div>';return;}
-    const open=j.open_ports||[];
-    if(!open.length){box.innerHTML='<div class="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-600"><i class="fas fa-times-circle mr-1"></i>No open ports found on '+server+'. Server may be unreachable or firewall is blocking.</div>';return;}
-    // Determine best WS port
-    const wsPriority=[8089,5090,7443,8443,443,8088,80];
-    let wsPort=0;
-    for(const p of wsPriority){if(open.includes(p)){wsPort=p;break;}}
-    const sipPort=open.includes(5060)?5060:(open.includes(5061)?5061:0);
-    // Auto-configure
-    if(wsPort){
-        const scheme=wsPort===80||wsPort===8088?'ws':'wss';
-        const uri=scheme+'://'+server+':'+wsPort+'/ws';
-        document.getElementById('numWsUri').value=uri;
-        document.getElementById('numSipTransport').value=scheme==='wss'?'wss':'ws';
-        if(document.getElementById('numWsUriAdv'))document.getElementById('numWsUriAdv').value=uri;
-        if(document.getElementById('numSipTransportAdv'))document.getElementById('numSipTransportAdv').value=scheme==='wss'?'wss':'ws';
-    }
-    if(sipPort){
-        document.getElementById('numSipPort').value=sipPort;
-        if(document.getElementById('numSipPortAdv'))document.getElementById('numSipPortAdv').value=sipPort;
-    }
-    // Show result
-    let html='<div class="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs">';
-    html+='<p class="font-semibold text-blue-800 mb-2"><i class="fas fa-check-circle mr-1"></i>Scan Complete — '+server+' ('+j.ip+')</p>';
-    html+='<div class="flex flex-wrap gap-1.5 mb-2">';
-    (j.scanned||[]).forEach(p=>{const isOpen=open.includes(p);html+='<span class="px-2 py-0.5 rounded '+(isOpen?'bg-green-100 text-green-700 font-medium':'bg-gray-100 text-gray-400')+'">'+p+(isOpen?' ✓':'')+'</span>';});
-    html+='</div>';
-    if(wsPort)html+='<p class="text-green-700"><i class="fas fa-check mr-1"></i>WebSocket port auto-set to <strong>'+wsPort+'</strong></p>';
-    else html+='<p class="text-red-600"><i class="fas fa-exclamation-triangle mr-1"></i>No WebSocket port found. Your SIP provider may not support browser calling (WebRTC). You may need to ask them for the WebSocket URI.</p>';
-    if(sipPort)html+='<p class="text-green-700"><i class="fas fa-check mr-1"></i>SIP port: <strong>'+sipPort+'</strong></p>';
-    html+='</div>';
-    box.innerHTML=html;
-}
-// Health
-async function healthCheckSingle(id){const info=document.getElementById('healthInfo_'+id);if(info)info.innerHTML='<p class="text-xs text-blue-500"><i class="fas fa-spinner fa-spin mr-1"></i>Checking...</p>';const j=await ccPost({action:'health_check',num_id:id});if(j.success){const cls={ok:'health-ok',warn:'health-warn',fail:'health-fail'}[j.status]||'health-unknown';const bg={ok:'bg-green-50 border-green-200',warn:'bg-yellow-50 border-yellow-200',fail:'bg-red-50 border-red-200'}[j.status]||'bg-gray-50 border-gray-200';const row=document.getElementById('numRow_'+id);if(row)row.className='rounded-xl border p-4 '+bg;if(info)info.innerHTML=`<p class="text-xs font-medium ${cls} px-2 py-0.5 rounded inline-block">${j.status.toUpperCase()}</p><p class="text-[10px] text-gray-500 mt-1">${j.message||''}</p>`;}}
-async function healthCheckAll(){const btn=document.getElementById('btnHealthAll');btn.innerHTML='<i class="fas fa-spinner fa-spin mr-1"></i>Checking...';btn.disabled=true;const j=await ccPost({action:'health_check_all'});if(j.success&&j.results)j.results.forEach(r=>{const info=document.getElementById('healthInfo_'+r.id);if(info){const cls={ok:'health-ok',warn:'health-warn',fail:'health-fail'}[r.status]||'health-unknown';info.innerHTML=`<p class="text-xs font-medium ${cls} px-2 py-0.5 rounded inline-block">${r.status.toUpperCase()}</p><p class="text-[10px] text-gray-500 mt-1">${r.message||''}</p>`;}});btn.innerHTML='<i class="fas fa-heartbeat mr-1"></i>Check All';btn.disabled=false;}
-// WebRTC SIP Dialer
-let _sipUA=null,_sipSession=null,_callTimer=null,_callSeconds=0,_currentCallLogId=null,_sipCreds={};
-function dialPress(k){const i=document.getElementById('dialNumber');if(i)i.value+=k;}
-function dialBackspace(){const i=document.getElementById('dialNumber');if(i)i.value=i.value.slice(0,-1);}
-function setSipStatus(s,t){const dot=document.getElementById('sipStatusDot'),txt=document.getElementById('sipStatusText'),disc=document.getElementById('btnSipDisconnect');if(!dot)return;const c={connected:'bg-green-500',connecting:'bg-yellow-400',disconnected:'bg-gray-400',error:'bg-red-500'};dot.className='w-3 h-3 rounded-full '+(c[s]||'bg-gray-400');if(txt)txt.textContent=t;if(disc)disc.classList.toggle('hidden',s!=='connected');}
-async function onSelectSipNumber(){const sel=document.getElementById('dialFromNumber');if(!sel||!sel.value){sipDisconnect();return;}setSipStatus('connecting','Loading SIP credentials & scanning ports...');showDebug('Fetching SIP credentials...');try{const creds=await ccPost({action:'get_sip_creds',num_id:sel.value});if(!creds.success){setSipStatus('error','Failed: '+(creds.message||''));return;}
-showDebug('Server: '+creds.sip_server+' (IP: '+(creds.ip||'?')+')');
-showDebug('User: '+creds.sip_user+' | Password: '+(creds.sip_pass?'***'+creds.sip_pass.length+'chars***':'EMPTY!'));
-showDebug('WS URIs to try: '+(creds.ws_uris||[]).length);
-(creds.ws_uris||[]).forEach((u,i)=>showDebug('  ['+(i+1)+'] '+u));
-if(!creds.ws_uri&&!(creds.ws_uris||[]).length){setSipStatus('error','No WebSocket port found. Go to Numbers & Health → run Health Check.');return;}
-_sipCreds=creds;sipConnectWithFallback(creds);}catch(e){setSipStatus('error','Network error: '+e.message);}}
+// ── Sample data ────────────────────────────────────────────────────────────
+const SAMPLE_MESSAGES = [{"welcome":"আপনাকে স্বাগতম! আমরা কথাবাংলা থেকে কল করছি।","repeat":1,"sms":"আমাদের সেবা ব্যবহার করার জন্য আপনাকে ধন্যবাদ।","forward":"","menuMessage1":"আপনার অর্ডার কনফার্ম করতে ১ চাপুন, বাতিল করতে ২ চাপুন।","repeat1":2,"noCall1":"no","noCall1Message":"আপনার অর্ডার কনফার্ম করা হয়েছে।","menuMessage2":"আপনার অর্ডার বাতিল করতে ২ চাপুন।","repeat2":2,"noCall2":"yes","noCall2Message":"আপনার অর্ডার বাতিল করা হয়েছে। আমরা শীঘ্রই যোগাযোগ করব।","smsct1":"Our service... Press 1 for more, Press 2 to return to the main menu.","noCall3":"no","smsMessage2":"Thank you for being with us. Press 1 to know our services. Press 2 to talk to an agent."}];
+const SAMPLE_BUTTONS = [{"id":"menuMessage1","key":"1","value":"Bangla"},{"id":"menuMessage1","key":"2","value":"English"},{"id":"menuMessage21","key":"1","value":"Bangla Service"},{"id":"menuMessage22","key":"2","value":"English Service"}];
 
-let _tryIndex=0,_wsUris=[],_tryConfigs=[];
-function sipConnectWithFallback(cr){
-    if(_sipUA){try{_sipUA.stop();}catch(e){}_sipUA=null;}
-    if(typeof JsSIP==='undefined'){setSipStatus('error','JsSIP not loaded — refresh page');return;}
-
-    // Build all configs to try: different URIs × different realm/auth combos
-    _wsUris=cr.ws_uris||[cr.ws_uri];
-    _tryConfigs=[];
-    _wsUris.forEach(uri=>{
-        // Try 1: realm = server domain
-        _tryConfigs.push({ws:uri,realm:cr.sip_realm||cr.sip_server,authUser:cr.sip_user});
-        // Try 2: realm = server IP (if different)
-        if(cr.ip&&cr.ip!==cr.sip_server) _tryConfigs.push({ws:uri,realm:cr.ip,authUser:cr.sip_user});
-        // Try 3: no realm (let server challenge set it)
-        _tryConfigs.push({ws:uri,realm:'',authUser:cr.sip_user});
-    });
-    _tryIndex=0;
-    tryNextConfig(cr);
+function loadSampleMessages() {
+    const el = document.getElementById('messagesJson');
+    if (el) el.value = JSON.stringify(SAMPLE_MESSAGES, null, 2);
+}
+function loadSampleButtons() {
+    const el = document.getElementById('buttonsJson');
+    if (el) el.value = JSON.stringify(SAMPLE_BUTTONS, null, 2);
 }
 
-function tryNextConfig(cr){
-    if(_tryIndex>=_tryConfigs.length){
-        setSipStatus('error','All connection attempts failed. Check credentials or ask your SIP provider if they support WebSocket/WebRTC.');
-        showDebug('❌ All '+_tryConfigs.length+' attempts failed.');
-        showDebug('💡 Your SIP provider may not support WebSocket connections.');
-        showDebug('💡 Ask them: "Do you support WebRTC or SIP over WebSocket?"');
-        showDebug('💡 If they give you a specific WebSocket URL, enter it in Advanced Settings.');
-        return;
-    }
-    const cfg=_tryConfigs[_tryIndex];
-    const attemptNum=_tryIndex+1;
-    showDebug('');
-    showDebug('🔄 Attempt '+attemptNum+'/'+_tryConfigs.length+': '+cfg.ws+(cfg.realm?' realm='+cfg.realm:' (no realm)'));
-    setSipStatus('connecting','Attempt '+attemptNum+'/'+_tryConfigs.length+': trying '+cfg.ws+'...');
-
-    if(_sipUA){try{_sipUA.stop();}catch(e){}_sipUA=null;}
-    let sock;
-    try{sock=new JsSIP.WebSocketInterface(cfg.ws);}catch(e){
-        showDebug('  ✗ Invalid URI: '+e.message);
-        _tryIndex++;tryNextConfig(cr);return;
-    }
-    // Set socket connect timeout
-    sock.via_transport='auto';
-
-    const sipRealm=cfg.realm||cr.sip_server;
-    const sipUri='sip:'+cr.sip_user+'@'+sipRealm;
-    showDebug('  URI: '+sipUri);
-
-    const uaCfg={
-        sockets:[sock],
-        uri:sipUri,
-        password:cr.sip_pass,
-        display_name:cr.label||cr.caller_id||cr.number||cr.sip_user,
-        register:true,
-        session_timers:false,
-        connection_recovery_min_interval:2,
-        connection_recovery_max_interval:10,
-        register_expires:120,
-    };
-    // If realm is different from URI host, set authorization_user
-    if(cfg.authUser) uaCfg.authorization_user=cfg.authUser;
-    // If no realm specified, let JsSIP use what server sends
-    if(!cfg.realm) delete uaCfg.realm;
-
-    let resolved=false;
-    const failTimeout=setTimeout(()=>{
-        if(!resolved){
-            resolved=true;
-            showDebug('  ✗ Timeout (8s) — moving to next');
-            if(_sipUA){try{_sipUA.stop();}catch(e){}_sipUA=null;}
-            _tryIndex++;tryNextConfig(cr);
-        }
-    },8000);
-
-    try{
-        _sipUA=new JsSIP.UA(uaCfg);
-    }catch(e){
-        clearTimeout(failTimeout);
-        showDebug('  ✗ UA create failed: '+e.message);
-        _tryIndex++;tryNextConfig(cr);return;
-    }
-
-    _sipUA.on('connected',()=>{showDebug('  ✓ WebSocket connected');});
-    _sipUA.on('registered',()=>{
-        if(resolved)return;resolved=true;clearTimeout(failTimeout);
-        showDebug('  ✅ REGISTERED successfully!');
-        showDebug('  URI: '+cfg.ws+' | realm: '+(cfg.realm||'auto'));
-        setSipStatus('connected','✓ Registered: '+cr.sip_user+'@'+sipRealm+' — Ready to call');
-        // Save working URI
-        if(cfg.ws!==cr.ws_uri){
-            showDebug('  💾 Saving working URI: '+cfg.ws);
-            ccPost({action:'save_number',num_id:document.getElementById('dialFromNumber')?.value||'',num_ws_uri:cfg.ws,num_sip_realm:cfg.realm||'',num_number:cr.number,num_sip_server:cr.sip_server,num_sip_username:cr.sip_user});
-        }
-    });
-    _sipUA.on('registrationFailed',(e)=>{
-        if(resolved)return;resolved=true;clearTimeout(failTimeout);
-        const cause=e.cause||'Unknown';
-        showDebug('  ✗ Registration failed: '+cause);
-        if(cause.includes('Rejected')||cause.includes('Authentication'))showDebug('    (auth error — trying next config)');
-        if(_sipUA){try{_sipUA.stop();}catch(e){}_sipUA=null;}
-        _tryIndex++;tryNextConfig(cr);
-    });
-    _sipUA.on('disconnected',(e)=>{
-        if(resolved)return;
-        showDebug('  ✗ Disconnected'+(e?.error?' — '+e.error:''));
-        // Don't auto-advance on disconnect if we haven't timed out yet
-    });
-    _sipUA.on('newRTCSession',(data)=>{if(data.originator==='remote'){const s=data.session;const caller=s.remote_identity?.uri?.user||'Unknown';if(confirm('Incoming: '+caller+' — Answer?')){s.answer({mediaConstraints:{audio:true,video:false},pcConfig:{iceServers:buildIce(cr)}});handleSession(s,'inbound',caller);}else s.terminate();}});
-
-    try{_sipUA.start();showDebug('  Connecting to WebSocket...');}catch(e){
-        clearTimeout(failTimeout);
-        showDebug('  ✗ Start failed: '+e.message);
-        _tryIndex++;tryNextConfig(cr);
+function validateJson() {
+    const mj = document.getElementById('messagesJson');
+    const bj = document.getElementById('buttonsJson');
+    try {
+        JSON.parse(mj.value);
+        if (bj && bj.value.trim()) JSON.parse(bj.value);
+        alert('✅ JSON is valid!');
+    } catch(e) {
+        alert('❌ Invalid JSON: ' + e.message);
     }
 }
-// Keep old sipConnect as alias
-function sipConnect(cr){sipConnectWithFallback(cr);}
 
-// Debug log panel
-function showDebug(msg){
-    let box=document.getElementById('sipDebugLog');
-    if(!box){
-        const bar=document.getElementById('sipStatusBar');
-        if(!bar)return;
-        const wrap=document.createElement('div');
-        wrap.innerHTML='<div class="mt-2"><button onclick="document.getElementById(\'sipDebugPanel\').classList.toggle(\'hidden\')" class="text-[10px] text-gray-400 hover:text-gray-600"><i class="fas fa-terminal mr-1"></i>Show/Hide SIP Debug Log</button><div id="sipDebugPanel" class="bg-gray-900 text-green-400 rounded-lg p-3 mt-1 max-h-48 overflow-y-auto font-mono text-[11px] leading-relaxed"><pre id="sipDebugLog" class="whitespace-pre-wrap"></pre></div></div>';
-        bar.after(wrap);
-        box=document.getElementById('sipDebugLog');
-    }
-    if(!msg){box.textContent='';return;}
-    const ts=new Date().toLocaleTimeString('en',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
-    box.textContent+=ts+' '+msg+'\n';
-    const panel=document.getElementById('sipDebugPanel');
-    if(panel)panel.scrollTop=panel.scrollHeight;
-    console.log('[SIP]',msg);
+function loadTemplate(tpl) {
+    document.getElementById('messagesJson').value = typeof tpl.messages === 'string' ? tpl.messages : JSON.stringify(tpl.messages, null, 2);
+    if (tpl.buttons) document.getElementById('buttonsJson').value = typeof tpl.buttons === 'string' ? tpl.buttons : JSON.stringify(tpl.buttons, null, 2);
+    const callerSel = document.querySelector('[name="caller_id"]');
+    if (callerSel) callerSel.value = tpl.caller_id;
+    const durInp = document.querySelector('[name="per_call_duration"]');
+    if (durInp) durInp.value = tpl.per_call_duration || 5;
 }
-function sipDisconnect(){if(_sipUA){try{_sipUA.stop();}catch(e){}_sipUA=null;}setSipStatus('disconnected','Disconnected');showDebug('Disconnected');}
 
-// Browser-side WebSocket probe — tests actual WS connections from user's browser
-async function browserWsProbe(server){
-    if(!server){
-        // Get server from selected number or first number
-        const sel=document.getElementById('dialFromNumber');
-        if(sel&&sel.value){
-            const creds=await ccPost({action:'get_sip_creds',num_id:sel.value});
-            if(creds.success)server=creds.sip_server;
-        }
-        if(!server){alert('Select a SIP number first or enter a server');return;}
-    }
-    showDebug('');
-    showDebug('═══════════════════════════════════');
-    showDebug('🔍 BROWSER WebSocket Probe: '+server);
-    showDebug('  Testing actual WS connections from YOUR browser');
-    showDebug('  (This is more reliable than server-side TCP scan)');
-    showDebug('═══════════════════════════════════');
-    setSipStatus('connecting','Probing WebSocket ports on '+server+'...');
+function editTemplate(tpl) {
+    document.getElementById('tplFormTitle').textContent = 'Edit Template';
+    document.getElementById('tplId').value = tpl.id;
+    document.getElementById('tplName').value = tpl.name;
+    document.getElementById('tplCallerId').value = tpl.caller_id;
+    document.getElementById('tplDuration').value = tpl.per_call_duration;
+    document.getElementById('tplMessages').value = typeof tpl.messages === 'string' ? tpl.messages : JSON.stringify(tpl.messages, null, 2);
+    document.getElementById('tplButtons').value = tpl.buttons ? (typeof tpl.buttons === 'string' ? tpl.buttons : JSON.stringify(tpl.buttons, null, 2)) : '';
+    document.getElementById('tplHook').value = tpl.delivery_hook || '';
+    document.getElementById('tplPayload').value = tpl.call_payload || '';
+    window.scrollTo({top: 0, behavior: 'smooth'});
+}
 
-    const ports=[5060,5061,5066,5067,8089,8088,5090,443,7443,8443,8900,10443,80,8080];
-    const paths=['/ws','/wss','/websocket',''];
-    const schemes=['wss','ws'];
-    let found=[];
-    let tested=0;
-    const total=ports.length*paths.length*schemes.length;
+function resetTplForm() {
+    document.getElementById('tplFormTitle').textContent = 'New Template';
+    document.getElementById('tplId').value = '0';
+    document.getElementById('tplForm').reset();
+}
 
-    for(const port of ports){
-        for(const scheme of schemes){
-            for(const path of paths){
-                const url=scheme+'://'+server+':'+port+path;
-                tested++;
-                try{
-                    const result=await testWsConnection(url,3000);
-                    if(result.connected){
-                        showDebug('  ✅ '+url+' — WebSocket CONNECTED!');
-                        found.push(url);
-                    } else if(result.error&&!result.error.includes('timeout')){
-                        // Only log non-timeout errors for open ports
-                        if(result.opened) showDebug('  ⚠ '+url+' — opened then closed: '+result.error);
-                    }
-                }catch(e){}
+function useTemplate(tpl) {
+    window.location.href = '?tab=call-automation';
+    sessionStorage.setItem('autoLoadTemplate', JSON.stringify(tpl));
+}
+
+// Click to call
+function doClickToCall() {
+    const form = document.getElementById('ctcForm');
+    const fd = new FormData(form);
+    // Use manual email if agent select is empty
+    const selEmail = fd.get('ctc_email') || '';
+    const manualEmail = fd.get('ctc_email_manual') || '';
+    const agEmail = selEmail.trim() || manualEmail.trim();
+    if (!agEmail) { alert('Please select or enter an agent email'); btn.textContent = '📞 Initiate Click to Call'; btn.disabled = false; return; }
+    fd.set('ctc_email', agEmail);
+    fd.delete('ctc_email_manual');
+
+    const btn = form.querySelector('button[type="button"]');
+    btn.textContent = '⏳ Initiating...'; btn.disabled = true;
+
+    fetch(location.pathname, {method:'POST', credentials:'same-origin', body: fd})
+        .then(r => r.json())
+        .then(data => {
+            const div = document.getElementById('ctcResult');
+            div.classList.remove('hidden');
+            if (data.success) {
+                div.className = 'mb-4 p-3 rounded-lg text-sm bg-green-50 border border-green-200 text-green-700';
+                div.textContent = '✅ ' + (data.message || 'Call requested successfully');
+            } else {
+                div.className = 'mb-4 p-3 rounded-lg text-sm bg-red-50 border border-red-200 text-red-700';
+                div.textContent = '❌ ' + (data.message || data.error || 'Failed to initiate call');
             }
-        }
-        // Update status
-        setSipStatus('connecting','Probing: '+tested+'/'+total+' combos tested, '+found.length+' found...');
-    }
-
-    showDebug('');
-    showDebug('═══ Probe Complete ═══');
-    if(found.length){
-        showDebug('✅ Found '+found.length+' working WebSocket URL(s):');
-        found.forEach((u,i)=>showDebug('  ['+(i+1)+'] '+u));
-        showDebug('');
-        showDebug('💡 Copy one of these URLs to Advanced Settings → WebSocket URI');
-        showDebug('   Then try connecting again.');
-        setSipStatus('disconnected','Found '+found.length+' WebSocket URL(s)! Check debug log below.');
-    } else {
-        showDebug('❌ No WebSocket connections accepted on any port/path.');
-        showDebug('');
-        showDebug('This means your SIP server does NOT support WebSocket/WebRTC.');
-        showDebug('Your PortSIP app works because it uses native SIP (UDP/TCP),');
-        showDebug('which is different from WebSocket SIP needed for browser calling.');
-        showDebug('');
-        showDebug('📞 Ask your provider:');
-        showDebug('   "I need to make SIP calls from a web browser.');
-        showDebug('    Do you support SIP over WebSocket (WSS) for WebRTC?');
-        showDebug('    If yes, what is the WebSocket URL/port?"');
-        showDebug('');
-        showDebug('💡 Alternative: Use a WebRTC gateway like:');
-        showDebug('   - webrtc2sip (free, self-hosted)');
-        showDebug('   - Ooma, Twilio, or VoIP.ms (WebRTC-enabled providers)');
-        setSipStatus('error','No WebSocket support found. See debug log for details.');
-    }
+        })
+        .catch(e => {
+            const div = document.getElementById('ctcResult');
+            div.classList.remove('hidden');
+            div.className = 'mb-4 p-3 rounded-lg text-sm bg-red-50 border border-red-200 text-red-700';
+            div.textContent = '❌ Network error: ' + e.message;
+        })
+        .finally(() => { btn.textContent = '📞 Initiate Click to Call'; btn.disabled = false; });
 }
 
-function testWsConnection(url,timeoutMs){
-    return new Promise(resolve=>{
-        let ws,timer,opened=false;
-        try{
-            ws=new WebSocket(url);
-        }catch(e){
-            resolve({connected:false,error:'create failed: '+e.message,opened:false});
-            return;
-        }
-        timer=setTimeout(()=>{
-            try{ws.close();}catch(e){}
-            resolve({connected:false,error:'timeout',opened:opened});
-        },timeoutMs);
-        ws.onopen=()=>{
-            opened=true;
-            clearTimeout(timer);
-            try{ws.close();}catch(e){}
-            resolve({connected:true,error:null,opened:true});
-        };
-        ws.onerror=(e)=>{
-            if(!opened){
-                clearTimeout(timer);
-                resolve({connected:false,error:'connection refused',opened:false});
-            }
-        };
-        ws.onclose=(e)=>{
-            if(!opened){
-                clearTimeout(timer);
-                resolve({connected:false,error:'closed (code: '+e.code+')',opened:false});
-            }
-        };
+// Call center iframe
+function loadCCIframe() {
+    const email = document.getElementById('iframeEmail').value.trim();
+    const callerId = document.getElementById('iframeCallerId').value;
+    if (!email || !callerId) { alert('Please enter agent email and select caller ID'); return; }
+    const url = `https://call-center.manydial.com/embed/${encodeURIComponent(callerId)}?component=phoneDialer&email=${encodeURIComponent(email)}&callerId=${encodeURIComponent(callerId)}`;
+    document.getElementById('ccIframe').src = url;
+    document.getElementById('ccIframeWrap').classList.remove('hidden');
+}
+
+// Log filtering
+function filterLogs() {
+    const q = (document.getElementById('logSearch')?.value || '').toLowerCase();
+    const s = (document.getElementById('logStatus')?.value || '').toLowerCase();
+    document.querySelectorAll('.log-row').forEach(row => {
+        const matchQ = !q || row.dataset.search.includes(q);
+        const matchS = !s || row.dataset.status === s;
+        row.style.display = matchQ && matchS ? '' : 'none';
     });
 }
-function buildIce(cr){const s=[];if(cr.stun)s.push({urls:cr.stun});if(cr.turn)s.push({urls:cr.turn,username:cr.turn_user||'',credential:cr.turn_pass||''});if(!s.length)s.push({urls:'stun:stun.l.google.com:19302'});return s;}
-async function startSipCall(){const num=document.getElementById('dialNumber')?.value?.trim();if(!num){alert('Enter a number');return;}if(!_sipUA||!_sipUA.isRegistered()){alert('Not connected. Select a SIP number first.');return;}
-const sel=document.getElementById('dialFromNumber');const log=await ccPost({action:'log_call',log_direction:'outbound',log_channel_type:'sip',log_callee:num,log_status:'initiated',log_number_id:sel?.value||'',log_started_at:new Date().toISOString().slice(0,19).replace('T',' ')});_currentCallLogId=log.id;
-const realm=_sipCreds.sip_realm||_sipCreds.sip_server||'';const session=_sipUA.call('sip:'+num+'@'+realm,{mediaConstraints:{audio:true,video:false},pcConfig:{iceServers:buildIce(_sipCreds)}});handleSession(session,'outbound',num);}
-function handleSession(session,dir,remote){_sipSession=session;document.getElementById('btnStartCall')?.classList.add('hidden');document.getElementById('btnEndCall')?.classList.remove('hidden');document.getElementById('callStatusBar')?.classList.remove('hidden');document.getElementById('activeCallNotes')?.classList.remove('hidden');const st=document.getElementById('callStatusText');if(st)st.textContent=dir==='inbound'?'Incoming: '+remote:'Calling '+remote+'...';
-_callSeconds=0;_callTimer=setInterval(()=>{_callSeconds++;const el=document.getElementById('callTimer');if(el)el.textContent=String(Math.floor(_callSeconds/60)).padStart(2,'0')+':'+String(_callSeconds%60).padStart(2,'0');},1000);
-session.on('progress',()=>{if(st)st.textContent='Ringing...';});
-session.on('accepted',()=>{if(st)st.textContent='🟢 Connected — '+remote;if(_currentCallLogId)ccPost({action:'update_call_status',log_id:_currentCallLogId,log_status:'answered',log_answered_at:new Date().toISOString().slice(0,19).replace('T',' ')});});
-session.on('peerconnection',(e)=>{e.peerconnection.ontrack=(ev)=>{const a=document.getElementById('remoteAudio');if(a&&ev.streams[0])a.srcObject=ev.streams[0];};});
-session.on('ended',()=>finishCall('completed'));session.on('failed',(e)=>finishCall(e.cause==='Canceled'?'missed':'failed'));}
-async function endSipCall(){if(_sipSession)try{_sipSession.terminate();}catch(e){}else finishCall('completed');}
-async function finishCall(status){clearInterval(_callTimer);if(_currentCallLogId){await ccPost({action:'update_call_status',log_id:_currentCallLogId,log_status:status,log_duration:_callSeconds,log_ended_at:new Date().toISOString().slice(0,19).replace('T',' '),log_notes:document.getElementById('callNotes')?.value||'',log_tags:document.getElementById('callDisposition')?.value||''});}
-document.getElementById('btnStartCall')?.classList.remove('hidden');document.getElementById('btnEndCall')?.classList.add('hidden');document.getElementById('callStatusBar')?.classList.add('hidden');document.getElementById('activeCallNotes')?.classList.add('hidden');const t=document.getElementById('callTimer');if(t)t.textContent='00:00';const n=document.getElementById('callNotes');if(n)n.value='';const a=document.getElementById('remoteAudio');if(a)a.srcObject=null;_sipSession=null;_currentCallLogId=null;_callSeconds=0;}
-// Quick dial
-let _qdT;function quickDialLookup(q){clearTimeout(_qdT);if(q.length<2){document.getElementById('quickDialResults').innerHTML='';return;}_qdT=setTimeout(async()=>{const j=await ccPost({action:'customer_lookup',q:q});const b=document.getElementById('quickDialResults');if(j.success&&j.results?.length){b.innerHTML=j.results.map(c=>`<button onclick="document.getElementById('dialNumber').value='${c.phone||''}';" class="w-full text-left flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50"><div class="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center"><i class="fas fa-user text-xs text-blue-500"></i></div><div class="flex-1"><p class="text-sm">${c.name||''}</p><p class="text-[10px] text-gray-400">${c.phone||''}</p></div></button>`).join('');}else b.innerHTML='<p class="text-xs text-gray-400 text-center py-2">No results</p>';},300);}
-// History
-function openLogCallModal(){document.getElementById('logCallModal')?.classList.remove('hidden');}
-async function saveCallLog(){const fd=new FormData(document.getElementById('logCallForm'));const r=await fetch(location.pathname,{method:'POST',body:fd});const j=await r.json();if(j.success)location.reload();else alert(j.message||'Error');}
-async function deleteCallLog(id){if(!confirm('Delete?'))return;const j=await ccPost({action:'delete_call_log',log_id:id});if(j.success)location.reload();}
 
-// Init: verify JsSIP loaded & auto-connect
-document.addEventListener('DOMContentLoaded',()=>{
-    const dot=document.getElementById('sipStatusDot'),txt=document.getElementById('sipStatusText');
-    if(dot&&txt){
-        if(typeof JsSIP!=='undefined'){
-            txt.textContent='✓ JsSIP '+JsSIP.version+' loaded — Select a number to connect';
-            dot.className='w-3 h-3 rounded-full bg-yellow-400';
-            // Auto-connect if number is already selected
-            const sel=document.getElementById('dialFromNumber');
-            if(sel&&sel.value)onSelectSipNumber();
-        } else {
-            txt.textContent='⚠ JsSIP library loading...';
-            dot.className='w-3 h-3 rounded-full bg-yellow-400';
-            // Retry after a moment
-            setTimeout(()=>{
-                if(typeof JsSIP!=='undefined'){
-                    txt.textContent='✓ JsSIP '+JsSIP.version+' loaded — Select a number to connect';
-                    const sel=document.getElementById('dialFromNumber');
-                    if(sel&&sel.value)onSelectSipNumber();
-                } else {
-                    txt.textContent='✗ JsSIP failed to load. Check your internet connection.';
-                    dot.className='w-3 h-3 rounded-full bg-red-500';
-                }
-            },3000);
-        }
+// Log detail modal
+function showLogDetail(btn) {
+    const data = JSON.parse(btn.dataset.detail);
+    document.getElementById('logDetailContent').textContent = JSON.stringify(data, null, 2);
+    document.getElementById('logDetailModal').classList.remove('hidden');
+}
+
+// Test API connection
+function testApiConnection() {
+    const btn = document.querySelector('[onclick="testApiConnection()"]');
+    btn.textContent = '⏳ Testing...'; btn.disabled = true;
+    const div = document.getElementById('testResult');
+    div.classList.remove('hidden');
+    div.className = 'mt-3 p-3 rounded-lg text-xs font-mono bg-gray-100 text-gray-600';
+    div.textContent = 'Connecting to ManyDial API...';
+
+    fetch('?action=api_test&tab=settings', {credentials:'same-origin'})
+        .then(r => r.json())
+        .then(data => {
+            div.className = 'mt-3 p-3 rounded-lg text-xs font-mono ' + (data.success ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200');
+            div.textContent = JSON.stringify(data, null, 2);
+        })
+        .catch(e => {
+            div.className = 'mt-3 p-3 rounded-lg text-xs font-mono bg-red-50 text-red-700 border border-red-200';
+            div.textContent = 'Error: ' + e.message;
+        })
+        .finally(() => { btn.textContent = '🔌 Test Connection'; btn.disabled = false; });
+}
+
+function copyWebhook() {
+    const url = document.getElementById('webhookUrl').textContent;
+    navigator.clipboard.writeText(url).then(() => alert('Webhook URL copied!'));
+}
+
+// Auto-load template from sessionStorage (when "Use" clicked from templates tab)
+window.addEventListener('load', function() {
+    const stored = sessionStorage.getItem('autoLoadTemplate');
+    if (stored && location.search.includes('tab=call-automation')) {
+        try { loadTemplate(JSON.parse(stored)); } catch(e) {}
+        sessionStorage.removeItem('autoLoadTemplate');
     }
 });
 </script>
+
+<?php require_once __DIR__ . '/../includes/footer.php'; ?>
