@@ -366,6 +366,7 @@ function sortIcon($col) {
 
 <?php if (isset($_GET['msg'])): ?><div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4 text-sm">✓ <?= $_GET['msg'] === 'updated' ? 'Status updated.' : ($_GET['msg'] === 'bulk_updated' ? 'Bulk update completed.' : 'Action completed.') ?></div><?php endif; ?>
 
+<?php if (empty($_isProcessingView)): ?>
 <!-- Summary Cards -->
 <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-2 mb-3">
     <div class="bg-white rounded-lg border p-2.5 text-center">
@@ -401,6 +402,7 @@ function sortIcon($col) {
 </div>
 <?php endif; /* _isProcessingView stats */ ?>
 
+<?php if (empty($_isProcessingView)): ?>
 <!-- Status Tabs -->
 <div class="bg-white rounded-lg border mb-3 overflow-hidden">
     <div class="overflow-x-auto">
