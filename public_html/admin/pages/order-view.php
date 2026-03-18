@@ -455,6 +455,14 @@ exit; endif; /* end lockBlocked */ ?>
 </div>
 <?php endif; ?>
 
+<!-- ══ CO-VIEWER BANNER ══ -->
+<?php if (!$isModal && !$isProcSession): ?>
+<div id="coViewerBanner" class="hidden mb-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-3 text-sm text-blue-700">
+  <svg class="w-4 h-4 flex-shrink-0 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+  <span id="coViewerText"></span>
+</div>
+<?php endif; ?>
+
 <!-- ══════════════════════════ HEADER BAR ══════════════════════════ -->
 <div class="flex flex-wrap items-center gap-3 mb-4">
     <?php if (!$isModal): ?>
@@ -1768,6 +1776,31 @@ function courierUpdateUI(d) {
         .catch(e => { alert('Error: ' + e.message); btn.disabled = false; btn.textContent = 'Confirm Take Over'; });
     };
     
+    // ── Co-viewer poll ────────────────────────────────────────────────────
+    function pollCoViewers() {
+        fetch(LOCK_API, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: 'action=co_viewers&order_id=' + ORDER_ID
+        })
+        .then(r => r.json())
+        .then(d => {
+            const banner = document.getElementById('coViewerBanner');
+            const text   = document.getElementById('coViewerText');
+            if (!banner || !text) return;
+            if (d.viewers && d.viewers.length > 0) {
+                const names = d.viewers.map(v => '<strong>' + v.admin_name + '</strong>').join(', ');
+                text.innerHTML = '👁 ' + names + ' ' + (d.viewers.length === 1 ? 'is' : 'are') + ' also viewing this order';
+                banner.classList.remove('hidden');
+            } else {
+                banner.classList.add('hidden');
+            }
+        })
+        .catch(() => {});
+    }
+    pollCoViewers();
+    setInterval(pollCoViewers, 12000);
+
     // Heartbeat every 15 seconds
     setInterval(heartbeat, 15000);
     
@@ -1883,7 +1916,7 @@ function courierUpdateUI(d) {
                 var name = data.locked_by || 'Someone';
                 ps.skippedInSession[name] = (ps.skippedInSession[name] || 0) + 1;
                 sessionStorage.setItem(SESSION_KEY, JSON.stringify(ps));
-                showSkippedToast(name);
+                // Silent skip — just move to next, no toast
                 // Find next available in queue
                 var nextIdx = ps.current + 1;
                 if (nextIdx >= ps.queue.length) { psShowSummary(); return; }
@@ -1901,19 +1934,7 @@ function courierUpdateUI(d) {
         });
     }
 
-    function showSkippedToast(lockedBy) {
-        var existing = document.getElementById('psSkipToast');
-        var count = existing ? (parseInt(existing.dataset.count||'0') + 1) : 1;
-        if (existing) existing.remove();
-        var t = document.createElement('div');
-        t.id = 'psSkipToast';
-        t.dataset.count = count;
-        t.style.cssText = 'position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:9999;background:#374151;color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.3);white-space:nowrap';
-        t.textContent = '⏭ Skipped ' + count + ' order' + (count>1?'s':'') + ' (locked by ' + lockedBy + ')';
-        document.body.appendChild(t);
-        clearTimeout(t._timer);
-        t._timer = setTimeout(function() { t.remove(); }, 3000);
-    }
+
 
     // ── Exit session ───────────────────────────────────────────────────────
     window.psExit = function() {
@@ -2057,19 +2078,12 @@ function courierUpdateUI(d) {
                     } else if (d && d.conflict) {
                         if (btn) { btn.disabled = false; btn.textContent = origText; }
                         // First-wins: show who saved first, then skip to next
-                        var msg = document.createElement('div');
-                        msg.style.cssText = 'position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:9999;background:#dc2626;color:#fff;padding:12px 24px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center';
-                        msg.innerHTML = '⚠ <strong>' + (d.taken_by||'Another user') + '</strong> already saved this order.<br><span style="font-weight:400;font-size:12px">Skipping to next order…</span>';
-                        document.body.appendChild(msg);
-                        setTimeout(function() {
-                            msg.remove();
-                            // Count as skipped (not processed) and move on
-                            var next = pos + 1;
-                            if (next >= ps.queue.length) { psShowSummary(); return; }
-                            ps.current = next;
-                            sessionStorage.setItem(SESSION_KEY, JSON.stringify(ps));
-                            psGoToOrder(ps.queue[next]);
-                        }, 2500);
+                        // First-wins: other user already saved — skip silently to next
+                        var next = pos + 1;
+                        if (next >= ps.queue.length) { psShowSummary(); return; }
+                        ps.current = next;
+                        sessionStorage.setItem(SESSION_KEY, JSON.stringify(ps));
+                        psGoToOrder(ps.queue[next]);
                     } else {
                         if (btn) { btn.disabled = false; btn.textContent = origText; }
                         alert('Save failed — please try again.');

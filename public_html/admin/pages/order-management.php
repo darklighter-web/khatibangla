@@ -490,6 +490,10 @@ function sortIcon($col) {
       Processing
     </a>
     <?php if (!empty($_isProcessingView)): ?>
+    <div id="activeUsersChip" class="hidden flex items-center gap-1.5 px-2.5 py-1.5 bg-green-50 border border-green-200 rounded-lg text-[11px] text-green-700 font-medium flex-shrink-0">
+      <span class="w-1.5 h-1.5 rounded-full bg-green-500 inline-block animate-pulse"></span>
+      <span id="activeUsersText">1 active</span>
+    </div>
     <button type="button" id="startProcBtn" onclick="startProcessingSession()"
         class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-1.5 rounded text-xs font-bold flex items-center gap-1.5 shadow-sm transition">
       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -1068,6 +1072,7 @@ document.addEventListener('click', e => {
 // ── Processing Session ───────────────────────────────────────────────────────
 function startProcessingSession() {
     const btn = document.getElementById('startProcBtn');
+    const origBtnHtml = btn ? btn.innerHTML : '';
     if (btn) { btn.textContent = '⏳ Loading...'; btn.disabled = true; }
     // Build query params from current state (search, date filters etc)
     const qs = new URLSearchParams();
@@ -1078,26 +1083,65 @@ function startProcessingSession() {
         .then(r => r.json())
         .then(data => {
             if (!data.queue || data.queue.length === 0) {
-                alert('No processing orders found! Queue is empty.');
-                if (btn) { btn.textContent = '▶ Start Processing'; btn.disabled = false; }
+                const skippedTotal = data.skipped ? Object.values(data.skipped).reduce((a,b)=>a+b,0) : 0;
+                if (skippedTotal > 0) {
+                    alert('No orders available — all ' + skippedTotal + ' processing orders are currently locked by other team members.');
+                } else {
+                    alert('No processing orders in the queue.');
+                }
+                if (btn) { btn.innerHTML = origBtnHtml; btn.disabled = false; }
                 return;
             }
-            // Store queue in sessionStorage and navigate to first order
+            // Store queue silently (locked orders already excluded by API)
             const session = {
-                queue: data.queue,
-                total: data.total,
-                current: 0,
+                queue:     data.queue,
+                total:     data.queue.length,
+                current:   0,
                 processed: 0,
+                skipped:   data.skipped || {},
+                skippedInSession: {},
                 startedAt: Date.now()
             };
             sessionStorage.setItem('procSession', JSON.stringify(session));
+            // Navigate to first available order
             window.location.href = '<?= adminUrl('pages/order-view.php') ?>?id=' + data.queue[0] + '&proc_session=1';
         })
         .catch(() => {
             alert('Failed to load processing queue. Please try again.');
-            if (btn) { btn.textContent = '▶ Start Processing'; btn.disabled = false; }
+            if (btn) { btn.innerHTML = origBtnHtml; btn.disabled = false; }
         });
 }
+
+// ── Active users count (processing page only) ──────────────────────────────
+<?php if (!empty($_isProcessingView)): ?>
+(function pollActiveUsers() {
+    const LOCK_API = '<?= SITE_URL ?>/api/order-lock.php';
+    function fetchCount() {
+        fetch(LOCK_API, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: 'action=active_count'
+        })
+        .then(r => r.json())
+        .then(d => {
+            const chip = document.getElementById('activeUsersChip');
+            const text = document.getElementById('activeUsersText');
+            if (!chip || !text) return;
+            if (d.success && d.count > 0) {
+                const names = d.others && d.others.length ? d.others.join(', ') : d.count + ' user' + (d.count>1?'s':'');
+                text.textContent = '👥 ' + names + ' active';
+                chip.classList.remove('hidden');
+            } else {
+                chip.classList.add('hidden');
+            }
+        })
+        .catch(() => {});
+    }
+    fetchCount();
+    setInterval(fetchCount, 15000);
+})();
+<?php endif; ?>
 
 function syncCourier(){
     document.getElementById('actionsMenu').classList.add('hidden');
@@ -1202,18 +1246,20 @@ function pollOrderLocks() {
             const openLink = row.querySelector('.order-open-link');
             
             if (lockInfo && !lockInfo.is_mine) {
-                // Locked by someone else — pink row + show name
-                row.style.background = '#fce7f3';
+                // Locked by another user — subtle pink tint + avatar chip
+                row.style.background = '#fff1f5';
                 if (indicator) {
-                    indicator.textContent = '(' + lockInfo.locked_by + ')';
+                    const initial = (lockInfo.locked_by || '?').charAt(0).toUpperCase();
+                    indicator.innerHTML = '<span title="' + lockInfo.locked_by + ' is viewing" style="display:inline-flex;align-items:center;gap:3px;background:#fce7f3;border:1px solid #fbcfe8;color:#be185d;border-radius:20px;padding:1px 6px;font-size:10px;font-weight:600;white-space:nowrap">'
+                        + '<span style="width:14px;height:14px;border-radius:50%;background:#be185d;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0">' + initial + '</span>'
+                        + lockInfo.locked_by
+                        + '</span>';
                     indicator.classList.remove('hidden');
                 }
-                if (openLink) openLink.style.color = '#be185d';
             } else {
                 // Not locked or locked by me — normal
                 row.style.background = '';
-                if (indicator) { indicator.textContent = ''; indicator.classList.add('hidden'); }
-                if (openLink) openLink.style.color = '';
+                if (indicator) { indicator.innerHTML = ''; indicator.classList.add('hidden'); }
             }
         });
     })

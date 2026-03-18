@@ -180,4 +180,27 @@ if ($action === 'check_bulk') {
     exit;
 }
 
+// ── ACTIVE VIEWER COUNT (for processing page header) ──
+if ($action === 'active_count') {
+    $count = 0;
+    try {
+        $row = $db->fetch("SELECT COUNT(DISTINCT admin_user_id) as cnt FROM order_locks WHERE last_heartbeat >= DATE_SUB(NOW(), INTERVAL 45 SECOND) AND admin_user_id != ?", [$adminId]);
+        $count = intval($row['cnt'] ?? 0);
+        // Also get names
+        $others = $db->fetchAll("SELECT DISTINCT admin_name FROM order_locks WHERE last_heartbeat >= DATE_SUB(NOW(), INTERVAL 45 SECOND) AND admin_user_id != ? LIMIT 5", [$adminId]);
+    } catch (\Throwable $e) {}
+    echo json_encode(['success'=>true,'count'=>$count,'others'=>array_column($others??[], 'admin_name')]);
+    exit;
+}
+
+// ── CO-VIEWERS for a single order ──
+if ($action === 'co_viewers') {
+    if (!$orderId) { echo json_encode(['success'=>false,'viewers',[]]); exit; }
+    try {
+        $viewers = $db->fetchAll("SELECT admin_name, locked_at FROM order_locks WHERE order_id = ? AND admin_user_id != ? AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 45 SECOND)", [$orderId, $adminId]);
+    } catch (\Throwable $e) { $viewers = []; }
+    echo json_encode(['success'=>true,'viewers'=>$viewers]);
+    exit;
+}
+
 echo json_encode(['success' => false, 'error' => 'Unknown action']);
