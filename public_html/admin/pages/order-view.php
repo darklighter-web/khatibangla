@@ -5,8 +5,27 @@ require_once __DIR__ . '/../includes/auth.php';
 
 $db = Database::getInstance();
 $id = intval($_GET['id'] ?? 0);
-$isModal     = !empty($_GET['modal']);      // loaded inside edit modal iframe
-$isProcSession = !empty($_GET['proc_session']); // part of a processing session
+$isModal       = !empty($_GET['modal']);         // loaded inside edit modal iframe
+$isProcSession = !empty($_GET['proc_session']);   // part of a processing session
+$isLockCheck   = !empty($_GET['lock_check']);     // just checking lock status, no page load
+
+// Lock check shortcut: JS pre-checks lock before navigating
+if ($isLockCheck && $id && $isProcSession) {
+    header('Content-Type: application/json');
+    $meId = getAdminId();
+    try { $db->query("DELETE FROM order_locks WHERE last_heartbeat < DATE_SUB(NOW(), INTERVAL 45 SECOND)"); } catch (\Throwable $e) {}
+    try {
+        $lk = $db->fetch("SELECT admin_user_id, admin_name FROM order_locks WHERE order_id = ? AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 45 SECOND)", [$id]);
+        if ($lk && intval($lk['admin_user_id']) !== $meId) {
+            echo json_encode(['locked'=>true,'locked_by'=>$lk['admin_name'],'order_id'=>$id]);
+        } else {
+            echo json_encode(['locked'=>false,'order_id'=>$id]);
+        }
+    } catch (\Throwable $e) {
+        echo json_encode(['locked'=>false,'order_id'=>$id]);
+    }
+    exit;
+}
 if (!$id) redirect(adminUrl('pages/order-management.php'));
 $order = $db->fetch("SELECT * FROM orders WHERE id = ?", [$id]);
 if (!$order) redirect(adminUrl('pages/order-management.php'));
@@ -16,6 +35,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'save_order' || $action === 'confirm_order') {
+        // Conflict check: ensure we still hold the lock before saving
+        try {
+            $__currentLock = $db->fetch("SELECT admin_user_id FROM order_locks WHERE order_id = ? AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 45 SECOND)", [$id]);
+            if ($__currentLock && intval($__currentLock['admin_user_id']) !== $__currentAdminId) {
+                $__takenBy = $db->fetch("SELECT full_name FROM admin_users WHERE id=?", [intval($__currentLock['admin_user_id'])]);
+                header('Content-Type: application/json');
+                echo json_encode(['success'=>false,'conflict'=>true,'taken_by'=>($__takenBy['full_name']??'Another user')]);
+                exit;
+            }
+        } catch (\Throwable $e) {}
         $name         = sanitize($_POST['customer_name']    ?? $order['customer_name']);
         $phone        = sanitize($_POST['customer_phone']   ?? $order['customer_phone']);
         $address      = sanitize($_POST['customer_address'] ?? $order['customer_address']);
@@ -256,6 +285,12 @@ if ($__existingLock && intval($__existingLock['admin_user_id']) !== $__currentAd
     $__lockBlocked = true;
     $__lockedByName = $__existingLock['admin_name'] ?: 'Unknown';
     $__lockedById = intval($__existingLock['admin_user_id']);
+    // In processing session: signal JS to skip this order
+    if ($isProcSession && $_SERVER['REQUEST_METHOD'] === 'GET') {
+        header('Content-Type: application/json');
+        echo json_encode(['locked'=>true,'locked_by'=>$__lockedByName,'order_id'=>$id]);
+        exit;
+    }
 } else {
     // Acquire / refresh own lock
     try {
@@ -1783,7 +1818,10 @@ function courierUpdateUI(d) {
 
         if (elPos)  elPos.textContent  = pos + 1;
         if (elTot)  elTot.textContent  = ps.queue.length;
-        if (elDone) elDone.textContent = ps.processed + ' done';
+        if (elDone) {
+            var skippedTotal = ps.skippedInSession ? Object.values(ps.skippedInSession).reduce(function(a,b){return a+b;},0) : 0;
+            elDone.textContent = ps.processed + ' done' + (skippedTotal > 0 ? ' · ' + skippedTotal + ' skipped' : '');
+        }
         if (elBar)  elBar.style.width  = Math.round(((pos + 1) / ps.queue.length) * 100) + '%';
 
         if (elPrev) {
@@ -1821,8 +1859,61 @@ function courierUpdateUI(d) {
         if (next >= ps.queue.length) { psShowSummary(); return; }
         ps.current = next;
         sessionStorage.setItem(SESSION_KEY, JSON.stringify(ps));
-        window.location.href = ORDER_VIEW + '?id=' + ps.queue[next] + '&proc_session=1';
+        // Check if next order is locked before navigating
+        psGoToOrder(ps.queue[next]);
     };
+
+    // Navigate to an order — check lock first, skip if locked by someone else
+    function psGoToOrder(orderId) {
+        fetch(ORDER_VIEW + '?id=' + orderId + '&proc_session=1&lock_check=1', {
+            credentials: 'same-origin',
+            headers: {'X-Proc-Check': '1'}
+        })
+        .then(function(r) {
+            // If response is JSON it means the order is locked
+            var ct = r.headers.get('Content-Type') || '';
+            if (ct.indexOf('json') >= 0) return r.json();
+            // HTML response means we can go there
+            return null;
+        })
+        .then(function(data) {
+            if (data && data.locked) {
+                // Order is locked — skip it and move to next
+                if (!ps.skippedInSession) ps.skippedInSession = {};
+                var name = data.locked_by || 'Someone';
+                ps.skippedInSession[name] = (ps.skippedInSession[name] || 0) + 1;
+                sessionStorage.setItem(SESSION_KEY, JSON.stringify(ps));
+                showSkippedToast(name);
+                // Find next available in queue
+                var nextIdx = ps.current + 1;
+                if (nextIdx >= ps.queue.length) { psShowSummary(); return; }
+                ps.current = nextIdx;
+                sessionStorage.setItem(SESSION_KEY, JSON.stringify(ps));
+                psGoToOrder(ps.queue[nextIdx]);
+            } else {
+                // Not locked or lock check failed (treat as available)
+                window.location.href = ORDER_VIEW + '?id=' + orderId + '&proc_session=1';
+            }
+        })
+        .catch(function() {
+            // On error just navigate anyway
+            window.location.href = ORDER_VIEW + '?id=' + orderId + '&proc_session=1';
+        });
+    }
+
+    function showSkippedToast(lockedBy) {
+        var existing = document.getElementById('psSkipToast');
+        var count = existing ? (parseInt(existing.dataset.count||'0') + 1) : 1;
+        if (existing) existing.remove();
+        var t = document.createElement('div');
+        t.id = 'psSkipToast';
+        t.dataset.count = count;
+        t.style.cssText = 'position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:9999;background:#374151;color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.3);white-space:nowrap';
+        t.textContent = '⏭ Skipped ' + count + ' order' + (count>1?'s':'') + ' (locked by ' + lockedBy + ')';
+        document.body.appendChild(t);
+        clearTimeout(t._timer);
+        t._timer = setTimeout(function() { t.remove(); }, 3000);
+    }
 
     // ── Exit session ───────────────────────────────────────────────────────
     window.psExit = function() {
@@ -1838,6 +1929,9 @@ function courierUpdateUI(d) {
         var done  = ps.processed;
         var total = ps.queue.length;
         var rem   = Math.max(0, total - done);
+        // Count session skips
+        var skippedSession = ps.skippedInSession || {};
+        var totalSkippedSession = Object.values(skippedSession).reduce(function(a,b){return a+b;},0);
         sessionStorage.removeItem(SESSION_KEY);
 
         var overlay = document.createElement('div');
@@ -1847,9 +1941,12 @@ function courierUpdateUI(d) {
         card.style.cssText = 'background:#fff;border-radius:24px;padding:48px 52px;text-align:center;max-width:420px;width:100%;box-shadow:0 32px 64px rgba(0,0,0,.35)';
 
         var timeStr = dur > 0 ? (' &nbsp;·&nbsp; <strong>' + dur + ' min</strong>') : '';
-        var remStr  = rem > 0
+        var skippedHtml = totalSkippedSession > 0
+            ? '<div style="background:#fef2f2;border:1.5px solid #fca5a5;border-radius:10px;padding:10px 16px;margin-bottom:12px;font-size:12px;color:#991b1b">⏭ <strong>' + totalSkippedSession + '</strong> order' + (totalSkippedSession>1?'s':'') + ' skipped (locked by others)</div>'
+            : '';
+        var remStr  = skippedHtml + (rem > 0
             ? '<div style="background:#fef3c7;border:1.5px solid #fcd34d;border-radius:12px;padding:12px 20px;margin-bottom:24px;font-size:13px;color:#92400e"><strong>' + rem + '</strong> order' + (rem !== 1 ? 's' : '') + ' remaining</div>'
-            : '<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:12px 20px;margin-bottom:24px;font-size:13px;color:#166534">🎉 Queue complete — nothing left!</div>';
+            : '<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:12px 20px;margin-bottom:24px;font-size:13px;color:#166534">🎉 Queue complete — nothing left!</div>');
 
         card.innerHTML = [
             '<div style="font-size:64px;line-height:1;margin-bottom:16px">🎉</div>',
@@ -1887,7 +1984,7 @@ function courierUpdateUI(d) {
         } else {
             ps.current = next;
             sessionStorage.setItem(SESSION_KEY, JSON.stringify(ps));
-            window.location.href = ORDER_VIEW + '?id=' + ps.queue[next] + '&proc_session=1';
+            psGoToOrder(ps.queue[next]); // checks lock before navigating
         }
     }
 
@@ -1957,6 +2054,22 @@ function courierUpdateUI(d) {
                 .then(function(d) {
                     if (d && d.success) {
                         advance();
+                    } else if (d && d.conflict) {
+                        if (btn) { btn.disabled = false; btn.textContent = origText; }
+                        // First-wins: show who saved first, then skip to next
+                        var msg = document.createElement('div');
+                        msg.style.cssText = 'position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:9999;background:#dc2626;color:#fff;padding:12px 24px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center';
+                        msg.innerHTML = '⚠ <strong>' + (d.taken_by||'Another user') + '</strong> already saved this order.<br><span style="font-weight:400;font-size:12px">Skipping to next order…</span>';
+                        document.body.appendChild(msg);
+                        setTimeout(function() {
+                            msg.remove();
+                            // Count as skipped (not processed) and move on
+                            var next = pos + 1;
+                            if (next >= ps.queue.length) { psShowSummary(); return; }
+                            ps.current = next;
+                            sessionStorage.setItem(SESSION_KEY, JSON.stringify(ps));
+                            psGoToOrder(ps.queue[next]);
+                        }, 2500);
                     } else {
                         if (btn) { btn.disabled = false; btn.textContent = origText; }
                         alert('Save failed — please try again.');
