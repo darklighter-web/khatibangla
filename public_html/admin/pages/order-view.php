@@ -288,9 +288,43 @@ if ($__existingLock && intval($__existingLock['admin_user_id']) !== $__currentAd
     $__lockedById = intval($__existingLock['admin_user_id']);
     // In processing session: signal JS to skip — return JSON, never show lock screen
     if ($isProcSession) {
-        header('Content-Type: application/json');
-        $skipName = $__lockedByName ?: 'Another user';
-        echo json_encode(['locked'=>true,'locked_by'=>$skipName,'order_id'=>$id]);
+        // Return a minimal HTML page that skips to next order via sessionStorage
+        // (Cannot use JSON — browser page navigation renders JSON as plain text, no JS runs)
+        $skipName = htmlspecialchars($__lockedByName ?: 'Another user', ENT_QUOTES);
+        $procUrl  = addslashes(adminUrl('pages/order-processing.php'));
+        $viewUrl  = addslashes(adminUrl('pages/order-view.php'));
+        echo "<!DOCTYPE html><html><head><meta charset='UTF-8'>
+<script>
+(function(){
+    var SESSION_KEY='procSession';
+    var LOCKED_ID=".intval($id).";
+    var LOCKED_BY='$skipName';
+    var ps=null;
+    try{ps=JSON.parse(sessionStorage.getItem(SESSION_KEY));}catch(e){}
+    if(ps&&Array.isArray(ps.queue)){
+        if(!ps.skippedInSession)ps.skippedInSession={};
+        ps.skippedInSession[LOCKED_BY]=(ps.skippedInSession[LOCKED_BY]||0)+1;
+        var pos=ps.queue.indexOf(LOCKED_ID);
+        if(pos<0)pos=ps.current||0;
+        // Find next unlocked order (skip forward)
+        var next=pos+1;
+        ps.current=next;
+        sessionStorage.setItem(SESSION_KEY,JSON.stringify(ps));
+        if(next<ps.queue.length){
+            window.location.replace('$viewUrl?id='+ps.queue[next]+'&proc_session=1');
+        }else{
+            sessionStorage.removeItem(SESSION_KEY);
+            window.location.replace('$procUrl');
+        }
+    }else{
+        window.location.replace('$procUrl');
+    }
+})();
+</script>
+<title>Skipping...</title></head>
+<body style='font-family:sans-serif;padding:40px;text-align:center;color:#666'>
+<p>⏭ Skipping locked order...</p>
+</body></html>";
         exit;
     }
 } else {
@@ -1866,8 +1900,33 @@ function courierUpdateUI(d) {
 <script>
 // ── Processing Session Controller ──────────────────────────────────────────
 (function() {
-    var SESSION_KEY = 'procSession';
-    var CURRENT_ID  = <?= (int)$id ?>;
+    var SESSION_KEY  = 'procSession';
+    var CURRENT_ID   = <?= (int)$id ?>;
+    // If this page loaded but the order is locked (race condition between lock_check and navigation)
+    // immediately skip to next order without showing any lock screen
+    var IS_LOCKED_ON_LOAD = <?= $__lockBlocked ? 'true' : 'false' ?>;
+    if (IS_LOCKED_ON_LOAD) {
+        // Load session and find next order
+        var _ps = null;
+        try { _ps = JSON.parse(sessionStorage.getItem(SESSION_KEY)); } catch(e) {}
+        if (_ps && Array.isArray(_ps.queue)) {
+            var _pos = _ps.queue.indexOf(CURRENT_ID);
+            if (_pos < 0) _pos = _ps.current || 0;
+            var _next = _pos + 1;
+            if (_next < _ps.queue.length) {
+                _ps.current = _next;
+                sessionStorage.setItem(SESSION_KEY, JSON.stringify(_ps));
+                window.location.replace('<?= addslashes(adminUrl('pages/order-view.php')) ?>?id=' + _ps.queue[_next] + '&proc_session=1');
+            } else {
+                // End of queue
+                sessionStorage.removeItem(SESSION_KEY);
+                window.location.replace('<?= addslashes(adminUrl('pages/order-processing.php')) ?>');
+            }
+        } else {
+            window.location.replace('<?= addslashes(adminUrl('pages/order-processing.php')) ?>');
+        }
+        return; // Stop executing — we're navigating away
+    }
     var ORDER_VIEW  = '<?= addslashes(adminUrl('pages/order-view.php')) ?>';
     var PROC_URL    = '<?= addslashes(adminUrl('pages/order-processing.php')) ?>';
     var PRINT_URL   = '<?= addslashes(adminUrl('pages/order-print.php')) ?>';
