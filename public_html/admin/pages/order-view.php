@@ -5,7 +5,8 @@ require_once __DIR__ . '/../includes/auth.php';
 
 $db = Database::getInstance();
 $id = intval($_GET['id'] ?? 0);
-$isModal = !empty($_GET['modal']); // loaded inside edit modal iframe
+$isModal     = !empty($_GET['modal']);      // loaded inside edit modal iframe
+$isProcSession = !empty($_GET['proc_session']); // part of a processing session
 if (!$id) redirect(adminUrl('pages/order-management.php'));
 $order = $db->fetch("SELECT * FROM orders WHERE id = ?", [$id]);
 if (!$order) redirect(adminUrl('pages/order-management.php'));
@@ -78,7 +79,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Release order lock on save/confirm
         try { $db->query("DELETE FROM order_locks WHERE order_id = ?", [$id]); } catch (\Throwable $e) {}
         if ($action === 'confirm_order') {
+            if ($isProcSession) {
+                // Return JSON for session mode — JS handles navigation
+                header('Content-Type: application/json');
+                echo json_encode(['success'=>true,'action'=>'confirmed','order_id'=>$id]);
+                exit;
+            }
             redirect(adminUrl("pages/order-management.php?status=confirmed&msg=confirmed"));
+        }
+        if ($isProcSession) {
+            header('Content-Type: application/json');
+            echo json_encode(['success'=>true,'action'=>'saved','order_id'=>$id]);
+            exit;
         }
         redirect(adminUrl("pages/order-management.php?msg=updated&highlight={$id}"));
     }
@@ -93,6 +105,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($newStatus === 'cancelled')  { try { refundOrderCreditsOnCancel($id); } catch (\Throwable $e) {} }
         // Release order lock on status change
         try { $db->query("DELETE FROM order_locks WHERE order_id = ?", [$id]); } catch (\Throwable $e) {}
+        if ($isProcSession) {
+            header('Content-Type: application/json');
+            echo json_encode(['success'=>true,'action'=>'status_updated','new_status'=>$newStatus,'order_id'=>$id]);
+            exit;
+        }
         redirect(adminUrl("pages/order-management.php?highlight={$id}&msg=status_updated"));
     }
 
@@ -321,6 +338,46 @@ exit; endif; /* end lockBlocked */ ?>
 <?php if (isset($_GET['msg'])): ?>
 <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4 text-sm">
     <?= ['status_updated'=>'✓ Status updated.','updated'=>'✓ Order saved.','marked_fake'=>'⚠ Marked as fake.','confirmed'=>'✅ Order confirmed.','note_added'=>'✓ Note added.'][$_GET['msg']] ?? '✓ Done.' ?>
+</div>
+<?php endif; ?>
+
+<?php if ($isProcSession): ?>
+<!-- ══ PROCESSING SESSION BAR ══ -->
+<div id="procSessionBar" class="sticky top-0 z-40 bg-gray-900 text-white px-4 py-2.5 flex items-center gap-3 shadow-lg mb-4 rounded-lg" style="margin:-4px -4px 16px -4px;border-radius:0 0 12px 12px">
+    <div class="flex items-center gap-2 flex-shrink-0">
+        <div class="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></div>
+        <span class="text-xs font-bold text-yellow-400 uppercase tracking-wider">Processing Session</span>
+    </div>
+    <div class="flex items-center gap-1.5 text-xs bg-white/10 px-3 py-1 rounded-full flex-shrink-0">
+        <span id="psPosition" class="font-bold text-white">—</span>
+        <span class="text-gray-400">of</span>
+        <span id="psTotal" class="font-bold text-white">—</span>
+    </div>
+    <div id="psOrderInfo" class="text-xs text-gray-300 truncate flex-1 min-w-0">
+        Order #<?= e($order['order_number']) ?> · <?= e($order['customer_name']) ?>
+    </div>
+    <div class="flex items-center gap-2 flex-shrink-0">
+        <button id="psPrevBtn" onclick="psNavigate(-1)"
+            class="flex items-center gap-1 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-semibold transition disabled:opacity-30 disabled:cursor-not-allowed">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+            Prev
+        </button>
+        <button id="psNextBtn" onclick="psNavigate(1)"
+            class="flex items-center gap-1 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-semibold transition">
+            Next
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        </button>
+        <div class="w-px h-5 bg-white/20"></div>
+        <span id="psProcessed" class="text-xs text-green-400 font-semibold">0 done</span>
+        <div class="w-px h-5 bg-white/20"></div>
+        <button onclick="psExit()" class="text-xs text-gray-400 hover:text-white transition px-2 py-1 rounded hover:bg-white/10">
+            ✕ Exit
+        </button>
+    </div>
+</div>
+<!-- Progress bar -->
+<div class="h-1 bg-gray-200 rounded-full mb-4 overflow-hidden">
+    <div id="psProgress" class="h-full bg-yellow-400 transition-all duration-500 rounded-full" style="width:0%"></div>
 </div>
 <?php endif; ?>
 
@@ -1646,6 +1703,183 @@ function courierUpdateUI(d) {
     });
 })();
 </script>
+
+<?php if ($isProcSession): ?>
+<script>
+// ── Processing Session Controller ──────────────────────────────────────────
+(function() {
+    var SESSION_KEY = 'procSession';
+    var CURRENT_ID  = <?= $id ?>;
+    var ORDER_VIEW_URL = '<?= adminUrl('pages/order-view.php') ?>';
+    var PROC_URL    = '<?= adminUrl('pages/order-processing.php') ?>';
+
+    // Load session from sessionStorage
+    var ps = null;
+    try { ps = JSON.parse(sessionStorage.getItem(SESSION_KEY)); } catch(e) {}
+
+    if (!ps || !ps.queue || ps.queue.length === 0) {
+        // No session — just show a minimal back link, no session UI
+        document.getElementById('procSessionBar')?.remove();
+        return;
+    }
+
+    // Find current position in queue
+    var currentIdx = ps.queue.indexOf(CURRENT_ID);
+    if (currentIdx < 0) {
+        // This order isn't in our queue — find closest
+        currentIdx = ps.current || 0;
+    }
+    ps.current = currentIdx;
+
+    // Update UI
+    function updateBar() {
+        var pos = document.getElementById('psPosition');
+        var tot = document.getElementById('psTotal');
+        var done = document.getElementById('psProcessed');
+        var bar = document.getElementById('psProgress');
+        var prevBtn = document.getElementById('psPrevBtn');
+        var nextBtn = document.getElementById('psNextBtn');
+        if (pos) pos.textContent = currentIdx + 1;
+        if (tot) tot.textContent = ps.total;
+        if (done) done.textContent = (ps.processed || 0) + ' done';
+        if (bar) bar.style.width = Math.round(((currentIdx + 1) / ps.total) * 100) + '%';
+        if (prevBtn) prevBtn.disabled = currentIdx <= 0;
+        if (nextBtn) nextBtn.textContent = currentIdx >= ps.queue.length - 1 ? 'Finish ✓' : 'Next →';
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify(ps));
+    }
+    updateBar();
+
+    // Navigate prev/next
+    window.psNavigate = function(dir) {
+        var newIdx = currentIdx + dir;
+        if (newIdx < 0) return;
+        if (newIdx >= ps.queue.length) {
+            psFinish();
+            return;
+        }
+        ps.current = newIdx;
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify(ps));
+        window.location.href = ORDER_VIEW_URL + '?id=' + ps.queue[newIdx] + '&proc_session=1';
+    };
+
+    // Exit session
+    window.psExit = function() {
+        if (confirm('Exit processing session?')) {
+            sessionStorage.removeItem(SESSION_KEY);
+            window.location.href = PROC_URL;
+        }
+    };
+
+    // Show finish screen
+    function psFinish() {
+        var dur = ps.startedAt ? Math.round((Date.now() - ps.startedAt) / 60000) : 0;
+        var html = '<div style="position:fixed;inset:0;background:rgba(17,24,39,.85);z-index:9999;display:flex;align-items:center;justify-content:center">' +
+            '<div style="background:#fff;border-radius:20px;padding:48px 56px;text-align:center;max-width:420px;width:90%">' +
+            '<div style="font-size:56px;margin-bottom:16px">🎉</div>' +
+            '<h2 style="font-size:22px;font-weight:800;color:#111827;margin-bottom:8px">Session Complete!</h2>' +
+            '<p style="color:#6b7280;font-size:14px;margin-bottom:24px">' +
+            '<strong style="color:#111827">' + (ps.processed || ps.total) + '</strong> orders processed' +
+            (dur > 0 ? ' in <strong style="color:#111827">' + dur + ' min</strong>' : '') + '</p>' +
+            '<div style="display:flex;gap:12px;justify-content:center">' +
+            '<button onclick="sessionStorage.removeItem('procSession');window.location.href='' + PROC_URL + ''" ' +
+              'style="background:#f59e0b;color:#fff;padding:10px 24px;border-radius:10px;font-weight:700;font-size:14px;border:none;cursor:pointer">Back to Processing</button>' +
+            '<button onclick="this.closest('div[style]').remove()" ' +
+              'style="background:#f3f4f6;color:#374151;padding:10px 24px;border-radius:10px;font-weight:600;font-size:14px;border:none;cursor:pointer">Stay Here</button>' +
+            '</div></div></div>';
+        document.body.insertAdjacentHTML('beforeend', html);
+        sessionStorage.removeItem(SESSION_KEY);
+    }
+
+    // ── Intercept form submissions to use JSON in session mode ──
+    // Override the Confirm button and Save button behavior
+    function interceptForms() {
+        // Confirm Order button
+        var confirmBtn = document.querySelector('button[name="action"][value="confirm_order"], button.confirm-order-btn');
+        // Also intercept form submit
+        var orderForm = document.getElementById('orderForm');
+        if (orderForm) {
+            orderForm.addEventListener('submit', function(e) {
+                var action = (orderForm.querySelector('[name="action"]') || {}).value || '';
+                if (action === 'confirm_order' || action === 'save_order') {
+                    e.preventDefault();
+                    submitSessionForm(orderForm, action);
+                }
+            });
+        }
+
+        // Status update form (quick status buttons in order-view)
+        document.querySelectorAll('form[id^="statusForm"], .status-form').forEach(function(f) {
+            f.addEventListener('submit', function(e) {
+                e.preventDefault();
+                submitSessionForm(f, 'update_status');
+            });
+        });
+    }
+
+    function submitSessionForm(form, action) {
+        var fd = new FormData(form);
+        fd.set('proc_session', '1');
+        // Add a hidden field to signal JSON response
+        var url = form.action || window.location.href;
+        if (url.indexOf('proc_session') < 0) url += (url.indexOf('?') < 0 ? '?' : '&') + 'proc_session=1';
+
+        var btn = form.querySelector('button[type="submit"]');
+        var origText = btn ? btn.textContent : '';
+        if (btn) { btn.textContent = '⏳ Saving...'; btn.disabled = true; }
+
+        fetch(url, { method:'POST', credentials:'same-origin', body: fd })
+            .then(function(r) {
+                // Check if response is JSON
+                var ct = r.headers.get('Content-Type') || '';
+                if (ct.includes('json')) return r.json();
+                // Otherwise it was a redirect — treat as success
+                return { success: true, action: action };
+            })
+            .then(function(d) {
+                if (d && d.success) {
+                    ps.processed = (ps.processed || 0) + 1;
+                    showToast('✅ ' + (d.action === 'confirmed' ? 'Confirmed!' : 'Saved!'), '#10b981');
+                    setTimeout(function() {
+                        // Auto-advance to next order
+                        var nextIdx = currentIdx + 1;
+                        if (nextIdx >= ps.queue.length) {
+                            ps.current = currentIdx;
+                            sessionStorage.setItem(SESSION_KEY, JSON.stringify(ps));
+                            psFinish();
+                        } else {
+                            ps.current = nextIdx;
+                            sessionStorage.setItem(SESSION_KEY, JSON.stringify(ps));
+                            window.location.href = ORDER_VIEW_URL + '?id=' + ps.queue[nextIdx] + '&proc_session=1';
+                        }
+                    }, 1400);
+                } else {
+                    if (btn) { btn.textContent = origText; btn.disabled = false; }
+                    showToast('⚠ Error saving order', '#ef4444');
+                }
+            })
+            .catch(function() {
+                if (btn) { btn.textContent = origText; btn.disabled = false; }
+                showToast('⚠ Network error', '#ef4444');
+            });
+    }
+
+    function showToast(msg, color) {
+        var t = document.createElement('div');
+        t.textContent = msg;
+        t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;background:'+color+';color:#fff;padding:12px 20px;border-radius:12px;font-weight:700;font-size:14px;box-shadow:0 8px 24px rgba(0,0,0,.2);transition:opacity .4s';
+        document.body.appendChild(t);
+        setTimeout(function() { t.style.opacity = '0'; setTimeout(function() { t.remove(); }, 400); }, 1200);
+    }
+
+    // Run after DOM ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', interceptForms);
+    } else {
+        interceptForms();
+    }
+})();
+</script>
+<?php endif; ?>
 <?php
 if ($isModal) {
     ?>

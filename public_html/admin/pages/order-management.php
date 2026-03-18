@@ -489,6 +489,13 @@ function sortIcon($col) {
       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
       Processing
     </a>
+    <?php if (!empty($_isProcessingView)): ?>
+    <button type="button" id="startProcBtn" onclick="startProcessingSession()"
+        class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-1.5 rounded text-xs font-bold flex items-center gap-1.5 shadow-sm transition">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      Start Processing
+    </button>
+    <?php endif; ?>
     <a href="<?= adminUrl('pages/order-add.php') ?>" class="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-medium hover:bg-blue-700">+ New Order</a>
     <select class="border rounded text-xs px-2 py-1.5 text-gray-600" onchange="OM.go({per_page:this.value,page:1})" title="Orders per page">
       <?php foreach([20,50,100,200,500,1000,5000] as $pp): ?>
@@ -1057,6 +1064,40 @@ document.addEventListener('click', e => {
     const w = document.getElementById('actionsWrap');
     if (w && !w.contains(e.target)) document.getElementById('actionsMenu').classList.add('hidden');
 });
+
+// ── Processing Session ───────────────────────────────────────────────────────
+function startProcessingSession() {
+    const btn = document.getElementById('startProcBtn');
+    if (btn) { btn.textContent = '⏳ Loading...'; btn.disabled = true; }
+    // Build query params from current state (search, date filters etc)
+    const qs = new URLSearchParams();
+    if (OM.state.search)    qs.set('search', OM.state.search);
+    if (OM.state.date_from) qs.set('date_from', OM.state.date_from);
+    if (OM.state.date_to)   qs.set('date_to', OM.state.date_to);
+    fetch('<?= adminUrl('api/processing-queue.php') ?>?' + qs.toString(), {credentials:'same-origin'})
+        .then(r => r.json())
+        .then(data => {
+            if (!data.queue || data.queue.length === 0) {
+                alert('No processing orders found! Queue is empty.');
+                if (btn) { btn.textContent = '▶ Start Processing'; btn.disabled = false; }
+                return;
+            }
+            // Store queue in sessionStorage and navigate to first order
+            const session = {
+                queue: data.queue,
+                total: data.total,
+                current: 0,
+                processed: 0,
+                startedAt: Date.now()
+            };
+            sessionStorage.setItem('procSession', JSON.stringify(session));
+            window.location.href = '<?= adminUrl('pages/order-view.php') ?>?id=' + data.queue[0] + '&proc_session=1';
+        })
+        .catch(() => {
+            alert('Failed to load processing queue. Please try again.');
+            if (btn) { btn.textContent = '▶ Start Processing'; btn.disabled = false; }
+        });
+}
 
 function syncCourier(){
     document.getElementById('actionsMenu').classList.add('hidden');
