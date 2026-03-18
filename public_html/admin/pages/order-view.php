@@ -13,9 +13,9 @@ $isLockCheck   = !empty($_GET['lock_check']);     // just checking lock status, 
 if ($isLockCheck && $id && $isProcSession) {
     header('Content-Type: application/json');
     $meId = getAdminId();
-    try { $db->query("DELETE FROM order_locks WHERE last_heartbeat < DATE_SUB(NOW(), INTERVAL 45 SECOND)"); } catch (\Throwable $e) {}
+    try { $db->query("DELETE FROM order_locks WHERE last_heartbeat < DATE_SUB(NOW(), INTERVAL 30 SECOND)"); } catch (\Throwable $e) {}
     try {
-        $lk = $db->fetch("SELECT admin_user_id, admin_name FROM order_locks WHERE order_id = ? AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 45 SECOND)", [$id]);
+        $lk = $db->fetch("SELECT admin_user_id, admin_name FROM order_locks WHERE order_id = ? AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 30 SECOND)", [$id]);
         if ($lk && intval($lk['admin_user_id']) !== $meId) {
             echo json_encode(['locked'=>true,'locked_by'=>$lk['admin_name'],'order_id'=>$id]);
         } else {
@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'save_order' || $action === 'confirm_order') {
         // Conflict check: ensure we still hold the lock before saving
         try {
-            $__currentLock = $db->fetch("SELECT admin_user_id FROM order_locks WHERE order_id = ? AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 45 SECOND)", [$id]);
+            $__currentLock = $db->fetch("SELECT admin_user_id FROM order_locks WHERE order_id = ? AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 30 SECOND)", [$id]);
             if ($__currentLock && intval($__currentLock['admin_user_id']) !== $__currentAdminId) {
                 $__takenBy = $db->fetch("SELECT full_name FROM admin_users WHERE id=?", [intval($__currentLock['admin_user_id'])]);
                 header('Content-Type: application/json');
@@ -269,16 +269,17 @@ $__lockedByName = '';
 $__lockedById = 0;
 $__currentAdminId = getAdminId();
 $__currentAdminName = '';
-try { $__au = $db->fetch("SELECT full_name FROM admin_users WHERE id = ?", [$__currentAdminId]); $__currentAdminName = $__au['full_name'] ?? ''; } catch (\Throwable $e) {}
+try { $__au = $db->fetch("SELECT full_name, username FROM admin_users WHERE id = ?", [$__currentAdminId]); $__currentAdminName = trim($__au['full_name'] ?? '') ?: ($__au['username'] ?? ''); } catch (\Throwable $e) {}
+if (!$__currentAdminName) $__currentAdminName = trim($_SESSION['admin_name'] ?? '') ?: 'Admin #'.$__currentAdminId;
 
 // Ensure table exists
 try { $db->query("CREATE TABLE IF NOT EXISTS order_locks (id INT AUTO_INCREMENT PRIMARY KEY, order_id INT NOT NULL UNIQUE, admin_user_id INT NOT NULL, admin_name VARCHAR(100) NOT NULL DEFAULT '', locked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, last_heartbeat DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, INDEX idx_order (order_id), INDEX idx_heartbeat (last_heartbeat)) ENGINE=InnoDB"); } catch (\Throwable $e) {}
 // Clean expired locks
-try { $db->query("DELETE FROM order_locks WHERE last_heartbeat < DATE_SUB(NOW(), INTERVAL 45 SECOND)"); } catch (\Throwable $e) {}
+try { $db->query("DELETE FROM order_locks WHERE last_heartbeat < DATE_SUB(NOW(), INTERVAL 30 SECOND)"); } catch (\Throwable $e) {}
 
 // Check existing lock
 $__existingLock = null;
-try { $__existingLock = $db->fetch("SELECT * FROM order_locks WHERE order_id = ? AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 45 SECOND)", [$id]); } catch (\Throwable $e) {}
+try { $__existingLock = $db->fetch("SELECT * FROM order_locks WHERE order_id = ? AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 30 SECOND)", [$id]); } catch (\Throwable $e) {}
 
 if ($__existingLock && intval($__existingLock['admin_user_id']) !== $__currentAdminId) {
     // Locked by another admin
@@ -307,7 +308,7 @@ if ($__existingLock && intval($__existingLock['admin_user_id']) !== $__currentAd
     <div class="bg-pink-50 border-2 border-pink-200 rounded-2xl p-10 text-center">
         <h2 class="text-2xl font-bold text-pink-600 mb-3">Access Restricted</h2>
         <p class="text-pink-500 text-base mb-6">
-            This order is currently being viewed by <strong class="text-pink-700" id="lockOwnerName"><?= htmlspecialchars($__lockedByName) ?></strong>.
+            This order is currently being viewed by <strong class="text-pink-700" id="lockOwnerName"><?= htmlspecialchars($__lockedByName ?: 'Another user') ?></strong>.
         </p>
         <div class="flex items-center justify-center gap-3" id="lockActions">
             <button onclick="doTakeover()" id="btnTakeover"
@@ -1802,11 +1803,39 @@ function courierUpdateUI(d) {
     setInterval(pollCoViewers, 12000);
 
     // Heartbeat every 15 seconds
-    setInterval(heartbeat, 15000);
+    setInterval(heartbeat, 10000);
     
-    // Release lock on page unload
+    // Release lock on page unload / navigation
     window.addEventListener('beforeunload', function() {
         navigator.sendBeacon(LOCK_API, new URLSearchParams({action: 'release', order_id: ORDER_ID}));
+    });
+
+    // Page Visibility API: release when tab hidden, re-acquire when visible
+    // Prevents sleeping tabs from holding locks indefinitely
+    var _hiddenTimer = null;
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+            // Release lock after 60s of being hidden (user might have just switched tabs briefly)
+            _hiddenTimer = setTimeout(function() {
+                navigator.sendBeacon(LOCK_API, new URLSearchParams({action: 'release', order_id: ORDER_ID}));
+            }, 60000);
+        } else {
+            // Tab became visible again — cancel pending release and re-acquire lock
+            clearTimeout(_hiddenTimer);
+            if (!_lockLost) {
+                fetch(LOCK_API, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                    body: 'action=acquire&order_id=' + ORDER_ID
+                }).then(r => r.json()).then(d => {
+                    if (d.locked && !d.success) {
+                        // Someone else took over while tab was hidden
+                        _lockLost = true;
+                        showTakeoverScreen(d.locked_by || 'Another user');
+                    }
+                }).catch(() => {});
+            }
+        }
     });
 })();
 </script>
