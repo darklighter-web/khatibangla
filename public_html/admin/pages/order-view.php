@@ -177,7 +177,7 @@ if ($order['customer_id']) { try { $custCredit = getStoreCredit($order['customer
 if ($isModal) {
     // Modal mode: minimal HTML, no sidebar/nav
     $modalCss = file_get_contents(__DIR__ . '/../includes/header.php');
-    // Modal mode: full <head> with same assets as admin, but no sidebar/nav body shell
+    // Modal mode: minimal standalone page — no sidebar/nav
     ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -186,20 +186,32 @@ if ($isModal) {
 <title>Edit Order #<?= e($order['order_number']) ?></title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <style>
 :root{--primary:#f97316;--primary-dark:#ea580c}
 *{box-sizing:border-box}
-body{font-family:'Inter',system-ui,sans-serif;font-size:13px;background:#f1f5f9;margin:0;padding:0}
-input,select,textarea{font-family:inherit}
-.no-print{display:none}
-/* Suppress any full-page layout wrappers */
-#adminWrap,#sidebar,.sidebar-scroll{display:none!important}
+html,body{height:100%;margin:0;padding:0}
+body{font-family:'Inter',system-ui,sans-serif;font-size:13px;background:#f1f5f9;overflow-x:hidden}
+input,select,textarea{font-family:inherit;font-size:13px}
+/* Hide full-page nav/sidebar shell */
+#adminWrap,#sidebar,.sidebar-scroll,.om-nav,.top-bar{display:none!important}
+/* Keep everything in a clean scrollable container */
+.modal-page-wrap{width:100%;min-height:100vh;padding:16px;overflow-y:auto}
+/* Fix flex/grid layouts to work without sidebar context */
+.flex.flex-col.lg\:flex-row{flex-direction:column!important}
+/* Standard tailwind resets for forms */
+input[type=text],input[type=number],input[type=email],input[type=tel],input[type=date],select,textarea{
+  width:100%;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;outline:none;
+  transition:border-color .15s,box-shadow .15s;
+}
+input:focus,select:focus,textarea:focus{border-color:#f97316;box-shadow:0 0 0 3px rgba(249,115,22,.15)}
 </style>
 </head>
-<body class="bg-gray-100">
-<div class="max-w-full">
+<body>
+<div class="modal-page-wrap">
 <?php
 } else {
     require_once __DIR__ . '/../includes/header.php';
@@ -314,9 +326,11 @@ exit; endif; /* end lockBlocked */ ?>
 
 <!-- ══════════════════════════ HEADER BAR ══════════════════════════ -->
 <div class="flex flex-wrap items-center gap-3 mb-4">
+    <?php if (!$isModal): ?>
     <a href="<?= adminUrl('pages/order-management.php'.($isPending?'?status=processing':'')) ?>" class="p-1.5 rounded hover:bg-gray-100 transition">
         <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
     </a>
+    <?php endif; ?>
     <h2 class="text-base font-bold text-gray-800"><?= $isPending ? 'Web Order Details' : 'Order Details' ?></h2>
     <div class="flex items-center gap-1.5 ml-auto flex-wrap text-xs">
         <span class="text-gray-500">Created <b><?= $createdAgo ?></b></span>
@@ -1635,7 +1649,7 @@ function courierUpdateUI(d) {
 <?php
 if ($isModal) {
     ?>
-</div>
+</div><!-- modal-page-wrap -->
 </body></html>
 <?php
 } else {

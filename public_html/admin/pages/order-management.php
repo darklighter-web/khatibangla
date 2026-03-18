@@ -399,6 +399,7 @@ function sortIcon($col) {
         <p class="text-[9px] text-gray-400 uppercase tracking-wider">Revenue</p>
     </div>
 </div>
+<?php endif; /* _isProcessingView stats */ ?>
 
 <!-- Status Tabs -->
 <div class="bg-white rounded-lg border mb-3 overflow-hidden">
@@ -470,6 +471,7 @@ function sortIcon($col) {
     </div>
 </div>
 <?php endif; ?>
+<?php endif; /* _isProcessingView status tabs */ ?>
 
 <!-- Search & Toolbar -->
 <div class="bg-white rounded-lg border p-2.5 mb-3 flex flex-wrap items-center gap-2">
