@@ -500,6 +500,7 @@ function sortIcon($col) {
             <button type="button" onclick="openInvPrint()" class="w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 text-blue-700 font-medium">📄 Print Invoice</button>
             <button type="button" onclick="openStkPrint()" class="w-full text-left px-3 py-1.5 text-xs hover:bg-orange-50 text-orange-700 font-medium">🏷 Print Sticker</button>
             <button type="button" onclick="openPickingList()" class="w-full text-left px-3 py-1.5 text-xs hover:bg-green-50 text-green-700 font-medium">📦 Picking List</button>
+            <?php if (empty($_isProcessingView)): ?>
             <hr class="my-0.5"><p class="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase">Status</p>
             <button type="button" onclick="bStatus('confirmed')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">✅ Confirm</button>
             <button type="button" onclick="bStatus('ready_to_ship')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">📦 Ready to Ship</button>
@@ -507,6 +508,10 @@ function sortIcon($col) {
             <button type="button" onclick="bStatus('delivered')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">📦 Deliver</button>
             <button type="button" onclick="bStatus('returned')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-orange-600">↩ Return</button>
             <button type="button" onclick="bStatus('cancelled')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-red-600">✗ Cancel</button>
+            <?php else: ?>
+            <hr class="my-0.5"><p class="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase">Quick Action</p>
+            <button type="button" onclick="bStatus('confirmed')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 text-blue-700 font-medium">✅ Confirm Selected</button>
+            <?php endif; ?>
             <hr class="my-0.5"><p class="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase">Courier</p>
             <button type="button" onclick="bCourier('Pathao')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50"><span class="inline-block w-3.5 h-3.5 bg-red-500 text-white rounded text-[9px] text-center mr-1 font-bold leading-[14px]">P</span>Pathao</button>
             <button type="button" onclick="bCourier('Steadfast')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50"><span class="inline-block w-3.5 h-3.5 bg-blue-500 text-white rounded text-[9px] text-center mr-1 font-bold leading-[14px]">S</span>Steadfast</button>
@@ -1016,7 +1021,7 @@ function subTag(t){
     document.getElementById('tagModal').classList.add('hidden');
     OM.refresh();
   });
-}}
+}
 
 // Row context menu
 function toggleRowMenu(el, orderId, orderNum) {
