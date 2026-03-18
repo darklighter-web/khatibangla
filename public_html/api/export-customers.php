@@ -4,6 +4,10 @@
  * Supports: tab filtering (all/guests/registered), search, status filter, selected IDs
  */
 require_once __DIR__ . '/../includes/session.php';
+require_once __DIR__ . '/../admin/includes/auth.php';
+requireAdmin();
+refreshAdminPermissions();
+if (!hasPermission('customers')) { http_response_code(403); echo json_encode(['error'=>'Permission denied']); exit; }
 require_once __DIR__ . '/../includes/functions.php';
 
 if (!isset($_SESSION['admin_id'])) {

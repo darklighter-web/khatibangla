@@ -17,6 +17,10 @@ $isCron = php_sapi_name() === 'cli' || ($_GET['key'] ?? '') === getSetting('cour
 if (!$isCron) {
     // Check admin session
     require_once __DIR__ . '/../includes/session.php';
+require_once __DIR__ . '/../admin/includes/auth.php';
+requireAdmin();
+refreshAdminPermissions();
+if (!hasPermission('orders')) { http_response_code(403); echo json_encode(['error'=>'Permission denied']); exit; }
     if (empty($_SESSION['admin_id'])) {
         echo json_encode(['error' => 'Unauthorized']);
         exit;

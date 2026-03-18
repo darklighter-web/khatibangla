@@ -7,6 +7,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../../includes/mailer.php';
 requireAdmin();
 
+if (!hasPermission('settings')) { header('HTTP/1.1 403 Forbidden'); echo json_encode(['error'=>'Permission denied']); exit; }
 header('Content-Type: application/json');
 
 $action = $_POST['action'] ?? '';

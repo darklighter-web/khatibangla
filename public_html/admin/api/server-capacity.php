@@ -7,6 +7,10 @@
  */
 
 require_once __DIR__ . '/../../includes/session.php';
+require_once __DIR__ . '/../../admin/includes/auth.php';
+requireAdmin();
+refreshAdminPermissions();
+if (!hasPermission('settings')) { header('HTTP/1.1 403 Forbidden'); echo json_encode(['error'=>'Permission denied']); exit; }
 ob_clean();
 
 if (empty($_SESSION['admin_id'])) {

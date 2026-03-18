@@ -257,6 +257,24 @@ function getPagePermission($page) {
         'api-health' => 'settings',
         'api-diagnostic' => 'settings',
         'reset-test-data' => 'settings',
+        'shop-design' => 'settings',
+        'checkout-fields' => 'settings',
+        'stock-increase-new' => 'inventory',
+        'stock-increase-list' => 'inventory',
+        
+        // ── Orders (processing + related) ──
+        'order-processing' => 'orders',   // Bug fix: was defaulting to 'settings'
+        
+        // ── Customers (extended) ──
+        'customer-retention' => 'customers',
+        
+        // ── Products (extended) ──
+        'suppliers' => 'products',
+        
+        // ── Internal / utility pages (always visible) ──
+        'load-tester' => 'settings',
+        'deploy-test' => 'settings',
+        'permission-debug' => 'settings',
     ];
     // SAFETY: Unmapped pages default to 'settings' (restricted) instead of null (open)
     // This prevents new pages from being accidentally accessible to all users

@@ -3,6 +3,10 @@
  * CSV Export API for Admin Panel
  */
 require_once __DIR__ . '/../includes/session.php';
+require_once __DIR__ . '/../admin/includes/auth.php';
+requireAdmin();
+refreshAdminPermissions();
+if (!hasPermission('reports')) { http_response_code(403); echo json_encode(['error'=>'Permission denied']); exit; }
 require_once __DIR__ . '/../includes/functions.php';
 
 // Check admin auth

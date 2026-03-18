@@ -4,6 +4,9 @@
  * Saves theme preference (light/dark/ui) to admin_users table
  */
 require_once __DIR__ . '/../includes/session.php';
+require_once __DIR__ . '/../../admin/includes/auth.php';
+requireAdmin();
+refreshAdminPermissions();
 header('Content-Type: application/json');
 
 if (empty($_SESSION['admin_id'])) {

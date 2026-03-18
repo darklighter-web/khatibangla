@@ -3,6 +3,9 @@ require_once __DIR__ . '/../../includes/session.php';
 require_once __DIR__ . '/../includes/auth.php';
 requireAdmin();
 refreshAdminPermissions();
+if (!hasPermission('orders')) {
+    echo json_encode(['error'=>'Permission denied']); exit;
+}
 
 header('Content-Type: application/json');
 

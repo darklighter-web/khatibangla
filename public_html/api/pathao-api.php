@@ -16,6 +16,10 @@ ob_start();
 
 try {
     require_once __DIR__ . '/../includes/session.php';
+require_once __DIR__ . '/../admin/includes/auth.php';
+requireAdmin();
+refreshAdminPermissions();
+if (!hasPermission('courier')) { http_response_code(403); echo json_encode(['error'=>'Permission denied']); exit; }
     require_once __DIR__ . '/../includes/functions.php';
     require_once __DIR__ . '/pathao.php';
 } catch (Exception $e) {

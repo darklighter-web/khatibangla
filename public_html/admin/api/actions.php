@@ -14,6 +14,24 @@ if (!isAdminLoggedIn()) {
 
 $db = Database::getInstance();
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
+refreshAdminPermissions();
+
+// Per-action permission map
+$actionPerms = [
+    'update_stock'          => 'inventory',
+    'update_order_status'   => 'orders',
+    'toggle_product'        => 'products',
+    'toggle_fake'           => 'orders',
+    'search_products'       => 'products',
+    'search_customers'      => 'customers',
+    'dashboard_stats'       => null, // always visible
+    'mark_notification_read'=> null,
+    'mark_all_notifications_read' => null,
+];
+$requiredPerm = $actionPerms[$action] ?? null;
+if ($requiredPerm !== null && !hasPermission($requiredPerm)) {
+    echo json_encode(['error' => 'Permission denied', 'action' => $action]); exit;
+}
 
 switch ($action) {
     // Mark notification as read
