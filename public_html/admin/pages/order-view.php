@@ -343,41 +343,80 @@ exit; endif; /* end lockBlocked */ ?>
 
 <?php if ($isProcSession): ?>
 <!-- ══ PROCESSING SESSION BAR ══ -->
-<div id="procSessionBar" class="sticky top-0 z-40 bg-gray-900 text-white px-4 py-2.5 flex items-center gap-3 shadow-lg mb-4 rounded-lg" style="margin:-4px -4px 16px -4px;border-radius:0 0 12px 12px">
+<div id="procSessionBar" class="sticky top-0 z-40 mb-4" style="margin:-4px -4px 16px -4px">
+  <div class="bg-gray-900 text-white px-4 py-2.5 flex flex-wrap items-center gap-2 shadow-lg" style="border-radius:0 0 12px 12px">
+    <!-- Label + counter -->
     <div class="flex items-center gap-2 flex-shrink-0">
-        <div class="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></div>
-        <span class="text-xs font-bold text-yellow-400 uppercase tracking-wider">Processing Session</span>
+      <div class="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></div>
+      <span class="text-[11px] font-bold text-yellow-400 uppercase tracking-wider hidden sm:inline">Processing Session</span>
     </div>
-    <div class="flex items-center gap-1.5 text-xs bg-white/10 px-3 py-1 rounded-full flex-shrink-0">
-        <span id="psPosition" class="font-bold text-white">—</span>
-        <span class="text-gray-400">of</span>
-        <span id="psTotal" class="font-bold text-white">—</span>
+    <div class="flex items-center gap-1 text-xs bg-white/10 px-2.5 py-1 rounded-full flex-shrink-0">
+      <span id="psPosition" class="font-bold text-white">—</span>
+      <span class="text-gray-500">/</span>
+      <span id="psTotal" class="font-bold text-white">—</span>
     </div>
-    <div id="psOrderInfo" class="text-xs text-gray-300 truncate flex-1 min-w-0">
-        Order #<?= e($order['order_number']) ?> · <?= e($order['customer_name']) ?>
+    <!-- Order info -->
+    <div class="text-xs text-gray-300 truncate flex-1 min-w-0">
+      #<?= e($order['order_number']) ?> · <?= e($order['customer_name']) ?>
     </div>
-    <div class="flex items-center gap-2 flex-shrink-0">
-        <button id="psPrevBtn" onclick="psNavigate(-1)"
-            class="flex items-center gap-1 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-semibold transition disabled:opacity-30 disabled:cursor-not-allowed">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-            Prev
-        </button>
-        <button id="psNextBtn" onclick="psNavigate(1)"
-            class="flex items-center gap-1 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-semibold transition">
-            Next
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-        </button>
-        <div class="w-px h-5 bg-white/20"></div>
-        <span id="psProcessed" class="text-xs text-green-400 font-semibold">0 done</span>
-        <div class="w-px h-5 bg-white/20"></div>
-        <button onclick="psExit()" class="text-xs text-gray-400 hover:text-white transition px-2 py-1 rounded hover:bg-white/10">
-            ✕ Exit
-        </button>
+    <!-- Session actions: Print sticker, Print invoice, Add tag -->
+    <div class="flex items-center gap-1.5 flex-shrink-0">
+      <button type="button" onclick="psPrintSticker()"
+        class="flex items-center gap-1 px-2.5 py-1.5 bg-orange-500 hover:bg-orange-600 rounded-lg text-[11px] font-semibold transition"
+        title="Print Sticker">
+        🏷 Sticker
+      </button>
+      <button type="button" onclick="psPrintInvoice()"
+        class="flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-[11px] font-semibold transition"
+        title="Print Invoice">
+        📄 Invoice
+      </button>
+      <button type="button" onclick="psAddTag()"
+        class="flex items-center gap-1 px-2.5 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-[11px] font-semibold transition"
+        title="Add Tag">
+        🏷 Tag
+      </button>
     </div>
+    <div class="w-px h-5 bg-white/20 flex-shrink-0"></div>
+    <!-- Prev / Next -->
+    <div class="flex items-center gap-1.5 flex-shrink-0">
+      <button id="psPrevBtn" type="button" onclick="psNavigate(-1)"
+        class="flex items-center gap-1 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-semibold transition"
+        style="opacity:0.4;cursor:not-allowed">
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>Prev
+      </button>
+      <button id="psNextBtn" type="button" onclick="psNavigate(1)"
+        class="flex items-center gap-1 px-3 py-1.5 bg-yellow-500 hover:bg-yellow-400 rounded-lg text-xs font-bold transition">
+        Next<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+      </button>
+    </div>
+    <div class="w-px h-5 bg-white/20 flex-shrink-0"></div>
+    <span id="psProcessed" class="text-xs text-green-400 font-bold flex-shrink-0">0 done</span>
+    <button type="button" onclick="psExit()"
+      class="text-xs text-gray-500 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition flex-shrink-0">
+      ✕ Exit
+    </button>
+  </div>
+  <!-- Progress bar -->
+  <div id="psProgressWrap" class="h-1.5 bg-gray-800 overflow-hidden" style="border-radius:0 0 4px 4px">
+    <div id="psProgress" class="h-full bg-yellow-400 transition-all duration-300" style="width:0%"></div>
+  </div>
 </div>
-<!-- Progress bar -->
-<div class="h-1 bg-gray-200 rounded-full mb-4 overflow-hidden">
-    <div id="psProgress" class="h-full bg-yellow-400 transition-all duration-500 rounded-full" style="width:0%"></div>
+<!-- Tag mini-modal for session -->
+<div id="psTagModal" class="hidden fixed inset-0 z-[9999] bg-black/50 flex items-center justify-center" onclick="if(event.target===this)document.getElementById('psTagModal').classList.add('hidden')">
+  <div class="bg-white rounded-xl p-5 w-72 shadow-2xl">
+    <h3 class="font-bold text-gray-800 text-sm mb-3">Add Tag to #<?= e($order['order_number']) ?></h3>
+    <div class="flex flex-wrap gap-1.5 mb-3">
+      <?php foreach(['REPEAT','URGENT','VIP','GIFT','FOLLOW UP','COD VERIFIED','ADVANCE PAID'] as $pt): ?>
+      <button type="button" onclick="psSubmitTag('<?= $pt ?>')" class="text-[11px] bg-gray-100 hover:bg-blue-100 hover:text-blue-700 px-2.5 py-1.5 rounded-lg font-medium transition"><?= $pt ?></button>
+      <?php endforeach; ?>
+    </div>
+    <div class="flex gap-2">
+      <input type="text" id="psTagInput" placeholder="Custom tag..." class="flex-1 px-3 py-2 border rounded-lg text-xs focus:border-blue-400 outline-none" onkeydown="if(event.key==='Enter'){event.preventDefault();psSubmitTag(this.value)}">
+      <button type="button" onclick="psSubmitTag(document.getElementById('psTagInput').value)" class="bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-semibold">Add</button>
+    </div>
+    <button type="button" onclick="document.getElementById('psTagModal').classList.add('hidden')" class="mt-2 text-[11px] text-gray-400 w-full text-center hover:text-gray-600">Cancel</button>
+  </div>
 </div>
 <?php endif; ?>
 
@@ -1708,170 +1747,187 @@ function courierUpdateUI(d) {
 <script>
 // ── Processing Session Controller ──────────────────────────────────────────
 (function() {
-    var SESSION_KEY = 'procSession';
-    var CURRENT_ID  = <?= $id ?>;
-    var ORDER_VIEW_URL = '<?= adminUrl('pages/order-view.php') ?>';
-    var PROC_URL    = '<?= adminUrl('pages/order-processing.php') ?>';
+    var SESSION_KEY  = 'procSession';
+    var CURRENT_ID   = <?= $id ?>;
+    var ORDER_VIEW   = '<?= adminUrl('pages/order-view.php') ?>';
+    var PROC_URL     = '<?= adminUrl('pages/order-processing.php') ?>';
 
-    // Load session from sessionStorage
+    // Load session
     var ps = null;
     try { ps = JSON.parse(sessionStorage.getItem(SESSION_KEY)); } catch(e) {}
-
-    if (!ps || !ps.queue || ps.queue.length === 0) {
-        // No session — just show a minimal back link, no session UI
+    if (!ps || !ps.queue || !ps.queue.length) {
         document.getElementById('procSessionBar')?.remove();
+        document.getElementById('psProgressWrap')?.remove();
         return;
     }
 
-    // Find current position in queue
-    var currentIdx = ps.queue.indexOf(CURRENT_ID);
-    if (currentIdx < 0) {
-        // This order isn't in our queue — find closest
-        currentIdx = ps.current || 0;
-    }
-    ps.current = currentIdx;
+    // Find position
+    var idx = ps.queue.indexOf(CURRENT_ID);
+    if (idx < 0) idx = ps.current || 0;
+    ps.current = idx;
 
-    // Update UI
+    // ── UI Update ──────────────────────────────────────────────────────────
     function updateBar() {
-        var pos = document.getElementById('psPosition');
-        var tot = document.getElementById('psTotal');
+        var pos  = document.getElementById('psPosition');
+        var tot  = document.getElementById('psTotal');
         var done = document.getElementById('psProcessed');
-        var bar = document.getElementById('psProgress');
-        var prevBtn = document.getElementById('psPrevBtn');
-        var nextBtn = document.getElementById('psNextBtn');
-        if (pos) pos.textContent = currentIdx + 1;
-        if (tot) tot.textContent = ps.total;
+        var bar  = document.getElementById('psProgress');
+        var prev = document.getElementById('psPrevBtn');
+        var next = document.getElementById('psNextBtn');
+        if (pos)  pos.textContent  = idx + 1;
+        if (tot)  tot.textContent  = ps.queue.length;
         if (done) done.textContent = (ps.processed || 0) + ' done';
-        if (bar) bar.style.width = Math.round(((currentIdx + 1) / ps.total) * 100) + '%';
-        if (prevBtn) prevBtn.disabled = currentIdx <= 0;
-        if (nextBtn) nextBtn.textContent = currentIdx >= ps.queue.length - 1 ? 'Finish ✓' : 'Next →';
+        if (bar)  bar.style.width  = Math.round(((idx + 1) / ps.queue.length) * 100) + '%';
+        if (prev) prev.disabled    = idx <= 0;
+        var isLast = idx >= ps.queue.length - 1;
+        if (next) {
+            next.innerHTML = isLast
+                ? '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg> Finish'
+                : 'Next <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>';
+        }
         sessionStorage.setItem(SESSION_KEY, JSON.stringify(ps));
     }
     updateBar();
 
-    // Navigate prev/next
+    // ── Navigation ─────────────────────────────────────────────────────────
     window.psNavigate = function(dir) {
-        var newIdx = currentIdx + dir;
-        if (newIdx < 0) return;
-        if (newIdx >= ps.queue.length) {
-            psFinish();
-            return;
-        }
-        ps.current = newIdx;
+        var next = idx + dir;
+        if (next < 0) return;
+        if (next >= ps.queue.length) { psShowSummary(); return; }
+        ps.current = next;
         sessionStorage.setItem(SESSION_KEY, JSON.stringify(ps));
-        window.location.href = ORDER_VIEW_URL + '?id=' + ps.queue[newIdx] + '&proc_session=1';
+        window.location.href = ORDER_VIEW + '?id=' + ps.queue[next] + '&proc_session=1';
     };
 
-    // Exit session
     window.psExit = function() {
-        if (confirm('Exit processing session?')) {
+        if (confirm('Exit processing session? Your progress will be lost.')) {
             sessionStorage.removeItem(SESSION_KEY);
             window.location.href = PROC_URL;
         }
     };
 
-    // Show finish screen
-    function psFinish() {
-        var dur = ps.startedAt ? Math.round((Date.now() - ps.startedAt) / 60000) : 0;
-        var html = '<div style="position:fixed;inset:0;background:rgba(17,24,39,.85);z-index:9999;display:flex;align-items:center;justify-content:center">' +
-            '<div style="background:#fff;border-radius:20px;padding:48px 56px;text-align:center;max-width:420px;width:90%">' +
-            '<div style="font-size:56px;margin-bottom:16px">🎉</div>' +
-            '<h2 style="font-size:22px;font-weight:800;color:#111827;margin-bottom:8px">Session Complete!</h2>' +
-            '<p style="color:#6b7280;font-size:14px;margin-bottom:24px">' +
-            '<strong style="color:#111827">' + (ps.processed || ps.total) + '</strong> orders processed' +
-            (dur > 0 ? ' in <strong style="color:#111827">' + dur + ' min</strong>' : '') + '</p>' +
-            '<div style="display:flex;gap:12px;justify-content:center">' +
-            '<button onclick="sessionStorage.removeItem('procSession');window.location.href='' + PROC_URL + ''" ' +
-              'style="background:#f59e0b;color:#fff;padding:10px 24px;border-radius:10px;font-weight:700;font-size:14px;border:none;cursor:pointer">Back to Processing</button>' +
-            '<button onclick="this.closest('div[style]').remove()" ' +
-              'style="background:#f3f4f6;color:#374151;padding:10px 24px;border-radius:10px;font-weight:600;font-size:14px;border:none;cursor:pointer">Stay Here</button>' +
-            '</div></div></div>';
-        document.body.insertAdjacentHTML('beforeend', html);
+    // ── Summary Screen ─────────────────────────────────────────────────────
+    function psShowSummary() {
+        var dur  = ps.startedAt ? Math.round((Date.now() - ps.startedAt) / 60000) : 0;
+        var done = ps.processed || 0;
+        var total = ps.queue.length;
         sessionStorage.removeItem(SESSION_KEY);
+
+        var overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.88);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+        overlay.innerHTML = [
+            '<div style="background:#fff;border-radius:24px;padding:48px 52px;text-align:center;max-width:440px;width:100%;box-shadow:0 32px 64px rgba(0,0,0,.3)">',
+              '<div style="font-size:64px;line-height:1;margin-bottom:20px">🎉</div>',
+              '<h2 style="font-size:24px;font-weight:800;color:#111827;margin:0 0 8px">Session Complete!</h2>',
+              '<p style="color:#6b7280;font-size:14px;margin:0 0 28px">',
+                '<strong style="color:#111827;font-size:32px;display:block;margin-bottom:4px">' + done + '</strong>',
+                'order' + (done !== 1 ? 's' : '') + ' confirmed' +
+                (dur > 0 ? ' &nbsp;·&nbsp; <strong style="color:#374151">' + dur + ' min</strong>' : ''),
+              '</p>',
+              '<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:14px 20px;margin-bottom:28px;font-size:13px;color:#166534">',
+                '<strong>' + (total - done) + '</strong> order' + (total - done !== 1 ? 's' : '') + ' remaining in queue',
+              '</div>',
+              '<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">',
+                '<button onclick="window.location.href='' + PROC_URL + ''" style="background:#f59e0b;color:#fff;padding:11px 28px;border-radius:10px;font-weight:700;font-size:14px;border:none;cursor:pointer;box-shadow:0 4px 12px rgba(245,158,11,.35)">Back to Processing</button>',
+                '<button onclick="window.location.reload()" style="background:#f3f4f6;color:#374151;padding:11px 28px;border-radius:10px;font-weight:600;font-size:14px;border:none;cursor:pointer">Stay on Order</button>',
+              '</div>',
+            '</div>'
+        ].join('');
+        document.body.appendChild(overlay);
     }
 
-    // ── Intercept form submissions to use JSON in session mode ──
-    // Override the Confirm button and Save button behavior
-    function interceptForms() {
-        // Confirm Order button
-        var confirmBtn = document.querySelector('button[name="action"][value="confirm_order"], button.confirm-order-btn');
-        // Also intercept form submit
-        var orderForm = document.getElementById('orderForm');
-        if (orderForm) {
-            orderForm.addEventListener('submit', function(e) {
-                var action = (orderForm.querySelector('[name="action"]') || {}).value || '';
-                if (action === 'confirm_order' || action === 'save_order') {
-                    e.preventDefault();
-                    submitSessionForm(orderForm, action);
-                }
-            });
+    // ── Auto-advance after confirm/save (instant) ──────────────────────────
+    function advance() {
+        ps.processed = (ps.processed || 0) + 1;
+        var next = idx + 1;
+        if (next >= ps.queue.length) {
+            ps.current = idx;
+            sessionStorage.setItem(SESSION_KEY, JSON.stringify(ps));
+            psShowSummary();
+        } else {
+            ps.current = next;
+            sessionStorage.setItem(SESSION_KEY, JSON.stringify(ps));
+            window.location.href = ORDER_VIEW + '?id=' + ps.queue[next] + '&proc_session=1';
         }
+    }
 
-        // Status update form (quick status buttons in order-view)
-        document.querySelectorAll('form[id^="statusForm"], .status-form').forEach(function(f) {
-            f.addEventListener('submit', function(e) {
-                e.preventDefault();
-                submitSessionForm(f, 'update_status');
-            });
+    // ── Print helpers ──────────────────────────────────────────────────────
+    var PRINT_URL = '<?= adminUrl('pages/order-print.php') ?>';
+    window.psPrintSticker = function() {
+        window.open(PRINT_URL + '?ids=<?= $id ?>&template=stk_standard', '_blank');
+    };
+    window.psPrintInvoice = function() {
+        window.open(PRINT_URL + '?ids=<?= $id ?>&template=inv_standard', '_blank');
+    };
+
+    // ── Tag helper ─────────────────────────────────────────────────────────
+    window.psAddTag = function() {
+        var m = document.getElementById('psTagModal');
+        var inp = document.getElementById('psTagInput');
+        if (m) { m.classList.remove('hidden'); if (inp) { inp.value=''; inp.focus(); } }
+    };
+    window.psSubmitTag = function(tag) {
+        tag = (tag||'').trim();
+        if (!tag) return;
+        var m = document.getElementById('psTagModal');
+        if (m) m.classList.add('hidden');
+        fetch('<?= adminUrl('pages/order-management.php') ?>', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {'Content-Type':'application/x-www-form-urlencoded'},
+            body: 'action=add_tag&order_id=<?= $id ?>&tag=' + encodeURIComponent(tag)
+        }).then(function(r){ return r.json(); }).then(function(d){
+            if (d && d.success) {
+                // Show brief confirmation
+                var t = document.createElement('div');
+                t.textContent = '🏷 Tag added: ' + tag;
+                t.style.cssText = 'position:fixed;top:70px;right:20px;z-index:9999;background:#374151;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.2)';
+                document.body.appendChild(t);
+                setTimeout(function(){ t.remove(); }, 2000);
+            }
+        }).catch(function(){});
+    };
+
+    // ── Intercept Confirm Order form submission ─────────────────────────────
+    function interceptForms() {
+        var form = document.getElementById('orderForm');
+        if (!form) return;
+
+        form.addEventListener('submit', function(e) {
+            var actionEl = form.querySelector('[name="action"]');
+            var action   = actionEl ? actionEl.value : '';
+            // Only intercept confirm_order and save_order in session mode
+            if (action !== 'confirm_order' && action !== 'save_order') return;
+
+            e.preventDefault();
+            var btn = form.querySelector('button[type="submit"]');
+            if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+
+            var fd = new FormData(form);
+            var url = form.action || window.location.pathname;
+            if (url.indexOf('proc_session') < 0)
+                url += (url.indexOf('?') < 0 ? '?' : '&') + 'proc_session=1';
+
+            fetch(url, { method:'POST', credentials:'same-origin', body: fd })
+                .then(function(r) {
+                    var ct = r.headers.get('Content-Type') || '';
+                    if (ct.includes('json')) return r.json();
+                    return { success: true };
+                })
+                .then(function(d) {
+                    if (d && d.success) { advance(); }
+                    else {
+                        if (btn) { btn.disabled = false; btn.textContent = 'Confirm Order'; }
+                        alert('Save failed. Please try again.');
+                    }
+                })
+                .catch(function() {
+                    if (btn) { btn.disabled = false; btn.textContent = 'Confirm Order'; }
+                    alert('Network error. Please try again.');
+                });
         });
     }
 
-    function submitSessionForm(form, action) {
-        var fd = new FormData(form);
-        fd.set('proc_session', '1');
-        // Add a hidden field to signal JSON response
-        var url = form.action || window.location.href;
-        if (url.indexOf('proc_session') < 0) url += (url.indexOf('?') < 0 ? '?' : '&') + 'proc_session=1';
-
-        var btn = form.querySelector('button[type="submit"]');
-        var origText = btn ? btn.textContent : '';
-        if (btn) { btn.textContent = '⏳ Saving...'; btn.disabled = true; }
-
-        fetch(url, { method:'POST', credentials:'same-origin', body: fd })
-            .then(function(r) {
-                // Check if response is JSON
-                var ct = r.headers.get('Content-Type') || '';
-                if (ct.includes('json')) return r.json();
-                // Otherwise it was a redirect — treat as success
-                return { success: true, action: action };
-            })
-            .then(function(d) {
-                if (d && d.success) {
-                    ps.processed = (ps.processed || 0) + 1;
-                    showToast('✅ ' + (d.action === 'confirmed' ? 'Confirmed!' : 'Saved!'), '#10b981');
-                    setTimeout(function() {
-                        // Auto-advance to next order
-                        var nextIdx = currentIdx + 1;
-                        if (nextIdx >= ps.queue.length) {
-                            ps.current = currentIdx;
-                            sessionStorage.setItem(SESSION_KEY, JSON.stringify(ps));
-                            psFinish();
-                        } else {
-                            ps.current = nextIdx;
-                            sessionStorage.setItem(SESSION_KEY, JSON.stringify(ps));
-                            window.location.href = ORDER_VIEW_URL + '?id=' + ps.queue[nextIdx] + '&proc_session=1';
-                        }
-                    }, 1400);
-                } else {
-                    if (btn) { btn.textContent = origText; btn.disabled = false; }
-                    showToast('⚠ Error saving order', '#ef4444');
-                }
-            })
-            .catch(function() {
-                if (btn) { btn.textContent = origText; btn.disabled = false; }
-                showToast('⚠ Network error', '#ef4444');
-            });
-    }
-
-    function showToast(msg, color) {
-        var t = document.createElement('div');
-        t.textContent = msg;
-        t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;background:'+color+';color:#fff;padding:12px 20px;border-radius:12px;font-weight:700;font-size:14px;box-shadow:0 8px 24px rgba(0,0,0,.2);transition:opacity .4s';
-        document.body.appendChild(t);
-        setTimeout(function() { t.style.opacity = '0'; setTimeout(function() { t.remove(); }, 400); }, 1200);
-    }
-
-    // Run after DOM ready
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', interceptForms);
     } else {
