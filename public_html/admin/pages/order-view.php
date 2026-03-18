@@ -1747,51 +1747,76 @@ function courierUpdateUI(d) {
 <script>
 // ── Processing Session Controller ──────────────────────────────────────────
 (function() {
-    var SESSION_KEY  = 'procSession';
-    var CURRENT_ID   = <?= $id ?>;
-    var ORDER_VIEW   = '<?= adminUrl('pages/order-view.php') ?>';
-    var PROC_URL     = '<?= adminUrl('pages/order-processing.php') ?>';
+    var SESSION_KEY = 'procSession';
+    var CURRENT_ID  = <?= (int)$id ?>;
+    var ORDER_VIEW  = '<?= addslashes(adminUrl('pages/order-view.php')) ?>';
+    var PROC_URL    = '<?= addslashes(adminUrl('pages/order-processing.php')) ?>';
+    var PRINT_URL   = '<?= addslashes(adminUrl('pages/order-print.php')) ?>';
+    var TAG_URL     = '<?= addslashes(adminUrl('pages/order-management.php')) ?>';
+    var ORDER_ID    = <?= (int)$id ?>;
 
-    // Load session
+    // ── Load session ───────────────────────────────────────────────────────
     var ps = null;
     try { ps = JSON.parse(sessionStorage.getItem(SESSION_KEY)); } catch(e) {}
-    if (!ps || !ps.queue || !ps.queue.length) {
-        document.getElementById('procSessionBar')?.remove();
-        document.getElementById('psProgressWrap')?.remove();
+
+    // No session — hide bar and bail
+    if (!ps || !Array.isArray(ps.queue) || !ps.queue.length) {
+        var bar = document.getElementById('procSessionBar');
+        if (bar) bar.style.display = 'none';
         return;
     }
 
-    // Find position
-    var idx = ps.queue.indexOf(CURRENT_ID);
-    if (idx < 0) idx = ps.current || 0;
-    ps.current = idx;
+    // Find current position
+    var pos = ps.queue.indexOf(CURRENT_ID);
+    if (pos < 0) pos = ps.current || 0;
+    ps.current = pos;
+    if (!ps.processed) ps.processed = 0;
 
-    // ── UI Update ──────────────────────────────────────────────────────────
+    // ── Update session bar UI ──────────────────────────────────────────────
     function updateBar() {
-        var pos  = document.getElementById('psPosition');
-        var tot  = document.getElementById('psTotal');
-        var done = document.getElementById('psProcessed');
-        var bar  = document.getElementById('psProgress');
-        var prev = document.getElementById('psPrevBtn');
-        var next = document.getElementById('psNextBtn');
-        if (pos)  pos.textContent  = idx + 1;
-        if (tot)  tot.textContent  = ps.queue.length;
-        if (done) done.textContent = (ps.processed || 0) + ' done';
-        if (bar)  bar.style.width  = Math.round(((idx + 1) / ps.queue.length) * 100) + '%';
-        if (prev) prev.disabled    = idx <= 0;
-        var isLast = idx >= ps.queue.length - 1;
-        if (next) {
-            next.innerHTML = isLast
-                ? '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg> Finish'
-                : 'Next <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>';
+        var elPos  = document.getElementById('psPosition');
+        var elTot  = document.getElementById('psTotal');
+        var elDone = document.getElementById('psProcessed');
+        var elBar  = document.getElementById('psProgress');
+        var elPrev = document.getElementById('psPrevBtn');
+        var elNext = document.getElementById('psNextBtn');
+
+        if (elPos)  elPos.textContent  = pos + 1;
+        if (elTot)  elTot.textContent  = ps.queue.length;
+        if (elDone) elDone.textContent = ps.processed + ' done';
+        if (elBar)  elBar.style.width  = Math.round(((pos + 1) / ps.queue.length) * 100) + '%';
+
+        if (elPrev) {
+            elPrev.disabled = pos <= 0;
+            elPrev.style.opacity = pos <= 0 ? '0.35' : '1';
+            elPrev.style.cursor  = pos <= 0 ? 'not-allowed' : 'pointer';
+        }
+        var isLast = pos >= ps.queue.length - 1;
+        if (elNext) {
+            if (isLast) {
+                elNext.textContent = '✓ Finish';
+                elNext.style.background = '#10b981';
+            } else {
+                elNext.innerHTML = 'Next <svg style="display:inline;width:12px;height:12px;vertical-align:middle" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>';
+                elNext.style.background = '#f59e0b';
+            }
         }
         sessionStorage.setItem(SESSION_KEY, JSON.stringify(ps));
     }
-    updateBar();
 
-    // ── Navigation ─────────────────────────────────────────────────────────
+    // Run after DOM is ready
+    function init() {
+        updateBar();
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+    // ── Navigate prev / next ───────────────────────────────────────────────
     window.psNavigate = function(dir) {
-        var next = idx + dir;
+        var next = pos + dir;
         if (next < 0) return;
         if (next >= ps.queue.length) { psShowSummary(); return; }
         ps.current = next;
@@ -1799,49 +1824,64 @@ function courierUpdateUI(d) {
         window.location.href = ORDER_VIEW + '?id=' + ps.queue[next] + '&proc_session=1';
     };
 
+    // ── Exit session ───────────────────────────────────────────────────────
     window.psExit = function() {
-        if (confirm('Exit processing session? Your progress will be lost.')) {
+        if (confirm('Exit processing session?')) {
             sessionStorage.removeItem(SESSION_KEY);
             window.location.href = PROC_URL;
         }
     };
 
-    // ── Summary Screen ─────────────────────────────────────────────────────
+    // ── Summary overlay ────────────────────────────────────────────────────
     function psShowSummary() {
-        var dur  = ps.startedAt ? Math.round((Date.now() - ps.startedAt) / 60000) : 0;
-        var done = ps.processed || 0;
+        var dur   = ps.startedAt ? Math.round((Date.now() - ps.startedAt) / 60000) : 0;
+        var done  = ps.processed;
         var total = ps.queue.length;
+        var rem   = Math.max(0, total - done);
         sessionStorage.removeItem(SESSION_KEY);
 
         var overlay = document.createElement('div');
-        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.88);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
-        overlay.innerHTML = [
-            '<div style="background:#fff;border-radius:24px;padding:48px 52px;text-align:center;max-width:440px;width:100%;box-shadow:0 32px 64px rgba(0,0,0,.3)">',
-              '<div style="font-size:64px;line-height:1;margin-bottom:20px">🎉</div>',
-              '<h2 style="font-size:24px;font-weight:800;color:#111827;margin:0 0 8px">Session Complete!</h2>',
-              '<p style="color:#6b7280;font-size:14px;margin:0 0 28px">',
-                '<strong style="color:#111827;font-size:32px;display:block;margin-bottom:4px">' + done + '</strong>',
-                'order' + (done !== 1 ? 's' : '') + ' confirmed' +
-                (dur > 0 ? ' &nbsp;·&nbsp; <strong style="color:#374151">' + dur + ' min</strong>' : ''),
-              '</p>',
-              '<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:14px 20px;margin-bottom:28px;font-size:13px;color:#166534">',
-                '<strong>' + (total - done) + '</strong> order' + (total - done !== 1 ? 's' : '') + ' remaining in queue',
-              '</div>',
-              '<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">',
-                '<button onclick="window.location.href='' + PROC_URL + ''" style="background:#f59e0b;color:#fff;padding:11px 28px;border-radius:10px;font-weight:700;font-size:14px;border:none;cursor:pointer;box-shadow:0 4px 12px rgba(245,158,11,.35)">Back to Processing</button>',
-                '<button onclick="window.location.reload()" style="background:#f3f4f6;color:#374151;padding:11px 28px;border-radius:10px;font-weight:600;font-size:14px;border:none;cursor:pointer">Stay on Order</button>',
-              '</div>',
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.9);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+
+        var card = document.createElement('div');
+        card.style.cssText = 'background:#fff;border-radius:24px;padding:48px 52px;text-align:center;max-width:420px;width:100%;box-shadow:0 32px 64px rgba(0,0,0,.35)';
+
+        var timeStr = dur > 0 ? (' &nbsp;·&nbsp; <strong>' + dur + ' min</strong>') : '';
+        var remStr  = rem > 0
+            ? '<div style="background:#fef3c7;border:1.5px solid #fcd34d;border-radius:12px;padding:12px 20px;margin-bottom:24px;font-size:13px;color:#92400e"><strong>' + rem + '</strong> order' + (rem !== 1 ? 's' : '') + ' remaining</div>'
+            : '<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:12px 20px;margin-bottom:24px;font-size:13px;color:#166534">🎉 Queue complete — nothing left!</div>';
+
+        card.innerHTML = [
+            '<div style="font-size:64px;line-height:1;margin-bottom:16px">🎉</div>',
+            '<h2 style="font-size:22px;font-weight:800;color:#111827;margin:0 0 6px">Session Complete!</h2>',
+            '<p style="color:#6b7280;font-size:14px;margin:0 0 20px">',
+              '<strong style="color:#111827;font-size:36px;font-weight:900;display:block;line-height:1.1;margin-bottom:4px">' + done + '</strong>',
+              'order' + (done !== 1 ? 's' : '') + ' confirmed' + timeStr,
+            '</p>',
+            remStr,
+            '<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">',
+              '<button id="psSummaryBack" style="background:#f59e0b;color:#fff;padding:11px 28px;border-radius:10px;font-weight:700;font-size:14px;border:none;cursor:pointer">Back to Processing</button>',
+              '<button id="psSummaryStay" style="background:#f3f4f6;color:#374151;padding:11px 28px;border-radius:10px;font-weight:600;font-size:14px;border:none;cursor:pointer">Stay Here</button>',
             '</div>'
         ].join('');
+
+        overlay.appendChild(card);
         document.body.appendChild(overlay);
+
+        document.getElementById('psSummaryBack').addEventListener('click', function() {
+            window.location.href = PROC_URL;
+        });
+        document.getElementById('psSummaryStay').addEventListener('click', function() {
+            overlay.remove();
+        });
     }
 
-    // ── Auto-advance after confirm/save (instant) ──────────────────────────
+    // ── Auto-advance after confirm (instant) ───────────────────────────────
     function advance() {
-        ps.processed = (ps.processed || 0) + 1;
-        var next = idx + 1;
+        ps.processed += 1;
+        var next = pos + 1;
         if (next >= ps.queue.length) {
-            ps.current = idx;
+            ps.current = pos;
             sessionStorage.setItem(SESSION_KEY, JSON.stringify(ps));
             psShowSummary();
         } else {
@@ -1852,78 +1892,79 @@ function courierUpdateUI(d) {
     }
 
     // ── Print helpers ──────────────────────────────────────────────────────
-    var PRINT_URL = '<?= adminUrl('pages/order-print.php') ?>';
     window.psPrintSticker = function() {
-        window.open(PRINT_URL + '?ids=<?= $id ?>&template=stk_standard', '_blank');
+        window.open(PRINT_URL + '?ids=' + ORDER_ID + '&template=stk_standard', '_blank');
     };
     window.psPrintInvoice = function() {
-        window.open(PRINT_URL + '?ids=<?= $id ?>&template=inv_standard', '_blank');
+        window.open(PRINT_URL + '?ids=' + ORDER_ID + '&template=inv_standard', '_blank');
     };
 
-    // ── Tag helper ─────────────────────────────────────────────────────────
+    // ── Tag helpers ────────────────────────────────────────────────────────
     window.psAddTag = function() {
-        var m = document.getElementById('psTagModal');
-        var inp = document.getElementById('psTagInput');
-        if (m) { m.classList.remove('hidden'); if (inp) { inp.value=''; inp.focus(); } }
+        var modal = document.getElementById('psTagModal');
+        var input = document.getElementById('psTagInput');
+        if (modal) { modal.classList.remove('hidden'); if (input) { input.value = ''; input.focus(); } }
     };
     window.psSubmitTag = function(tag) {
-        tag = (tag||'').trim();
+        tag = (tag || '').trim();
         if (!tag) return;
-        var m = document.getElementById('psTagModal');
-        if (m) m.classList.add('hidden');
-        fetch('<?= adminUrl('pages/order-management.php') ?>', {
+        var modal = document.getElementById('psTagModal');
+        if (modal) modal.classList.add('hidden');
+        fetch(TAG_URL, {
             method: 'POST',
             credentials: 'same-origin',
-            headers: {'Content-Type':'application/x-www-form-urlencoded'},
-            body: 'action=add_tag&order_id=<?= $id ?>&tag=' + encodeURIComponent(tag)
-        }).then(function(r){ return r.json(); }).then(function(d){
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: 'action=add_tag&order_id=' + ORDER_ID + '&tag=' + encodeURIComponent(tag)
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
             if (d && d.success) {
-                // Show brief confirmation
-                var t = document.createElement('div');
-                t.textContent = '🏷 Tag added: ' + tag;
-                t.style.cssText = 'position:fixed;top:70px;right:20px;z-index:9999;background:#374151;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.2)';
-                document.body.appendChild(t);
-                setTimeout(function(){ t.remove(); }, 2000);
+                var toast = document.createElement('div');
+                toast.textContent = '🏷 Tag: ' + tag;
+                toast.style.cssText = 'position:fixed;top:70px;right:20px;z-index:9999;background:#1f2937;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.25);transition:opacity .3s';
+                document.body.appendChild(toast);
+                setTimeout(function() { toast.style.opacity = '0'; setTimeout(function() { toast.remove(); }, 300); }, 2000);
             }
-        }).catch(function(){});
+        })
+        .catch(function() {});
     };
 
-    // ── Intercept Confirm Order form submission ─────────────────────────────
+    // ── Intercept Confirm form submit ──────────────────────────────────────
     function interceptForms() {
         var form = document.getElementById('orderForm');
         if (!form) return;
 
         form.addEventListener('submit', function(e) {
             var actionEl = form.querySelector('[name="action"]');
-            var action   = actionEl ? actionEl.value : '';
-            // Only intercept confirm_order and save_order in session mode
+            var action = actionEl ? actionEl.value : '';
             if (action !== 'confirm_order' && action !== 'save_order') return;
 
             e.preventDefault();
             var btn = form.querySelector('button[type="submit"]');
-            if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+            var origText = btn ? btn.textContent : '';
+            if (btn) { btn.disabled = true; btn.textContent = '⏳ Saving…'; }
 
-            var fd = new FormData(form);
-            var url = form.action || window.location.pathname;
-            if (url.indexOf('proc_session') < 0)
-                url += (url.indexOf('?') < 0 ? '?' : '&') + 'proc_session=1';
+            var fd  = new FormData(form);
+            var url = (form.action || window.location.pathname);
+            url += (url.indexOf('?') < 0 ? '?' : '&') + 'proc_session=1';
 
-            fetch(url, { method:'POST', credentials:'same-origin', body: fd })
+            fetch(url, { method: 'POST', credentials: 'same-origin', body: fd })
                 .then(function(r) {
                     var ct = r.headers.get('Content-Type') || '';
-                    if (ct.includes('json')) return r.json();
+                    if (ct.indexOf('json') >= 0) return r.json();
                     return { success: true };
                 })
                 .then(function(d) {
-                    if (d && d.success) { advance(); }
-                    else {
-                        if (btn) { btn.disabled = false; btn.textContent = 'Confirm Order'; }
-                        alert('Save failed. Please try again.');
+                    if (d && d.success) {
+                        advance();
+                    } else {
+                        if (btn) { btn.disabled = false; btn.textContent = origText; }
+                        alert('Save failed — please try again.');
                     }
                 })
                 .catch(function() {
-                    if (btn) { btn.disabled = false; btn.textContent = 'Confirm Order'; }
-                    alert('Network error. Please try again.');
+                    if (btn) { btn.disabled = false; btn.textContent = origText; }
+                    alert('Network error — please try again.');
                 });
         });
     }
