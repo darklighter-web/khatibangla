@@ -274,8 +274,8 @@ if (!$__currentAdminName) $__currentAdminName = trim($_SESSION['admin_name'] ?? 
 
 // Ensure table exists
 try { $db->query("CREATE TABLE IF NOT EXISTS order_locks (id INT AUTO_INCREMENT PRIMARY KEY, order_id INT NOT NULL UNIQUE, admin_user_id INT NOT NULL, admin_name VARCHAR(100) NOT NULL DEFAULT '', locked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, last_heartbeat DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, INDEX idx_order (order_id), INDEX idx_heartbeat (last_heartbeat)) ENGINE=InnoDB"); } catch (\Throwable $e) {}
-// Clean expired locks
-try { $db->query("DELETE FROM order_locks WHERE last_heartbeat < DATE_SUB(NOW(), INTERVAL 30 SECOND)"); } catch (\Throwable $e) {}
+// Clean expired locks AND corrupt locks (admin_user_id=0 = stale/invalid)
+try { $db->query("DELETE FROM order_locks WHERE last_heartbeat < DATE_SUB(NOW(), INTERVAL 30 SECOND) OR admin_user_id = 0 OR admin_user_id IS NULL"); } catch (\Throwable $e) {}
 
 // Check existing lock
 $__existingLock = null;
@@ -286,10 +286,11 @@ if ($__existingLock && intval($__existingLock['admin_user_id']) !== $__currentAd
     $__lockBlocked = true;
     $__lockedByName = $__existingLock['admin_name'] ?: 'Unknown';
     $__lockedById = intval($__existingLock['admin_user_id']);
-    // In processing session: signal JS to skip this order
-    if ($isProcSession && $_SERVER['REQUEST_METHOD'] === 'GET') {
+    // In processing session: signal JS to skip — return JSON, never show lock screen
+    if ($isProcSession) {
         header('Content-Type: application/json');
-        echo json_encode(['locked'=>true,'locked_by'=>$__lockedByName,'order_id'=>$id]);
+        $skipName = $__lockedByName ?: 'Another user';
+        echo json_encode(['locked'=>true,'locked_by'=>$skipName,'order_id'=>$id]);
         exit;
     }
 } else {
@@ -310,7 +311,7 @@ if ($__existingLock && intval($__existingLock['admin_user_id']) !== $__currentAd
         <p class="text-pink-500 text-base mb-6">
             This order is currently being viewed by <strong class="text-pink-700" id="lockOwnerName"><?= htmlspecialchars($__lockedByName ?: 'Another user') ?></strong>.
         </p>
-        <div class="flex items-center justify-center gap-3" id="lockActions">
+        <div class="flex items-center justify-center gap-3 flex-wrap" id="lockActions">
             <button onclick="doTakeover()" id="btnTakeover"
                     class="bg-teal-500 hover:bg-teal-600 text-white font-bold px-6 py-2.5 rounded-lg transition shadow-sm">
                 Take Over
@@ -318,6 +319,11 @@ if ($__existingLock && intval($__existingLock['admin_user_id']) !== $__currentAd
             <button onclick="location.reload()" class="bg-white hover:bg-gray-50 text-gray-700 font-bold px-6 py-2.5 rounded-lg border transition shadow-sm">
                 Retry
             </button>
+            <?php if (!$__lockedByName || $__lockedByName === 'Unknown'): ?>
+            <button onclick="forceClearLock()" class="bg-gray-700 hover:bg-gray-800 text-white font-bold px-6 py-2.5 rounded-lg transition shadow-sm" title="Clear stale lock and access order">
+                Force Access
+            </button>
+            <?php endif; ?>
         </div>
         <div class="hidden mt-4" id="confirmTakeoverBox">
             <button onclick="confirmTakeover()" id="btnConfirmTakeover"
@@ -1753,6 +1759,22 @@ function courierUpdateUI(d) {
         document.body.appendChild(overlay);
     }
     
+    // Force clear a stale/corrupt lock (when locker is Unknown)
+    window.forceClearLock = function() {
+        if (!confirm('Force clear this stale lock and access the order?')) return;
+        fetch(LOCK_API, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: 'action=takeover&order_id=' + ORDER_ID
+        })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) location.reload();
+            else alert('Failed to clear lock. Please retry.');
+        })
+        .catch(() => { alert('Network error. Please retry.'); });
+    };
+
     window.overlayTakeover = function() {
         document.getElementById('lockOverlayActions').style.display = 'none';
         document.getElementById('lockOverlayConfirm').style.display = '';

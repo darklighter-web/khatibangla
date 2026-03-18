@@ -33,7 +33,8 @@ try {
 
 // ── Clean expired locks (no heartbeat for 45s) ──
 try {
-    $db->query("DELETE FROM order_locks WHERE last_heartbeat < DATE_SUB(NOW(), INTERVAL 30 SECOND)");
+    // Clean expired locks AND corrupt locks (admin_user_id=0/NULL = invalid)
+    $db->query("DELETE FROM order_locks WHERE last_heartbeat < DATE_SUB(NOW(), INTERVAL 30 SECOND) OR admin_user_id = 0 OR admin_user_id IS NULL");
 } catch (\Throwable $e) {}
 
 $action   = $_POST['action'] ?? $_GET['action'] ?? '';
@@ -50,6 +51,13 @@ if ($action === 'acquire') {
     // Check if already locked by someone else
     $existing = $db->fetch("SELECT * FROM order_locks WHERE order_id = ? AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 30 SECOND)", [$orderId]);
     
+    if ($existing && intval($existing['admin_user_id']) !== $adminId) {
+        // If the lock has admin_user_id=0 it's corrupt — auto-clear and proceed
+        if (intval($existing['admin_user_id']) === 0) {
+            try { $db->query("DELETE FROM order_locks WHERE order_id = ?", [$orderId]); } catch (\Throwable $e) {}
+            $existing = null; // fall through to acquire
+        }
+    }
     if ($existing && intval($existing['admin_user_id']) !== $adminId) {
         // Active lock by another user — never return empty name
         $lockerName = trim($existing['admin_name'] ?? '');
