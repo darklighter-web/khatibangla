@@ -282,6 +282,11 @@ function formatPrice(amount) {
     document.head.appendChild(style);
 })();
 </script>
+<!-- ══════ Floating Page Guide Button (fixed, independent of layout) ══════ -->
+<button onclick="openPageGuide()" id="pageGuideBtn" style="position:fixed;bottom:24px;right:24px;z-index:9990;width:44px;height:44px;border-radius:50%;background:#3b82f6;color:#fff;border:none;cursor:pointer;box-shadow:0 4px 14px rgba(59,130,246,0.4);display:flex;align-items:center;justify-content:center;transition:all 0.2s" onmouseover="this.style.transform='scale(1.1)';this.style.boxShadow='0 6px 20px rgba(59,130,246,0.5)'" onmouseout="this.style.transform='scale(1)';this.style.boxShadow='0 4px 14px rgba(59,130,246,0.4)'" title="পেইজ গাইড">
+    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M12 18h.01"/></svg>
+</button>
+
 <!-- ══════ Page Guide Modal (Employee Training) ══════ -->
 <div id="pageGuideModal" class="fixed inset-0 z-[9999] hidden bg-black/50 flex items-center justify-center" onclick="if(event.target===this)closePageGuide()">
     <div class="bg-white rounded-2xl shadow-2xl w-[95vw] max-w-xl max-h-[85vh] flex flex-col overflow-hidden" onclick="event.stopPropagation()">
