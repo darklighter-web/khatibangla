@@ -109,59 +109,13 @@ include __DIR__ . '/../includes/header.php';
 <?php if ($msg === 'deleted'): ?><div class="mb-4 p-3 bg-green-50 text-green-700 rounded-xl text-sm">Expense deleted!</div><?php endif; ?>
 
 <div class="grid lg:grid-cols-4 gap-6">
-    <!-- Left: Form -->
+    <!-- Left: Summary + Category -->
     <div class="lg:col-span-1 space-y-4">
+        <!-- Quick Actions -->
         <div class="bg-white rounded-xl border shadow-sm p-5">
-            <h3 class="font-semibold text-gray-800 mb-4"><?= $editExpense ? 'Edit' : 'Add' ?> Expense</h3>
-            <form method="POST" enctype="multipart/form-data" class="space-y-3">
-                <input type="hidden" name="action" value="save_expense">
-                <?php if ($editExpense): ?><input type="hidden" name="id" value="<?= $editExpense['id'] ?>"><?php endif; ?>
-                <div>
-                    <label class="block text-xs font-medium text-gray-600 mb-1">Title *</label>
-                    <input type="text" name="title" required value="<?= e($editExpense['title'] ?? '') ?>" class="w-full border rounded-lg px-3 py-2 text-sm">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-600 mb-1">Amount *</label>
-                    <input type="number" name="amount" required step="0.01" value="<?= $editExpense['amount'] ?? '' ?>" class="w-full border rounded-lg px-3 py-2 text-sm">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-600 mb-1">Category *</label>
-                    <select name="category_id" required class="w-full border rounded-lg px-3 py-2 text-sm">
-                        <option value="">Select</option>
-                        <?php foreach ($categories as $cat): ?>
-                        <option value="<?= $cat['id'] ?>" <?= ($editExpense['category_id'] ?? '')==$cat['id']?'selected':'' ?>><?= e($cat['name']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-600 mb-1">Date *</label>
-                    <input type="date" name="expense_date" required value="<?= $editExpense['expense_date'] ?? date('Y-m-d') ?>" class="w-full border rounded-lg px-3 py-2 text-sm">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-600 mb-1">Payment Method</label>
-                    <select name="payment_method" class="w-full border rounded-lg px-3 py-2 text-sm">
-                        <option value="">Select</option>
-                        <?php foreach (['cash','bank_transfer','bkash','nagad','credit_card','other'] as $pm): ?>
-                        <option value="<?= $pm ?>" <?= ($editExpense['payment_method'] ?? '')===$pm?'selected':'' ?>><?= ucfirst(str_replace('_',' ',$pm)) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-600 mb-1">Reference</label>
-                    <input type="text" name="reference" value="<?= e($editExpense['reference'] ?? '') ?>" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Invoice/Receipt #">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-600 mb-1">Notes</label>
-                    <textarea name="notes" rows="2" class="w-full border rounded-lg px-3 py-2 text-sm"><?= e($editExpense['notes'] ?? '') ?></textarea>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-600 mb-1">Receipt Image</label>
-                    <input type="file" name="receipt_image" accept="image/*" class="w-full text-sm">
-                </div>
-                <button type="submit" class="w-full bg-blue-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700">
-                    <?= $editExpense ? 'Update' : 'Add' ?> Expense
-                </button>
-            </form>
+            <a href="<?= adminUrl('pages/expense-new.php') ?>" class="block w-full bg-red-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-red-700 text-center mb-3">+ New Expense</a>
+            <a href="<?= adminUrl('pages/ad-expense-new.php') ?>" class="block w-full bg-blue-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 text-center mb-3">+ New Ad Expense</a>
+            <a href="<?= adminUrl('pages/accounting.php') ?>" class="block text-center text-xs text-gray-500 hover:text-blue-600">← Back to Accounting Dashboard</a>
         </div>
         
         <!-- Category Summary -->
@@ -204,7 +158,7 @@ include __DIR__ . '/../includes/header.php';
                         <option value="<?= $cat['id'] ?>" <?= $catFilter==$cat['id']?'selected':'' ?>><?= e($cat['name']) ?></option>
                         <?php endforeach; ?>
                     </select>
-                    <div data-kb-datepicker data-from-param="from" data-to-param="to"></div>
+                    <input type="date" name="from" value="<?= e($dateFrom) ?>" class="border rounded-lg px-2.5 py-1.5 text-sm"> <span class="text-gray-400">—</span> <input type="date" name="to" value="<?= e($dateTo) ?>" class="border rounded-lg px-2.5 py-1.5 text-sm"> <button type="submit" class="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium">Filter</button>
                 </form>
             </div>
             <div class="overflow-x-auto">

@@ -67,6 +67,7 @@ $monthlyTrend = $db->fetchAll("SELECT DATE_FORMAT(entry_date,'%Y-%m') as month, 
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
+<div class="flex items-center justify-between mb-4"><div class="flex gap-2"><a href="<?= adminUrl('pages/accounting.php') ?>" class="text-xs text-gray-500 hover:text-blue-600">← Accounting</a><a href="<?= adminUrl('pages/expenses.php') ?>" class="text-xs text-gray-500 hover:text-blue-600">Expenses</a><a href="<?= adminUrl('pages/liabilities.php') ?>" class="text-xs text-gray-500 hover:text-blue-600">Liabilities</a></div></div>
 <?php if ($msg === 'saved'): ?><div class="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm">Income recorded!</div><?php endif; ?>
 <?php if ($msg === 'deleted'): ?><div class="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm">Income deleted!</div><?php endif; ?>
 
@@ -127,7 +128,7 @@ require_once __DIR__ . '/../includes/header.php';
                 <form class="flex flex-wrap gap-3 items-center">
                     <input type="hidden" name="from" value="<?= $dateFrom ?>">
                     <input type="hidden" name="to" value="<?= $dateTo ?>">
-                    <div data-kb-datepicker data-from-param="from" data-to-param="to"></div>
+                    <input type="date" name="from" value="<?= e($dateFrom) ?>" class="border rounded-lg px-2.5 py-1.5 text-sm"> <span class="text-gray-400">—</span> <input type="date" name="to" value="<?= e($dateTo) ?>" class="border rounded-lg px-2.5 py-1.5 text-sm"> <button type="submit" class="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium">Apply</button>
                 </form>
             </div>
             <div class="overflow-x-auto">

@@ -51,6 +51,7 @@ $todayTotal = $db->fetch("SELECT COALESCE(SUM(amount),0) as total FROM expenses 
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
+<div class="flex items-center gap-3 mb-4"><a href="<?= adminUrl('pages/accounting.php') ?>" class="text-xs text-gray-500 hover:text-blue-600">&larr; Accounting</a><a href="<?= adminUrl('pages/expenses.php') ?>" class="text-xs text-gray-500 hover:text-blue-600">Expense List</a><a href="<?= adminUrl('pages/income.php') ?>" class="text-xs text-gray-500 hover:text-blue-600">Income</a><a href="<?= adminUrl('pages/liabilities.php') ?>" class="text-xs text-gray-500 hover:text-blue-600">Liabilities</a></div>
 <?php if ($msg === 'saved'): ?><div class="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm">Expense saved successfully!</div><?php endif; ?>
 <?php if ($msg === 'cat_saved'): ?><div class="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm">Category added!</div><?php endif; ?>
 

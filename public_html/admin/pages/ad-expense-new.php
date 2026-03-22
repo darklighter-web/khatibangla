@@ -70,6 +70,7 @@ $recentAds = $db->fetchAll("SELECT * FROM ad_expenses ORDER BY expense_date DESC
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
+<div class="flex items-center gap-3 mb-4"><a href="<?= adminUrl('pages/accounting.php') ?>" class="text-xs text-gray-500 hover:text-blue-600">&larr; Accounting</a><a href="<?= adminUrl('pages/expenses.php') ?>" class="text-xs text-gray-500 hover:text-blue-600">Expense List</a><a href="<?= adminUrl('pages/income.php') ?>" class="text-xs text-gray-500 hover:text-blue-600">Income</a></div>
 <?php if ($msg === 'saved'): ?><div class="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm">Ad expense saved successfully!</div><?php endif; ?>
 
 <div class="grid lg:grid-cols-3 gap-6">
