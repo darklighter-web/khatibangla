@@ -660,8 +660,8 @@ function sortIcon($col) {
     <!-- Invoice -->
     <td>
         <div style="display:flex;align-items:center;gap:4px">
-            <a href="<?= adminUrl('pages/order-view.php?id='.$order['id']) ?>" style="font-weight:700;color:#0f172a;font-size:12px;text-decoration:none" onmouseover="this.style.color='#2563eb'" onmouseout="this.style.color='#0f172a'"><?= e($order['order_number']) ?></a>
-            <span class="dot-menu" onclick="toggleRowMenu(this,<?= $order['id'] ?>)">⋮</span>
+            <a href="<?= adminUrl('pages/order-view.php?order='.urlencode($order['order_number'])) ?>" style="font-weight:700;color:#0f172a;font-size:12px;text-decoration:none" onmouseover="this.style.color='#2563eb'" onmouseout="this.style.color='#0f172a'"><?= e($order['order_number']) ?></a>
+            <span class="dot-menu" onclick="toggleRowMenu(this,<?= $order['id'] ?>,'<?= e($order['order_number']) ?>')">⋮</span>
         </div>
         <?php if (!empty($order['is_preorder'])): ?>
         <span style="font-size:8px;background:#f3e8ff;color:#7c3aed;padding:1px 5px;border-radius:3px;font-weight:600;display:inline-block;margin-top:1px">⏰ PREORDER<?php if(!empty($order['preorder_date'])): ?> · <?= date('d M', strtotime($order['preorder_date'])) ?><?php endif; ?></span>
@@ -780,7 +780,7 @@ function sortIcon($col) {
     
     <!-- Actions -->
     <td class="om-action-cell">
-        <a href="<?= adminUrl('pages/order-view.php?id='.$order['id']) ?>" 
+        <a href="<?= adminUrl('pages/order-view.php?order='.urlencode($order['order_number'])) ?>" 
            class="order-open-link om-btn om-btn-open"
            data-oid="<?= $order['id'] ?>">Open</a>
         <span class="lock-indicator hidden text-[10px] text-pink-600 font-medium ml-1" data-lock-oid="<?= $order['id'] ?>"></span>
@@ -1058,7 +1058,7 @@ function toggleRowMenu(el, orderId, orderNum) {
     rm.style.left = Math.min(r.left, window.innerWidth - 190) + 'px';
     rm.classList.remove('hidden');
     rm._open = orderId;
-    document.getElementById('rmOpen').href = '<?= adminUrl('pages/order-view.php?id=') ?>' + orderId;
+    document.getElementById('rmOpen').href = '<?= adminUrl('pages/order-view.php?order=') ?>' + encodeURIComponent(orderNum || orderId);
     document.getElementById('rmPrintInv').onclick = () => { rm.classList.add('hidden'); openInvPrint([orderId]); };
     document.getElementById('rmPrintStk').onclick = () => { rm.classList.add('hidden'); openStkPrint([orderId]); };
     if (document.getElementById('rmEdit')) {
@@ -1623,7 +1623,7 @@ var _editOrderUrl = null;
 
 function openEditOrder(orderId, orderNum) {
     _editOrderId = orderId;
-    _editOrderUrl = '<?= adminUrl('pages/order-view.php') ?>?id=' + orderId + '&modal=1';
+    _editOrderUrl = '<?= adminUrl('pages/order-view.php') ?>?order=' + encodeURIComponent(orderNum || orderId) + '&modal=1';
     document.getElementById('editOrderNum').textContent = orderNum ? '#' + orderNum : 'Order #' + orderId;
     document.getElementById('editLoadingOverlay').style.display = 'flex';
     document.getElementById('editOrderModal').classList.remove('hidden');

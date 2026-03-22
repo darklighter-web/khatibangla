@@ -13,7 +13,7 @@
     <!-- Invoice -->
     <td>
         <div style="display:flex;align-items:center;gap:4px">
-            <a href="<?= adminUrl('pages/order-view.php?id='.$order['id']) ?>" style="font-weight:700;color:#0f172a;font-size:12px;text-decoration:none" onmouseover="this.style.color='#2563eb'" onmouseout="this.style.color='#0f172a'"><?= e($order['order_number']) ?></a>
+            <a href="<?= adminUrl('pages/order-view.php?order='.urlencode($order['order_number'])) ?>" style="font-weight:700;color:#0f172a;font-size:12px;text-decoration:none" onmouseover="this.style.color='#2563eb'" onmouseout="this.style.color='#0f172a'"><?= e($order['order_number']) ?></a>
             <span class="dot-menu" onclick="toggleRowMenu(this,<?= $order['id'] ?>,'<?= e($order['order_number']) ?>')">⋮</span>
         </div>
         <?php if (!empty($order['is_preorder'])): ?>
@@ -133,7 +133,7 @@
     
     <!-- Actions -->
     <td class="om-action-cell">
-        <a href="<?= adminUrl('pages/order-view.php?id='.$order['id']) ?>" 
+        <a href="<?= adminUrl('pages/order-view.php?order='.urlencode($order['order_number'])) ?>" 
            class="order-open-link om-btn om-btn-open"
            data-oid="<?= $order['id'] ?>">Open</a>
         <span class="lock-indicator hidden text-[10px] text-pink-600 font-medium ml-1" data-lock-oid="<?= $order['id'] ?>"></span>

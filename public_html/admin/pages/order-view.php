@@ -5,9 +5,16 @@ require_once __DIR__ . '/../includes/auth.php';
 
 $db = Database::getInstance();
 $id = intval($_GET['id'] ?? 0);
+$orderNum = trim($_GET['order'] ?? '');
 $isModal       = !empty($_GET['modal']);         // loaded inside edit modal iframe
 $isProcSession = !empty($_GET['proc_session']);   // part of a processing session
 $isLockCheck   = !empty($_GET['lock_check']);     // just checking lock status, no page load
+
+// Resolve order_number to id if ?order= param used
+if (!$id && $orderNum) {
+    $resolved = $db->fetch("SELECT id FROM orders WHERE order_number = ?", [$orderNum]);
+    if ($resolved) $id = intval($resolved['id']);
+}
 
 // Lock check shortcut: JS pre-checks lock before navigating
 if ($isLockCheck && $id && $isProcSession) {
