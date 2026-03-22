@@ -363,17 +363,10 @@ function sortIcon($col) {
 .dot-menu:hover{background:#e2e8f0;color:#334155}
 .prod-thumb{width:30px;height:30px;border-radius:6px;object-fit:cover;border:1px solid #e5e7eb;flex-shrink:0}
 .status-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:3px}
-/* Action Buttons */
-.om-btn{display:inline-flex;align-items:center;gap:4px;padding:5px 12px;border-radius:7px;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;border:1px solid transparent;text-decoration:none;line-height:1.3}
-.om-btn:hover{transform:translateY(-1px);box-shadow:0 2px 6px rgba(0,0,0,.1)}
-.om-btn-open{background:#f0fdf4;color:#15803d;border-color:#bbf7d0}.om-btn-open:hover{background:#dcfce7;border-color:#86efac}
-.om-btn-view{background:#eff6ff;color:#2563eb;border-color:#bfdbfe}.om-btn-view:hover{background:#dbeafe;border-color:#93c5fd}
-.om-btn-next{background:#f5f3ff;color:#7c3aed;border-color:#c4b5fd}.om-btn-next:hover{background:#ede9fe;border-color:#a78bfa}
-.om-btn-confirm{background:#eff6ff;color:#2563eb;border-color:#bfdbfe}.om-btn-confirm:hover{background:#dbeafe}
-.om-btn-ship{background:#faf5ff;color:#9333ea;border-color:#d8b4fe}.om-btn-ship:hover{background:#f3e8ff}
-.om-btn-deliver{background:#f0fdf4;color:#16a34a;border-color:#86efac}.om-btn-deliver:hover{background:#dcfce7}
-.om-btn-cancel{background:#fef2f2;color:#dc2626;border-color:#fecaca}.om-btn-cancel:hover{background:#fee2e2}
-.om-btn-return{background:#fff7ed;color:#ea580c;border-color:#fed7aa}.om-btn-return:hover{background:#ffedd5}
+/* Action Button */
+.om-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 14px;border-radius:7px;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;border:1px solid transparent;text-decoration:none;line-height:1.3}
+.om-btn:hover{transform:translateY(-1px);box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.om-btn-open{background:#f0fdf4;color:#15803d;border-color:#bbf7d0}.om-btn-open:hover{background:#dcfce7;border-color:#86efac;color:#166534}
 </style>
 
 <?php if (isset($_GET['msg'])): ?><div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4 text-sm">✓ <?= $_GET['msg'] === 'updated' ? 'Status updated.' : ($_GET['msg'] === 'bulk_updated' ? 'Bulk update completed.' : 'Action completed.') ?></div><?php endif; ?>
@@ -605,7 +598,7 @@ function sortIcon($col) {
                 <th>User</th>
                 <th><a href="#" onclick="event.preventDefault();OM.goSort('channel')" style="cursor:pointer">Source <?= sortIcon('channel') ?></a></th>
                 <th>Shipping Note</th>
-                <th style="width:120px;text-align:center">Actions</th>
+                <th style="width:70px;text-align:center">Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -786,19 +779,10 @@ function sortIcon($col) {
     
     <!-- Actions -->
     <td style="text-align:center;white-space:nowrap">
-        <div style="display:flex;align-items:center;gap:4px;justify-content:center">
-            <a href="<?= adminUrl('pages/order-view.php?id='.$order['id']) ?>" 
-               class="order-open-link om-btn om-btn-open"
-               data-oid="<?= $order['id'] ?>" title="Open order">
-               <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-               View</a>
-            <?php if ($nxt): ?>
-            <button type="button" onclick="event.stopPropagation();quickAction(<?= $order['id'] ?>,'<?= $nxt['status'] ?>')" 
-                    class="om-btn om-btn-<?= $nxt['color'] === 'blue' ? 'confirm' : ($nxt['color'] === 'purple' ? 'ship' : ($nxt['color'] === 'green' ? 'deliver' : ($nxt['color'] === 'red' ? 'cancel' : 'next'))) ?>" title="<?= $nxt['label'] ?>">
-                <?= $nxt['icon'] ?> <?= $nxt['label'] ?></button>
-            <?php endif; ?>
-        </div>
-        <span class="lock-indicator hidden text-[10px] text-pink-600 font-medium" data-lock-oid="<?= $order['id'] ?>"></span>
+        <a href="<?= adminUrl('pages/order-view.php?id='.$order['id']) ?>" 
+           class="order-open-link om-btn om-btn-open"
+           data-oid="<?= $order['id'] ?>">Open</a>
+        <span class="lock-indicator hidden text-[10px] text-pink-600 font-medium ml-1" data-lock-oid="<?= $order['id'] ?>"></span>
     </td>
 </tr>
 <?php endforeach; ?>
@@ -1005,19 +989,6 @@ function updateBulk(){const n=document.querySelectorAll('.order-check:checked').
 function getIds(){return Array.from(document.querySelectorAll('.order-check:checked')).map(c=>c.value)}
 
 // Print functions — see invPrint/stkPrint modals at bottom of page
-// Quick single-order action (inline button)
-function quickAction(orderId, newStatus) {
-  const labels = {confirmed:'Confirm',shipped:'Ship',delivered:'Deliver',cancelled:'Cancel',returned:'Return'};
-  if (!confirm((labels[newStatus]||newStatus)+' order #'+orderId+'?')) return;
-  const fd = new FormData();
-  fd.append('action','update_status');fd.append('order_id',orderId);fd.append('status',newStatus);fd.append('_ajax','1');
-  // Show mini loading on the row
-  const row = document.querySelector('tr[data-order-id="'+orderId+'"]');
-  if (row) row.style.opacity = '0.5';
-  fetch(location.pathname,{method:'POST',credentials:'same-origin',body:fd})
-    .then(r=>r.json()).then(()=>OM.refresh()).catch(()=>OM.refresh());
-}
-
 function bStatus(s){
   const ids=getIds();
   if(!ids.length){alert('Select orders');return}

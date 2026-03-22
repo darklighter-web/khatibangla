@@ -133,18 +133,9 @@
     
     <!-- Actions -->
     <td style="text-align:center;white-space:nowrap">
-        <div style="display:flex;align-items:center;gap:4px;justify-content:center">
-            <a href="<?= adminUrl('pages/order-view.php?id='.$order['id']) ?>" 
-               class="order-open-link om-btn om-btn-open"
-               data-oid="<?= $order['id'] ?>" title="Open order">
-               <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-               View</a>
-            <?php if ($nxt): ?>
-            <button type="button" onclick="event.stopPropagation();quickAction(<?= $order['id'] ?>,'<?= $nxt['status'] ?>')" 
-                    class="om-btn om-btn-<?= $nxt['color'] === 'blue' ? 'confirm' : ($nxt['color'] === 'purple' ? 'ship' : ($nxt['color'] === 'green' ? 'deliver' : ($nxt['color'] === 'red' ? 'cancel' : 'next'))) ?>" title="<?= $nxt['label'] ?>">
-                <?= $nxt['icon'] ?> <?= $nxt['label'] ?></button>
-            <?php endif; ?>
-        </div>
-        <span class="lock-indicator hidden text-[10px] text-pink-600 font-medium" data-lock-oid="<?= $order['id'] ?>"></span>
+        <a href="<?= adminUrl('pages/order-view.php?id='.$order['id']) ?>" 
+           class="order-open-link om-btn om-btn-open"
+           data-oid="<?= $order['id'] ?>">Open</a>
+        <span class="lock-indicator hidden text-[10px] text-pink-600 font-medium ml-1" data-lock-oid="<?= $order['id'] ?>"></span>
     </td>
 </tr>
