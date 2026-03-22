@@ -1768,34 +1768,37 @@ function courierUpdateUI(d) {
     }
     
     function showTakeoverScreen(takenBy) {
-        // Create overlay
+        if (!takenBy || takenBy === 'Unknown') takenBy = 'Another user';
         const overlay = document.createElement('div');
         overlay.id = 'lockOverlay';
         overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(255,255,255,0.97);display:flex;align-items:center;justify-content:center';
         overlay.innerHTML = `
-            <div style="max-width:500px;width:90%;background:#fef2f2;border:2px solid #fecaca;border-radius:16px;padding:40px;text-align:center">
-                <h2 style="font-size:22px;font-weight:700;color:#dc2626;margin-bottom:12px">Access Restricted</h2>
-                <p style="color:#be185d;font-size:15px;margin-bottom:24px">
-                    This order is currently being viewed by <strong style="color:#9f1239">${takenBy}</strong>.
-                </p>
-                <div id="lockOverlayActions">
-                    <button onclick="overlayTakeover()" style="background:#14b8a6;color:#fff;font-weight:700;padding:10px 24px;border-radius:8px;border:none;cursor:pointer;font-size:14px;margin-right:8px">
-                        Take Over
-                    </button>
-                    <button onclick="location.reload()" style="background:#1f2937;color:#fff;font-weight:700;padding:10px 24px;border-radius:8px;border:none;cursor:pointer;font-size:14px">
-                        Retry
-                    </button>
+            <div style="max-width:480px;width:90%;background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.1);overflow:hidden">
+                <div style="background:#fffbeb;border-bottom:1px solid #fde68a;padding:20px 32px;text-align:center">
+                    <div style="font-size:28px;margin-bottom:6px">🔒</div>
+                    <h2 style="font-size:17px;font-weight:700;color:#1f2937;margin:0">Order Currently Being Edited</h2>
                 </div>
-                <div id="lockOverlayConfirm" style="display:none">
-                    <button onclick="overlayConfirmTakeover()" id="overlayConfirmBtn" style="background:#be185d;color:#fff;font-weight:700;padding:10px 24px;border-radius:8px;border:none;cursor:pointer;font-size:14px;margin-right:6px">
-                        Confirm Take Over
-                    </button>
-                    <button onclick="overlayCancelTakeover()" style="background:#fff;color:#6b7280;font-weight:500;padding:10px 20px;border-radius:8px;border:1px solid #d1d5db;cursor:pointer;font-size:14px;margin-right:6px">
-                        Cancel
-                    </button>
-                    <button onclick="location.reload()" style="background:#1f2937;color:#fff;font-weight:700;padding:10px 24px;border-radius:8px;border:none;cursor:pointer;font-size:14px">
-                        Retry
-                    </button>
+                <div style="padding:24px 32px;text-align:center">
+                    <p style="color:#4b5563;font-size:14px;margin-bottom:20px">
+                        <strong style="color:#1f2937">${takenBy}</strong> took over this order while you were viewing it.
+                    </p>
+                    <div id="lockOverlayActions">
+                        <button onclick="overlayTakeover()" style="background:#2563eb;color:#fff;font-weight:600;padding:9px 20px;border-radius:8px;border:none;cursor:pointer;font-size:13px;margin-right:8px">
+                            Take Over
+                        </button>
+                        <button onclick="location.reload()" style="background:#fff;color:#374151;font-weight:600;padding:9px 20px;border-radius:8px;border:1px solid #d1d5db;cursor:pointer;font-size:13px">
+                            Retry
+                        </button>
+                    </div>
+                    <div id="lockOverlayConfirm" style="display:none">
+                        <p style="font-size:12px;color:#d97706;margin-bottom:12px">This will remove ${takenBy}'s access. Are you sure?</p>
+                        <button onclick="overlayConfirmTakeover()" id="overlayConfirmBtn" style="background:#dc2626;color:#fff;font-weight:600;padding:9px 20px;border-radius:8px;border:none;cursor:pointer;font-size:13px;margin-right:6px">
+                            Yes, Take Over
+                        </button>
+                        <button onclick="overlayCancelTakeover()" style="background:#fff;color:#6b7280;font-weight:500;padding:9px 16px;border-radius:8px;border:1px solid #d1d5db;cursor:pointer;font-size:13px">
+                            Cancel
+                        </button>
+                    </div>
                 </div>
             </div>
         `;

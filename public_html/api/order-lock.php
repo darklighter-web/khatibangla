@@ -98,23 +98,29 @@ if ($action === 'acquire') {
 if ($action === 'heartbeat') {
     if (!$orderId) { echo json_encode(['success' => false]); exit; }
     
-    // Check if someone else took over
     $existing = $db->fetch("SELECT * FROM order_locks WHERE order_id = ?", [$orderId]);
     
-    if (!$existing || intval($existing['admin_user_id']) !== $adminId) {
-        // Lock was taken over or expired
-        $takenBy = $existing['admin_name'] ?? 'Unknown';
+    if ($existing && intval($existing['admin_user_id']) !== $adminId && intval($existing['admin_user_id']) > 0) {
+        // Lock is actively held by a DIFFERENT real user → truly taken over
+        $takenBy = trim($existing['admin_name'] ?? '');
+        if (!$takenBy) $takenBy = 'Another user';
         echo json_encode([
             'success' => false,
             'taken_over' => true,
             'taken_by' => $takenBy,
-            'taken_by_id' => intval($existing['admin_user_id'] ?? 0),
+            'taken_by_id' => intval($existing['admin_user_id']),
         ]);
         exit;
     }
     
-    // Refresh heartbeat
-    $db->query("UPDATE order_locks SET last_heartbeat = NOW() WHERE order_id = ? AND admin_user_id = ?", [$orderId, $adminId]);
+    // Lock is mine OR lock doesn't exist (expired/cleaned) → silently re-acquire
+    try {
+        $db->query("INSERT INTO order_locks (order_id, admin_user_id, admin_name, locked_at, last_heartbeat) 
+                     VALUES (?, ?, ?, NOW(), NOW()) 
+                     ON DUPLICATE KEY UPDATE admin_user_id = VALUES(admin_user_id), admin_name = VALUES(admin_name), last_heartbeat = NOW()",
+                     [$orderId, $adminId, $adminName]);
+    } catch (\Throwable $e) {}
+    
     echo json_encode(['success' => true]);
     exit;
 }
