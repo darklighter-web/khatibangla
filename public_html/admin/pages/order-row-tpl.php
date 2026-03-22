@@ -132,7 +132,7 @@
     </td>
     
     <!-- Actions -->
-    <td style="text-align:center;white-space:nowrap">
+    <td class="om-action-cell">
         <a href="<?= adminUrl('pages/order-view.php?id='.$order['id']) ?>" 
            class="order-open-link om-btn om-btn-open"
            data-oid="<?= $order['id'] ?>">Open</a>

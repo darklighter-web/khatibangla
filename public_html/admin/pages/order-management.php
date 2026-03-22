@@ -364,9 +364,10 @@ function sortIcon($col) {
 .prod-thumb{width:30px;height:30px;border-radius:6px;object-fit:cover;border:1px solid #e5e7eb;flex-shrink:0}
 .status-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:3px}
 /* Action Button */
-.om-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 14px;border-radius:7px;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;border:1px solid transparent;text-decoration:none;line-height:1.3}
+.om-btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:6px 16px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;border:1px solid transparent;text-decoration:none;line-height:1.4;white-space:nowrap}
 .om-btn:hover{transform:translateY(-1px);box-shadow:0 2px 8px rgba(0,0,0,.1)}
 .om-btn-open{background:#f0fdf4;color:#15803d;border-color:#bbf7d0}.om-btn-open:hover{background:#dcfce7;border-color:#86efac;color:#166534}
+.om-action-cell{text-align:center;vertical-align:middle!important;padding-top:0!important;padding-bottom:0!important}
 </style>
 
 <?php if (isset($_GET['msg'])): ?><div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4 text-sm">✓ <?= $_GET['msg'] === 'updated' ? 'Status updated.' : ($_GET['msg'] === 'bulk_updated' ? 'Bulk update completed.' : 'Action completed.') ?></div><?php endif; ?>
@@ -778,7 +779,7 @@ function sortIcon($col) {
     </td>
     
     <!-- Actions -->
-    <td style="text-align:center;white-space:nowrap">
+    <td class="om-action-cell">
         <a href="<?= adminUrl('pages/order-view.php?id='.$order['id']) ?>" 
            class="order-open-link om-btn om-btn-open"
            data-oid="<?= $order['id'] ?>">Open</a>
