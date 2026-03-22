@@ -113,21 +113,10 @@ try {
     ORDER BY txn_date DESC LIMIT 15");
 } catch (\Throwable $e) {}
 
-// ── Handle Manual Entry POST ──
+// ── Handle POST (ledger delete) ──
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     $qs = http_build_query(array_filter(['range' => $range, 'from' => $customFrom, 'to' => $customTo]));
-    if ($action === 'add_entry') {
-        $db->insert('accounting_entries', [
-            'entry_type' => $_POST['entry_type'],
-            'amount' => floatval($_POST['amount']),
-            'description' => sanitize($_POST['description']),
-            'entry_date' => $_POST['entry_date'],
-            'reference_type' => sanitize($_POST['reference_type']) ?: null,
-            'reference_id' => intval($_POST['reference_id']) ?: null,
-        ]);
-        redirect(adminUrl('pages/accounting.php?' . $qs . '&msg=added'));
-    }
     if ($action === 'delete') {
         $db->delete('accounting_entries', 'id = ?', [intval($_POST['entry_id'])]);
         redirect(adminUrl('pages/accounting.php?' . $qs . '&msg=deleted'));
@@ -257,25 +246,6 @@ function applyCustomRange() {
                 <div class="flex justify-between py-1.5 border-b border-dashed border-gray-200"><span class="text-gray-600">Refunds</span><span class="font-semibold text-red-500">-৳<?= number_format($refundTotal) ?></span></div>
                 <div class="flex justify-between py-2.5 bg-<?= $netProfit >= 0 ? 'emerald' : 'red' ?>-50 px-3 rounded-lg mt-2"><span class="font-bold text-gray-800">Net Profit</span><span class="font-bold text-base <?= $netProfit >= 0 ? 'text-emerald-600' : 'text-red-600' ?>">৳<?= number_format($netProfit) ?></span></div>
             </div>
-        </div>
-
-        <!-- Quick Entry -->
-        <div class="bg-white rounded-xl border shadow-sm p-5">
-            <h3 class="text-sm font-semibold text-gray-800 mb-3">Quick Entry</h3>
-            <form method="POST" class="space-y-3">
-                <input type="hidden" name="action" value="add_entry">
-                <select name="entry_type" required class="w-full border rounded-lg px-3 py-2 text-sm"><option value="income">Income</option><option value="expense">Expense</option><option value="refund">Refund</option></select>
-                <div class="grid grid-cols-2 gap-2">
-                    <input type="number" name="amount" step="0.01" min="0" required placeholder="Amount" class="border rounded-lg px-3 py-2 text-sm">
-                    <input type="date" name="entry_date" value="<?= date('Y-m-d') ?>" required class="border rounded-lg px-3 py-2 text-sm">
-                </div>
-                <input type="text" name="description" placeholder="Description" class="w-full border rounded-lg px-3 py-2 text-sm">
-                <div class="grid grid-cols-2 gap-2">
-                    <input type="text" name="reference_type" placeholder="Ref type" class="border rounded-lg px-3 py-2 text-sm">
-                    <input type="number" name="reference_id" placeholder="Ref ID" class="border rounded-lg px-3 py-2 text-sm">
-                </div>
-                <button class="w-full bg-blue-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700">Add Entry</button>
-            </form>
         </div>
     </div>
 
