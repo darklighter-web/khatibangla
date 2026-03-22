@@ -1,107 +1,114 @@
 <?php
+/**
+ * Accounting Dashboard — Data-driven P&L, Cash Flow, Balance Sheet
+ * Pulls from: orders, expenses, income, liabilities, ad_expenses, accounting_entries
+ */
 require_once __DIR__ . '/../../includes/session.php';
 $pageTitle = 'Accounting';
 require_once __DIR__ . '/../includes/auth.php';
-
 $db = Database::getInstance();
 
-// --- Date range logic ---
+// ── Date Range ──
 $range = $_GET['range'] ?? 'this_month';
-$type  = $_GET['type'] ?? 'all';
 $customFrom = $_GET['from'] ?? '';
 $customTo   = $_GET['to'] ?? '';
-
 $today = date('Y-m-d');
-$yesterday = date('Y-m-d', strtotime('-1 day'));
 
-// If from/to provided directly without range, use them
-if (!$range && ($customFrom || $customTo)) {
-    $dateFrom = $customFrom ?: date('Y-m-01');
-    $dateTo   = $customTo ?: $today;
-    $rangeLabel = '';
-} else {
 switch ($range) {
-    case 'today':
-        $dateFrom = $today; $dateTo = $today;
-        $rangeLabel = 'Today';
-        break;
-    case 'yesterday':
-        $dateFrom = $yesterday; $dateTo = $yesterday;
-        $rangeLabel = 'Yesterday';
-        break;
-    case '7d':
-        $dateFrom = date('Y-m-d', strtotime('-6 days')); $dateTo = $today;
-        $rangeLabel = 'Last 7 Days';
-        break;
-    case '30d':
-        $dateFrom = date('Y-m-d', strtotime('-29 days')); $dateTo = $today;
-        $rangeLabel = 'Last 30 Days';
-        break;
-    case 'this_month':
-        $dateFrom = date('Y-m-01'); $dateTo = date('Y-m-t');
-        $rangeLabel = 'This Month';
-        break;
-    case 'last_month':
-        $dateFrom = date('Y-m-01', strtotime('first day of last month'));
-        $dateTo   = date('Y-m-t', strtotime('last day of last month'));
-        $rangeLabel = 'Last Month';
-        break;
-    case 'this_year':
-        $dateFrom = date('Y-01-01'); $dateTo = $today;
-        $rangeLabel = 'This Year';
-        break;
-    case 'last_year':
-        $dateFrom = date('Y-01-01', strtotime('-1 year'));
-        $dateTo   = date('Y-12-31', strtotime('-1 year'));
-        $rangeLabel = 'Last Year';
-        break;
-    case 'lifetime':
-        $dateFrom = '2020-01-01'; $dateTo = $today;
-        $rangeLabel = 'Lifetime';
-        break;
-    case 'single':
-        $dateFrom = $customFrom ?: $today;
-        $dateTo   = $dateFrom;
-        $rangeLabel = date('d M Y', strtotime($dateFrom));
-        break;
-    case 'custom':
-        $dateFrom = $customFrom ?: date('Y-m-01');
-        $dateTo   = $customTo ?: $today;
-        $rangeLabel = date('d M', strtotime($dateFrom)) . ' – ' . date('d M Y', strtotime($dateTo));
-        break;
-    default:
-        $dateFrom = date('Y-m-01'); $dateTo = date('Y-m-t');
-        $rangeLabel = 'This Month';
-        $range = 'this_month';
-}
-} // end else
-
-$where = "ae.entry_date BETWEEN ? AND ?";
-$params = [$dateFrom, $dateTo];
-if ($type !== 'all') {
-    $where .= " AND ae.entry_type = ?";
-    $params[] = $type;
+    case 'today':      $dateFrom = $today; $dateTo = $today; $rangeLabel = 'Today'; break;
+    case 'yesterday':  $dateFrom = date('Y-m-d', strtotime('-1 day')); $dateTo = $dateFrom; $rangeLabel = 'Yesterday'; break;
+    case '7d':         $dateFrom = date('Y-m-d', strtotime('-6 days')); $dateTo = $today; $rangeLabel = 'Last 7 Days'; break;
+    case '30d':        $dateFrom = date('Y-m-d', strtotime('-29 days')); $dateTo = $today; $rangeLabel = 'Last 30 Days'; break;
+    case 'this_month': $dateFrom = date('Y-m-01'); $dateTo = date('Y-m-t'); $rangeLabel = 'This Month'; break;
+    case 'last_month': $dateFrom = date('Y-m-01', strtotime('first day of last month')); $dateTo = date('Y-m-t', strtotime('last day of last month')); $rangeLabel = 'Last Month'; break;
+    case 'this_year':  $dateFrom = date('Y-01-01'); $dateTo = $today; $rangeLabel = date('Y'); break;
+    case 'lifetime':   $dateFrom = '2020-01-01'; $dateTo = $today; $rangeLabel = 'All Time'; break;
+    case 'custom':     $dateFrom = $customFrom ?: date('Y-m-01'); $dateTo = $customTo ?: $today; $rangeLabel = date('d M', strtotime($dateFrom)).' – '.date('d M Y', strtotime($dateTo)); break;
+    default:           $dateFrom = date('Y-m-01'); $dateTo = date('Y-m-t'); $rangeLabel = 'This Month'; $range = 'this_month';
 }
 
-$entries = $db->fetchAll("SELECT ae.* FROM accounting_entries ae WHERE $where ORDER BY ae.entry_date DESC, ae.id DESC", $params);
+// ── Revenue from delivered orders ──
+$orderRevenue = $db->fetch("SELECT COALESCE(SUM(total),0) as revenue, COUNT(*) as count FROM orders WHERE order_status = 'delivered' AND DATE(COALESCE(delivered_at, updated_at)) BETWEEN ? AND ?", [$dateFrom, $dateTo]);
+$revenue = floatval($orderRevenue['revenue']);
+$deliveredCount = intval($orderRevenue['count']);
 
-// Summary for selected range
-$income  = $db->fetch("SELECT COALESCE(SUM(amount),0) as total FROM accounting_entries WHERE entry_type='income' AND entry_date BETWEEN ? AND ?", [$dateFrom, $dateTo])['total'];
-$expense = $db->fetch("SELECT COALESCE(SUM(amount),0) as total FROM accounting_entries WHERE entry_type='expense' AND entry_date BETWEEN ? AND ?", [$dateFrom, $dateTo])['total'];
-$refund  = $db->fetch("SELECT COALESCE(SUM(amount),0) as total FROM accounting_entries WHERE entry_type='refund' AND entry_date BETWEEN ? AND ?", [$dateFrom, $dateTo])['total'];
-$netProfit = $income - $expense - $refund;
-
-// 6-month trend
-$trendData = $db->fetchAll("SELECT DATE_FORMAT(entry_date, '%Y-%m') as month, entry_type, SUM(amount) as total FROM accounting_entries WHERE entry_date >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH) GROUP BY month, entry_type ORDER BY month");
-$trendMonths = [];
-foreach ($trendData as $td) {
-    $trendMonths[$td['month']][$td['entry_type']] = $td['total'];
+// ── COGS from stock_consumption (FIFO) or fallback to cost_price ──
+$cogs = 0;
+try {
+    $cogsRow = $db->fetch("SELECT COALESCE(SUM(total_cost),0) as cogs FROM stock_consumption WHERE DATE(consumed_at) BETWEEN ? AND ?", [$dateFrom, $dateTo]);
+    $cogs = floatval($cogsRow['cogs']);
+} catch (\Throwable $e) {}
+if ($cogs == 0 && $revenue > 0) {
+    try {
+        $cogsEst = $db->fetch("SELECT COALESCE(SUM(oi.quantity * COALESCE(p.cost_price,0)),0) as cogs FROM order_items oi JOIN orders o ON o.id=oi.order_id JOIN products p ON p.id=oi.product_id WHERE o.order_status='delivered' AND DATE(COALESCE(o.delivered_at,o.updated_at)) BETWEEN ? AND ?", [$dateFrom, $dateTo]);
+        $cogs = floatval($cogsEst['cogs']);
+    } catch (\Throwable $e) {}
 }
 
-// Handle POST
+// ── Expenses ──
+$expenseTotal = floatval($db->fetch("SELECT COALESCE(SUM(amount),0) as t FROM expenses WHERE expense_date BETWEEN ? AND ?", [$dateFrom, $dateTo])['t']);
+$expenseBreakdown = $db->fetchAll("SELECT COALESCE(ec.name,'Uncategorized') as category, COALESCE(SUM(e.amount),0) as total, COUNT(*) as count FROM expenses e LEFT JOIN expense_categories ec ON ec.id=e.category_id WHERE e.expense_date BETWEEN ? AND ? GROUP BY e.category_id ORDER BY total DESC", [$dateFrom, $dateTo]);
+
+// ── Ad Expenses ──
+$adExpense = 0;
+try { $adExpense = floatval($db->fetch("SELECT COALESCE(SUM(amount),0) as t FROM ad_expenses WHERE expense_date BETWEEN ? AND ?", [$dateFrom, $dateTo])['t']); } catch (\Throwable $e) {}
+
+// ── Manual Income ──
+$manualIncome = 0;
+try { $manualIncome = floatval($db->fetch("SELECT COALESCE(SUM(amount),0) as t FROM income WHERE income_date BETWEEN ? AND ?", [$dateFrom, $dateTo])['t']); } catch (\Throwable $e) {}
+
+// ── Refunds ──
+$refundTotal = floatval($db->fetch("SELECT COALESCE(SUM(total),0) as t FROM orders WHERE order_status IN ('returned') AND DATE(updated_at) BETWEEN ? AND ?", [$dateFrom, $dateTo])['t']);
+
+// ── Liabilities ──
+$liabilitySummary = ['total' => 0, 'paid' => 0, 'pending' => 0];
+try {
+    $ls = $db->fetch("SELECT COALESCE(SUM(amount),0) as total, COALESCE(SUM(paid_amount),0) as paid FROM liabilities WHERE status != 'cancelled'");
+    $liabilitySummary = ['total' => floatval($ls['total']), 'paid' => floatval($ls['paid']), 'pending' => floatval($ls['total']) - floatval($ls['paid'])];
+} catch (\Throwable $e) {}
+
+// ── Computed Metrics ──
+$totalIncome = $revenue + $manualIncome;
+$totalExpenses = $expenseTotal + $adExpense;
+$grossProfit = $revenue - $cogs;
+$grossMargin = $revenue > 0 ? round(($grossProfit / $revenue) * 100, 1) : 0;
+$netProfit = $grossProfit + $manualIncome - $totalExpenses - $refundTotal;
+$netMargin = $totalIncome > 0 ? round(($netProfit / $totalIncome) * 100, 1) : 0;
+
+// ── Previous period comparison ──
+$daysDiff = max(1, (strtotime($dateTo) - strtotime($dateFrom)) / 86400 + 1);
+$prevFrom = date('Y-m-d', strtotime($dateFrom . " - {$daysDiff} days"));
+$prevTo = date('Y-m-d', strtotime($dateFrom . " - 1 day"));
+$prevRevenue = floatval($db->fetch("SELECT COALESCE(SUM(total),0) as t FROM orders WHERE order_status='delivered' AND DATE(COALESCE(delivered_at,updated_at)) BETWEEN ? AND ?", [$prevFrom, $prevTo])['t']);
+$prevExpense = floatval($db->fetch("SELECT COALESCE(SUM(amount),0) as t FROM expenses WHERE expense_date BETWEEN ? AND ?", [$prevFrom, $prevTo])['t']);
+$revenueChange = $prevRevenue > 0 ? round((($revenue - $prevRevenue) / $prevRevenue) * 100, 1) : 0;
+$expenseChange = $prevExpense > 0 ? round((($totalExpenses - $prevExpense) / $prevExpense) * 100, 1) : 0;
+
+// ── Monthly trend (6 months) ──
+$trendMonths = []; $trendRevArr = []; $trendExpArr = [];
+for ($i = 5; $i >= 0; $i--) {
+    $m = date('Y-m', strtotime("-{$i} months"));
+    $trendMonths[] = date('M', strtotime($m . '-01'));
+    $trendRevArr[$m] = 0; $trendExpArr[$m] = 0;
+}
+$trendData = $db->fetchAll("SELECT DATE_FORMAT(COALESCE(delivered_at,updated_at), '%Y-%m') as month, SUM(total) as revenue FROM orders WHERE order_status='delivered' AND COALESCE(delivered_at,updated_at) >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH) GROUP BY month ORDER BY month");
+$trendExpData = $db->fetchAll("SELECT DATE_FORMAT(expense_date, '%Y-%m') as month, SUM(amount) as expense FROM expenses WHERE expense_date >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH) GROUP BY month ORDER BY month");
+foreach ($trendData as $t) { if (isset($trendRevArr[$t['month']])) $trendRevArr[$t['month']] = floatval($t['revenue']); }
+foreach ($trendExpData as $t) { if (isset($trendExpArr[$t['month']])) $trendExpArr[$t['month']] = floatval($t['expense']); }
+
+// ── Recent transactions ──
+$recentTxns = [];
+try {
+    $recentTxns = $db->fetchAll("(SELECT 'order' as source, order_number as ref, total as amount, 'income' as type, COALESCE(delivered_at,updated_at) as txn_date FROM orders WHERE order_status='delivered' AND COALESCE(delivered_at,updated_at) IS NOT NULL ORDER BY txn_date DESC LIMIT 8)
+    UNION ALL (SELECT 'expense' as source, title as ref, amount, 'expense' as type, expense_date as txn_date FROM expenses ORDER BY expense_date DESC LIMIT 5)
+    UNION ALL (SELECT 'refund' as source, order_number as ref, total as amount, 'refund' as type, updated_at as txn_date FROM orders WHERE order_status='returned' ORDER BY updated_at DESC LIMIT 3)
+    ORDER BY txn_date DESC LIMIT 15");
+} catch (\Throwable $e) {}
+
+// ── Handle Manual Entry POST ──
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
-    $qs = http_build_query(array_filter(['range' => $range, 'type' => $type, 'from' => $customFrom, 'to' => $customTo]));
+    $qs = http_build_query(array_filter(['range' => $range, 'from' => $customFrom, 'to' => $customTo]));
     if ($action === 'add_entry') {
         $db->insert('accounting_entries', [
             'entry_type' => $_POST['entry_type'],
@@ -124,192 +131,204 @@ $msg = $_GET['msg'] ?? '';
 ?>
 
 <?php if ($msg): ?>
-<div class="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm">Entry <?= $msg ?>.</div>
+<div class="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm">✓ Entry <?= e($msg) ?>.</div>
 <?php endif; ?>
 
-<!-- Date Picker Bar + Summary -->
-<div class="bg-white rounded-xl border shadow-sm p-4 mb-6">
-    <div class="flex flex-wrap items-center gap-2 mb-4">
-        <div data-kb-datepicker data-from-param="from" data-to-param="to"></div>
-
-        <!-- Type Filter + Print -->
+<!-- Date Range Bar -->
+<div class="bg-white rounded-xl border shadow-sm p-4 mb-5">
+    <div class="flex flex-wrap items-center gap-2">
+        <?php
+        $ranges = ['today'=>'Today','yesterday'=>'Yesterday','7d'=>'7D','30d'=>'30D','this_month'=>'This Month','last_month'=>'Last Month','this_year'=>date('Y'),'lifetime'=>'All Time'];
+        foreach ($ranges as $rk => $rl):
+        ?>
+        <a href="?range=<?= $rk ?>" class="px-3 py-1.5 rounded-lg text-xs font-medium transition <?= $range === $rk ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200' ?>"><?= $rl ?></a>
+        <?php endforeach; ?>
         <div class="ml-auto flex items-center gap-2">
-            <select id="typeFilter" onchange="applyTypeFilter(this.value)" class="border rounded-lg px-3 py-2 text-sm">
-                <option value="all" <?= $type === 'all' ? 'selected' : '' ?>>All Types</option>
-                <option value="income" <?= $type === 'income' ? 'selected' : '' ?>>Income</option>
-                <option value="expense" <?= $type === 'expense' ? 'selected' : '' ?>>Expenses</option>
-                <option value="refund" <?= $type === 'refund' ? 'selected' : '' ?>>Refunds</option>
-            </select>
-            <button onclick="window.print()" class="border rounded-lg px-3 py-2 text-gray-500 hover:bg-gray-50" title="Print">
-                <i class="fas fa-print text-sm"></i>
-            </button>
+            <div data-kb-datepicker data-from-param="from" data-to-param="to"></div>
         </div>
     </div>
+    <p class="text-[11px] text-gray-400 mt-2"><?= $rangeLabel ?> · <?= date('d M Y', strtotime($dateFrom)) ?> — <?= date('d M Y', strtotime($dateTo)) ?></p>
+</div>
 
-    <!-- Range indicator -->
-    <p class="text-xs text-gray-400 mb-3">
-        Showing: <span class="font-medium text-gray-600"><?= $rangeLabel ?></span>
-        <span class="text-gray-300 mx-1">|</span>
-        <?= date('d M Y', strtotime($dateFrom)) ?> — <?= date('d M Y', strtotime($dateTo)) ?>
-    </p>
-
-    <!-- Summary Cards -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div class="bg-green-50 rounded-lg p-3">
-            <p class="text-[11px] text-green-600 font-medium mb-0.5">Income</p>
-            <p class="text-xl font-bold text-green-700">৳<?= number_format($income) ?></p>
-        </div>
-        <div class="bg-red-50 rounded-lg p-3">
-            <p class="text-[11px] text-red-600 font-medium mb-0.5">Expenses</p>
-            <p class="text-xl font-bold text-red-700">৳<?= number_format($expense) ?></p>
-        </div>
-        <div class="bg-orange-50 rounded-lg p-3">
-            <p class="text-[11px] text-orange-600 font-medium mb-0.5">Refunds</p>
-            <p class="text-xl font-bold text-orange-700">৳<?= number_format($refund) ?></p>
-        </div>
-        <div class="<?= $netProfit >= 0 ? 'bg-emerald-50' : 'bg-red-50' ?> rounded-lg p-3">
-            <p class="text-[11px] <?= $netProfit >= 0 ? 'text-emerald-600' : 'text-red-600' ?> font-medium mb-0.5">Net Profit</p>
-            <p class="text-xl font-bold <?= $netProfit >= 0 ? 'text-emerald-700' : 'text-red-700' ?>">৳<?= number_format($netProfit) ?></p>
-        </div>
+<!-- KPI Cards -->
+<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
+    <div class="bg-white rounded-xl border p-4">
+        <p class="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Revenue</p>
+        <p class="text-xl font-bold text-gray-800">৳<?= number_format($revenue) ?></p>
+        <?php if ($revenueChange != 0): ?><p class="text-[10px] mt-1 <?= $revenueChange >= 0 ? 'text-green-600' : 'text-red-500' ?>"><?= $revenueChange >= 0 ? '↑' : '↓' ?> <?= abs($revenueChange) ?>%</p><?php endif; ?>
+    </div>
+    <div class="bg-white rounded-xl border p-4">
+        <p class="text-[10px] text-gray-400 uppercase tracking-wider mb-1">COGS</p>
+        <p class="text-xl font-bold text-orange-600">৳<?= number_format($cogs) ?></p>
+        <p class="text-[10px] text-gray-400 mt-1"><?= $deliveredCount ?> orders</p>
+    </div>
+    <div class="bg-white rounded-xl border p-4">
+        <p class="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Gross Profit</p>
+        <p class="text-xl font-bold <?= $grossProfit >= 0 ? 'text-green-600' : 'text-red-600' ?>">৳<?= number_format($grossProfit) ?></p>
+        <p class="text-[10px] <?= $grossMargin >= 30 ? 'text-green-600' : 'text-amber-600' ?> mt-1"><?= $grossMargin ?>% margin</p>
+    </div>
+    <div class="bg-white rounded-xl border p-4">
+        <p class="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Expenses</p>
+        <p class="text-xl font-bold text-red-600">৳<?= number_format($totalExpenses) ?></p>
+        <?php if ($expenseChange != 0): ?><p class="text-[10px] mt-1 <?= $expenseChange <= 0 ? 'text-green-600' : 'text-red-500' ?>"><?= $expenseChange >= 0 ? '↑' : '↓' ?> <?= abs($expenseChange) ?>%</p><?php endif; ?>
+    </div>
+    <div class="bg-white rounded-xl border p-4">
+        <p class="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Net Profit</p>
+        <p class="text-xl font-bold <?= $netProfit >= 0 ? 'text-emerald-600' : 'text-red-600' ?>">৳<?= number_format($netProfit) ?></p>
+        <p class="text-[10px] <?= $netMargin >= 0 ? 'text-emerald-600' : 'text-red-500' ?> mt-1"><?= $netMargin ?>% net</p>
+    </div>
+    <div class="bg-white rounded-xl border p-4">
+        <p class="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Liabilities</p>
+        <p class="text-xl font-bold text-purple-600">৳<?= number_format($liabilitySummary['pending']) ?></p>
+        <p class="text-[10px] text-gray-400 mt-1">৳<?= number_format($liabilitySummary['paid']) ?> paid</p>
     </div>
 </div>
 
-<div class="grid lg:grid-cols-3 gap-6">
-    <!-- Trend + Manual Entry -->
-    <div class="lg:col-span-1 space-y-4">
+<div class="grid lg:grid-cols-3 gap-5">
+    <!-- LEFT COLUMN -->
+    <div class="lg:col-span-1 space-y-5">
+        <!-- Trend Chart -->
         <div class="bg-white rounded-xl border shadow-sm p-5">
-            <h3 class="font-semibold text-gray-800 mb-3">6-Month Trend</h3>
-            <canvas id="trendChart" height="150"></canvas>
+            <h3 class="text-sm font-semibold text-gray-800 mb-3">Revenue vs Expenses</h3>
+            <canvas id="trendChart" height="160"></canvas>
         </div>
+
+        <!-- Expense Breakdown -->
         <div class="bg-white rounded-xl border shadow-sm p-5">
-            <h3 class="font-semibold text-gray-800 mb-3">Manual Entry</h3>
+            <h3 class="text-sm font-semibold text-gray-800 mb-3">Expense Breakdown</h3>
+            <?php if (empty($expenseBreakdown) && $adExpense == 0): ?>
+            <p class="text-xs text-gray-400 py-4 text-center">No expenses this period</p>
+            <?php else: ?>
+            <div class="space-y-2.5">
+                <?php $allExp = $totalExpenses + $adExpense;
+                foreach ($expenseBreakdown as $eb):
+                    $pct = $allExp > 0 ? round(($eb['total'] / $allExp) * 100) : 0; ?>
+                <div>
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="font-medium text-gray-700"><?= e($eb['category']) ?></span>
+                        <span class="text-gray-500">৳<?= number_format($eb['total']) ?></span>
+                    </div>
+                    <div class="w-full bg-gray-100 rounded-full h-1.5"><div class="bg-red-400 h-1.5 rounded-full transition-all" style="width:<?= max(2,$pct) ?>%"></div></div>
+                </div>
+                <?php endforeach;
+                if ($adExpense > 0): $pct = $allExp > 0 ? round(($adExpense / $allExp) * 100) : 0; ?>
+                <div>
+                    <div class="flex justify-between text-xs mb-1"><span class="font-medium text-gray-700">Ad Spend</span><span class="text-gray-500">৳<?= number_format($adExpense) ?></span></div>
+                    <div class="w-full bg-gray-100 rounded-full h-1.5"><div class="bg-blue-400 h-1.5 rounded-full" style="width:<?= max(2,$pct) ?>%"></div></div>
+                </div>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- P&L Summary -->
+        <div class="bg-white rounded-xl border shadow-sm p-5">
+            <h3 class="text-sm font-semibold text-gray-800 mb-3">Profit & Loss</h3>
+            <div class="space-y-1 text-xs">
+                <div class="flex justify-between py-1.5 border-b border-dashed border-gray-200"><span class="text-gray-600">Order Revenue</span><span class="font-semibold text-green-600">+৳<?= number_format($revenue) ?></span></div>
+                <div class="flex justify-between py-1.5 border-b border-dashed border-gray-200"><span class="text-gray-600">Other Income</span><span class="font-semibold text-green-600">+৳<?= number_format($manualIncome) ?></span></div>
+                <div class="flex justify-between py-1.5 border-b border-dashed border-gray-200"><span class="text-gray-600">COGS</span><span class="font-semibold text-red-500">-৳<?= number_format($cogs) ?></span></div>
+                <div class="flex justify-between py-1.5 bg-gray-50 px-2 rounded font-semibold"><span class="text-gray-700">Gross Profit</span><span class="<?= $grossProfit >= 0 ? 'text-green-600' : 'text-red-600' ?>">৳<?= number_format($grossProfit) ?></span></div>
+                <div class="flex justify-between py-1.5 border-b border-dashed border-gray-200"><span class="text-gray-600">Expenses</span><span class="font-semibold text-red-500">-৳<?= number_format($expenseTotal) ?></span></div>
+                <div class="flex justify-between py-1.5 border-b border-dashed border-gray-200"><span class="text-gray-600">Ad Spend</span><span class="font-semibold text-red-500">-৳<?= number_format($adExpense) ?></span></div>
+                <div class="flex justify-between py-1.5 border-b border-dashed border-gray-200"><span class="text-gray-600">Refunds</span><span class="font-semibold text-red-500">-৳<?= number_format($refundTotal) ?></span></div>
+                <div class="flex justify-between py-2.5 bg-<?= $netProfit >= 0 ? 'emerald' : 'red' ?>-50 px-3 rounded-lg mt-2"><span class="font-bold text-gray-800">Net Profit</span><span class="font-bold text-base <?= $netProfit >= 0 ? 'text-emerald-600' : 'text-red-600' ?>">৳<?= number_format($netProfit) ?></span></div>
+            </div>
+        </div>
+
+        <!-- Quick Entry -->
+        <div class="bg-white rounded-xl border shadow-sm p-5">
+            <h3 class="text-sm font-semibold text-gray-800 mb-3">Quick Entry</h3>
             <form method="POST" class="space-y-3">
                 <input type="hidden" name="action" value="add_entry">
-                <div>
-                    <label class="block text-sm font-medium mb-1">Type *</label>
-                    <select name="entry_type" required class="border rounded-lg px-3 py-2 text-sm w-full">
-                        <option value="income">Income</option>
-                        <option value="expense">Expense</option>
-                        <option value="refund">Refund</option>
-                    </select>
+                <select name="entry_type" required class="w-full border rounded-lg px-3 py-2 text-sm"><option value="income">Income</option><option value="expense">Expense</option><option value="refund">Refund</option></select>
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="number" name="amount" step="0.01" min="0" required placeholder="Amount" class="border rounded-lg px-3 py-2 text-sm">
+                    <input type="date" name="entry_date" value="<?= date('Y-m-d') ?>" required class="border rounded-lg px-3 py-2 text-sm">
                 </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-sm font-medium mb-1">Amount *</label>
-                        <input type="number" name="amount" step="0.01" min="0" required class="border rounded-lg px-3 py-2 text-sm w-full">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium mb-1">Date *</label>
-                        <input type="date" name="entry_date" value="<?= date('Y-m-d') ?>" required class="border rounded-lg px-3 py-2 text-sm w-full">
-                    </div>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium mb-1">Description</label>
-                    <input type="text" name="description" class="border rounded-lg px-3 py-2 text-sm w-full">
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-sm font-medium mb-1">Ref Type</label>
-                        <input type="text" name="reference_type" placeholder="order, manual" class="border rounded-lg px-3 py-2 text-sm w-full">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium mb-1">Ref ID</label>
-                        <input type="number" name="reference_id" class="border rounded-lg px-3 py-2 text-sm w-full">
-                    </div>
+                <input type="text" name="description" placeholder="Description" class="w-full border rounded-lg px-3 py-2 text-sm">
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="text" name="reference_type" placeholder="Ref type" class="border rounded-lg px-3 py-2 text-sm">
+                    <input type="number" name="reference_id" placeholder="Ref ID" class="border rounded-lg px-3 py-2 text-sm">
                 </div>
                 <button class="w-full bg-blue-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700">Add Entry</button>
             </form>
         </div>
     </div>
 
-    <!-- Date-wise Ledger -->
-    <?php
-    $groupedByDate = [];
-    foreach ($entries as $entry) {
-        $d = $entry['entry_date'];
-        if (!isset($groupedByDate[$d])) {
-            $groupedByDate[$d] = ['entries' => [], 'income' => 0, 'expense' => 0, 'refund' => 0, 'count' => 0];
-        }
-        $groupedByDate[$d]['entries'][] = $entry;
-        $groupedByDate[$d][$entry['entry_type']] += $entry['amount'];
-        $groupedByDate[$d]['count']++;
-    }
-    $expandDate = $_GET['date'] ?? '';
-    $typeBadge = ['income' => 'bg-green-100 text-green-700', 'expense' => 'bg-red-100 text-red-700', 'refund' => 'bg-orange-100 text-orange-700'];
-    ?>
-    <div class="lg:col-span-2">
+    <!-- RIGHT COLUMN -->
+    <div class="lg:col-span-2 space-y-5">
+        <!-- Recent Transactions -->
         <div class="bg-white rounded-xl border shadow-sm">
+            <div class="px-5 py-3 border-b flex items-center justify-between">
+                <h3 class="text-sm font-semibold text-gray-800">Recent Transactions</h3>
+                <div class="flex gap-3">
+                    <a href="<?= adminUrl('pages/income.php') ?>" class="text-xs text-blue-600 hover:underline">Income</a>
+                    <a href="<?= adminUrl('pages/expenses.php') ?>" class="text-xs text-blue-600 hover:underline">Expenses</a>
+                    <a href="<?= adminUrl('pages/liabilities.php') ?>" class="text-xs text-blue-600 hover:underline">Liabilities</a>
+                </div>
+            </div>
+            <div class="divide-y">
+                <?php foreach ($recentTxns as $tx):
+                    $isInc = $tx['type'] === 'income'; $isRef = $tx['type'] === 'refund'; ?>
+                <div class="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 transition">
+                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-sm flex-shrink-0 <?= $isInc ? 'bg-green-100 text-green-600' : ($isRef ? 'bg-orange-100 text-orange-600' : 'bg-red-100 text-red-600') ?>"><?= $isInc ? '↑' : ($isRef ? '↩' : '↓') ?></div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium text-gray-800 truncate"><?= e($tx['ref']) ?></p>
+                        <p class="text-[10px] text-gray-400"><?= ucfirst($tx['source']) ?> · <?= $tx['txn_date'] ? date('d M Y', strtotime($tx['txn_date'])) : '—' ?></p>
+                    </div>
+                    <p class="font-semibold text-sm <?= $isInc ? 'text-green-600' : 'text-red-500' ?>"><?= $isInc ? '+' : '-' ?>৳<?= number_format($tx['amount']) ?></p>
+                </div>
+                <?php endforeach; ?>
+                <?php if (empty($recentTxns)): ?><div class="px-5 py-8 text-center text-gray-400 text-sm">No transactions</div><?php endif; ?>
+            </div>
+        </div>
+
+        <!-- Ledger -->
+        <?php
+        $ledgerEntries = $db->fetchAll("SELECT * FROM accounting_entries WHERE entry_date BETWEEN ? AND ? ORDER BY entry_date DESC, id DESC LIMIT 50", [$dateFrom, $dateTo]);
+        $groupedByDate = [];
+        foreach ($ledgerEntries as $entry) {
+            $d = $entry['entry_date'];
+            if (!isset($groupedByDate[$d])) $groupedByDate[$d] = ['entries' => [], 'income' => 0, 'expense' => 0, 'refund' => 0];
+            $groupedByDate[$d]['entries'][] = $entry;
+            $groupedByDate[$d][$entry['entry_type']] += $entry['amount'];
+        }
+        $typeBadge = ['income' => 'bg-green-100 text-green-700', 'expense' => 'bg-red-100 text-red-700', 'refund' => 'bg-orange-100 text-orange-700'];
+        ?>
+        <div class="bg-white rounded-xl border shadow-sm">
+            <div class="px-5 py-3 border-b"><h3 class="text-sm font-semibold text-gray-800">Ledger Entries</h3></div>
             <?php if (empty($groupedByDate)): ?>
-            <div class="px-4 py-8 text-center text-gray-400">No entries for this period</div>
+            <div class="px-5 py-8 text-center text-gray-400 text-sm">No entries for this period</div>
             <?php else: ?>
             <div class="divide-y">
                 <?php foreach ($groupedByDate as $date => $dayData):
-                    $dayNet = $dayData['income'] - $dayData['expense'] - $dayData['refund'];
-                    $isExpanded = ($expandDate === $date);
-                ?>
-                <div class="group">
-                    <div class="flex items-center gap-3 px-4 py-3.5 cursor-pointer hover:bg-gray-50 transition-colors date-row <?= $isExpanded ? 'bg-blue-50' : '' ?>" data-date="<?= $date ?>">
-                        <div class="w-5 text-gray-400 transition-transform duration-200 chevron <?= $isExpanded ? 'rotate-90' : '' ?>">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" /></svg>
+                    $dayNet = $dayData['income'] - $dayData['expense'] - $dayData['refund']; ?>
+                <div>
+                    <div class="flex items-center gap-3 px-5 py-3 cursor-pointer hover:bg-gray-50 transition date-row" data-date="<?= $date ?>">
+                        <svg class="w-4 h-4 text-gray-400 transition-transform duration-200 chevron flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                        <div class="flex-1">
+                            <p class="text-sm font-semibold text-gray-800"><?= date('d M Y, l', strtotime($date)) ?></p>
+                            <p class="text-[10px] text-gray-400"><?= count($dayData['entries']) ?> entries</p>
                         </div>
-                        <div class="flex-1 min-w-0">
-                            <p class="font-semibold text-gray-800"><?= date('d M Y, l', strtotime($date)) ?></p>
-                            <div class="flex items-center gap-3 mt-0.5">
-                                <span class="text-xs text-gray-400"><?= $dayData['count'] ?> <?= $dayData['count'] === 1 ? 'entry' : 'entries' ?></span>
-                                <?php if ($dayData['income'] > 0): ?><span class="text-xs text-green-600">Income: ৳<?= number_format($dayData['income']) ?></span><?php endif; ?>
-                                <?php if ($dayData['expense'] > 0): ?><span class="text-xs text-red-600">Expense: ৳<?= number_format($dayData['expense']) ?></span><?php endif; ?>
-                                <?php if ($dayData['refund'] > 0): ?><span class="text-xs text-orange-600">Refund: ৳<?= number_format($dayData['refund']) ?></span><?php endif; ?>
-                            </div>
-                        </div>
-                        <div class="text-right">
-                            <p class="font-bold text-sm <?= $dayNet >= 0 ? 'text-green-600' : 'text-red-600' ?>"><?= $dayNet >= 0 ? '+' : '-' ?>৳<?= number_format(abs($dayNet)) ?></p>
-                            <p class="text-[10px] text-gray-400 mt-0.5">Net</p>
-                        </div>
+                        <p class="font-bold text-sm <?= $dayNet >= 0 ? 'text-green-600' : 'text-red-600' ?>"><?= $dayNet >= 0 ? '+' : '' ?>৳<?= number_format($dayNet) ?></p>
                     </div>
-                    <div class="date-detail overflow-hidden transition-all duration-300 <?= $isExpanded ? '' : 'hidden' ?>" id="detail-<?= $date ?>">
-                        <div class="bg-gray-50/70 border-t border-b border-gray-100">
-                            <table class="w-full text-sm">
-                                <thead>
-                                    <tr class="text-[11px] text-gray-500 uppercase tracking-wider">
-                                        <th class="text-left px-4 py-2 pl-12 font-medium">Type</th>
-                                        <th class="text-left px-4 py-2 font-medium">Description</th>
-                                        <th class="text-left px-4 py-2 font-medium">Reference</th>
-                                        <th class="text-right px-4 py-2 font-medium">Amount</th>
-                                        <th class="text-center px-4 py-2 font-medium w-16">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-gray-100">
-                                    <?php foreach ($dayData['entries'] as $entry): ?>
-                                    <tr class="hover:bg-white/80">
-                                        <td class="px-4 py-2.5 pl-12"><span class="<?= $typeBadge[$entry['entry_type']] ?> px-2 py-0.5 rounded-full text-xs font-medium"><?= ucfirst($entry['entry_type']) ?></span></td>
-                                        <td class="px-4 py-2.5 text-gray-700"><?= e($entry['description'] ?: '-') ?></td>
-                                        <td class="px-4 py-2.5 text-gray-400 text-xs">
-                                            <?php if ($entry['reference_type']): ?>
-                                            <?= e($entry['reference_type']) ?>#<?= $entry['reference_id'] ?>
-                                            <?php else: ?>—<?php endif; ?>
-                                        </td>
-                                        <td class="px-4 py-2.5 text-right font-semibold <?= $entry['entry_type'] === 'income' ? 'text-green-600' : 'text-red-600' ?>">
-                                            <?= $entry['entry_type'] === 'income' ? '+' : '-' ?>৳<?= number_format($entry['amount']) ?>
-                                        </td>
-                                        <td class="px-4 py-2.5 text-center">
-                                            <form method="POST" class="inline" onsubmit="return confirm('Delete this entry?')">
-                                                <input type="hidden" name="action" value="delete">
-                                                <input type="hidden" name="entry_id" value="<?= $entry['id'] ?>">
-                                                <button class="text-red-400 hover:text-red-600 text-xs">Delete</button>
-                                            </form>
-                                        </td>
-                                    </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                                <tfoot>
-                                    <tr class="bg-gray-100/80 text-xs font-semibold text-gray-600">
-                                        <td colspan="3" class="px-4 py-2 pl-12">Day Total</td>
-                                        <td class="px-4 py-2 text-right <?= $dayNet >= 0 ? 'text-green-700' : 'text-red-700' ?>"><?= $dayNet >= 0 ? '+' : '-' ?>৳<?= number_format(abs($dayNet)) ?></td>
-                                        <td></td>
-                                    </tr>
-                                </tfoot>
-                            </table>
-                        </div>
+                    <div class="date-detail hidden" id="detail-<?= $date ?>">
+                        <table class="w-full text-xs">
+                            <tbody class="divide-y divide-gray-50">
+                                <?php foreach ($dayData['entries'] as $entry): ?>
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-5 py-2 pl-12"><span class="<?= $typeBadge[$entry['entry_type']] ?> px-2 py-0.5 rounded-full text-[10px] font-medium"><?= ucfirst($entry['entry_type']) ?></span></td>
+                                    <td class="px-3 py-2 text-gray-700"><?= e($entry['description'] ?: '—') ?></td>
+                                    <td class="px-3 py-2 text-gray-400"><?= $entry['reference_type'] ? e($entry['reference_type']).'#'.$entry['reference_id'] : '' ?></td>
+                                    <td class="px-3 py-2 text-right font-semibold <?= $entry['entry_type'] === 'income' ? 'text-green-600' : 'text-red-500' ?>"><?= $entry['entry_type'] === 'income' ? '+' : '-' ?>৳<?= number_format($entry['amount']) ?></td>
+                                    <td class="px-3 py-2 text-center">
+                                        <form method="POST" class="inline" onsubmit="return confirm('Delete?')"><input type="hidden" name="action" value="delete"><input type="hidden" name="entry_id" value="<?= $entry['id'] ?>"><button class="text-red-400 hover:text-red-600 text-sm">×</button></form>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
                 <?php endforeach; ?>
@@ -320,43 +339,28 @@ $msg = $_GET['msg'] ?? '';
 </div>
 
 <script>
-// Type filter
-function applyTypeFilter(val) {
-    const url = new URL(window.location.href);
-    url.searchParams.set('type', val);
-    window.location = url.toString();
-}
-
-// Date-row accordion
 document.querySelectorAll('.date-row').forEach(row => {
     row.addEventListener('click', function() {
-        const date = this.dataset.date;
-        const detail = document.getElementById('detail-' + date);
-        const chevron = this.querySelector('.chevron');
-        const isOpen = !detail.classList.contains('hidden');
-        document.querySelectorAll('.date-detail').forEach(d => d.classList.add('hidden'));
-        document.querySelectorAll('.date-row').forEach(r => { r.classList.remove('bg-blue-50'); r.querySelector('.chevron').classList.remove('rotate-90'); });
-        if (!isOpen) { detail.classList.remove('hidden'); this.classList.add('bg-blue-50'); chevron.classList.add('rotate-90'); }
+        const d = this.dataset.date, detail = document.getElementById('detail-' + d);
+        const chev = this.querySelector('.chevron'), wasOpen = !detail.classList.contains('hidden');
+        document.querySelectorAll('.date-detail').forEach(el => el.classList.add('hidden'));
+        document.querySelectorAll('.chevron').forEach(c => c.style.transform = '');
+        if (!wasOpen) { detail.classList.remove('hidden'); chev.style.transform = 'rotate(90deg)'; }
     });
 });
+const ctx = document.getElementById('trendChart');
+if (ctx) {
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: <?= json_encode($trendMonths) ?>,
+            datasets: [
+                { label: 'Revenue', data: <?= json_encode(array_values($trendRevArr)) ?>, backgroundColor: 'rgba(34,197,94,0.75)', borderRadius: 4, barPercentage: 0.7 },
+                { label: 'Expenses', data: <?= json_encode(array_values($trendExpArr)) ?>, backgroundColor: 'rgba(239,68,68,0.75)', borderRadius: 4, barPercentage: 0.7 }
+            ]
+        },
+        options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } }, scales: { y: { beginAtZero: true, ticks: { font: { size: 10 } } }, x: { ticks: { font: { size: 10 } } } } }
+    });
+}
 </script>
-
-<script>
-const trendMonths = <?= json_encode(array_keys($trendMonths)) ?>;
-const trendIncome = trendMonths.map(m => <?= json_encode(array_map(fn($m) => $m['income'] ?? 0, $trendMonths)) ?>[m] || 0);
-const trendExpense = trendMonths.map(m => <?= json_encode(array_map(fn($m) => $m['expense'] ?? 0, $trendMonths)) ?>[m] || 0);
-
-new Chart(document.getElementById('trendChart'), {
-    type: 'bar',
-    data: {
-        labels: trendMonths.map(m => { const d = new Date(m+'-01'); return d.toLocaleDateString('en',{month:'short',year:'2-digit'}); }),
-        datasets: [
-            { label: 'Income', data: trendIncome, backgroundColor: '#22c55e' },
-            { label: 'Expense', data: trendExpense, backgroundColor: '#ef4444' }
-        ]
-    },
-    options: { responsive: true, scales: { y: { beginAtZero: true } }, plugins: { legend: { position: 'bottom' } } }
-});
-</script>
-
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

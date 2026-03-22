@@ -38,6 +38,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $quantity = (int)$_POST['quantity'];
         $type = $_POST['movement_type'];
         $note = sanitize($_POST['note'] ?? '');
+        $costPrice = floatval($_POST['cost_price'] ?? 0);
+        $batchRef = sanitize($_POST['batch_ref'] ?? '');
+        $supplierId = intval($_POST['supplier_id'] ?? 0) ?: null;
         
         // Update or insert warehouse stock
         $existing = $db->fetch("SELECT id, quantity FROM warehouse_stock WHERE warehouse_id=? AND product_id=?", [$warehouseId, $productId]);
@@ -49,8 +52,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         // Record movement
-        $db->query("INSERT INTO stock_movements (warehouse_id, product_id, movement_type, quantity, note, created_by) VALUES (?,?,?,?,?,?)", 
-            [$warehouseId, $productId, $type, $quantity, $note, getAdminId()]);
+        $db->query("INSERT INTO stock_movements (warehouse_id, product_id, movement_type, quantity, note, created_by, supplier_id) VALUES (?,?,?,?,?,?,?)", 
+            [$warehouseId, $productId, $type, $quantity, $note, getAdminId(), $supplierId]);
+        
+        // ── FIFO: Create batch on stock-in, consume oldest batches on stock-out ──
+        try {
+            $db->query("CREATE TABLE IF NOT EXISTS stock_batches (id INT AUTO_INCREMENT PRIMARY KEY, warehouse_id INT NOT NULL, product_id INT NOT NULL, variant_id INT DEFAULT NULL, batch_ref VARCHAR(80), quantity_received INT NOT NULL DEFAULT 0, quantity_remaining INT NOT NULL DEFAULT 0, cost_price DECIMAL(12,2) NOT NULL DEFAULT 0, supplier_id INT DEFAULT NULL, received_date DATE NOT NULL, expiry_date DATE DEFAULT NULL, note TEXT, created_by INT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, INDEX idx_product(product_id), INDEX idx_remaining(quantity_remaining)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            $db->query("CREATE TABLE IF NOT EXISTS stock_consumption (id INT AUTO_INCREMENT PRIMARY KEY, batch_id INT NOT NULL, product_id INT NOT NULL, order_id INT DEFAULT NULL, quantity_consumed INT NOT NULL, cost_per_unit DECIMAL(12,2) DEFAULT 0, total_cost DECIMAL(12,2) DEFAULT 0, consumed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, INDEX idx_batch(batch_id), INDEX idx_order(order_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        } catch (\Throwable $e) {}
+        
+        if ($type === 'in' || $type === 'return') {
+            // Create new FIFO batch
+            try {
+                // If no cost provided, use product's default cost_price
+                if ($costPrice <= 0) {
+                    $prodCost = $db->fetch("SELECT cost_price FROM products WHERE id=?", [$productId]);
+                    $costPrice = floatval($prodCost['cost_price'] ?? 0);
+                }
+                $db->insert('stock_batches', [
+                    'warehouse_id' => $warehouseId,
+                    'product_id' => $productId,
+                    'batch_ref' => $batchRef ?: ('ADJ-' . date('ymd') . '-' . $productId),
+                    'quantity_received' => $quantity,
+                    'quantity_remaining' => $quantity,
+                    'cost_price' => $costPrice,
+                    'supplier_id' => $supplierId,
+                    'received_date' => date('Y-m-d'),
+                    'note' => $note,
+                    'created_by' => getAdminId(),
+                ]);
+            } catch (\Throwable $e) {}
+        } elseif ($type === 'out' || $type === 'adjustment') {
+            // Consume from oldest batches (FIFO)
+            try {
+                $remaining = $quantity;
+                $batches = $db->fetchAll("SELECT * FROM stock_batches WHERE product_id=? AND warehouse_id=? AND quantity_remaining > 0 ORDER BY received_date ASC, id ASC", [$productId, $warehouseId]);
+                foreach ($batches as $batch) {
+                    if ($remaining <= 0) break;
+                    $consume = min($remaining, $batch['quantity_remaining']);
+                    $db->query("UPDATE stock_batches SET quantity_remaining = quantity_remaining - ? WHERE id = ?", [$consume, $batch['id']]);
+                    $db->insert('stock_consumption', [
+                        'batch_id' => $batch['id'],
+                        'product_id' => $productId,
+                        'quantity_consumed' => $consume,
+                        'cost_per_unit' => $batch['cost_price'],
+                        'total_cost' => round($consume * $batch['cost_price'], 2),
+                    ]);
+                    $remaining -= $consume;
+                }
+            } catch (\Throwable $e) {}
+        }
         
         // Update main product stock
         $totalStock = $db->fetch("SELECT SUM(quantity) as total FROM warehouse_stock WHERE product_id=?", [$productId]);
@@ -153,6 +204,7 @@ include __DIR__ . '/../includes/header.php';
 <div class="flex gap-1 mb-6 border-b">
     <a href="?tab=stock" class="px-4 py-2.5 text-sm font-medium border-b-2 <?= $tab==='stock' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700' ?>">Stock Levels</a>
     <a href="?tab=adjust" class="px-4 py-2.5 text-sm font-medium border-b-2 <?= $tab==='adjust' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700' ?>">Adjust Stock</a>
+    <a href="?tab=batches" class="px-4 py-2.5 text-sm font-medium border-b-2 <?= $tab==='batches' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700' ?>">FIFO Batches</a>
     <a href="?tab=variants" class="px-4 py-2.5 text-sm font-medium border-b-2 <?= $tab==='variants' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700' ?>">Variant Stock</a>
     <a href="?tab=movements" class="px-4 py-2.5 text-sm font-medium border-b-2 <?= $tab==='movements' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700' ?>">Movements</a>
     <a href="?tab=warehouses" class="px-4 py-2.5 text-sm font-medium border-b-2 <?= $tab==='warehouses' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700' ?>">Warehouses</a>
@@ -261,6 +313,17 @@ include __DIR__ . '/../includes/header.php';
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
                 <input type="number" name="quantity" required min="1" class="w-full border rounded-lg px-3 py-2 text-sm">
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Cost Per Unit (৳)</label>
+                    <input type="number" name="cost_price" step="0.01" min="0" placeholder="Unit cost for FIFO" class="w-full border rounded-lg px-3 py-2 text-sm">
+                    <p class="text-[10px] text-gray-400 mt-1">Required for Stock In — used in FIFO costing</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Batch Ref / PO#</label>
+                    <input type="text" name="batch_ref" placeholder="PO-2026-001" class="w-full border rounded-lg px-3 py-2 text-sm">
+                </div>
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Note</label>
@@ -409,6 +472,191 @@ function adjustVariant(variantId, delta) {
                 <?php endif; ?>
             </tbody>
         </table>
+    </div>
+</div>
+
+<?php elseif ($tab === 'batches'): ?>
+<!-- FIFO Batch Inventory -->
+<?php
+$batchSearch = $_GET['bsearch'] ?? '';
+$batchFilter = $_GET['bfilter'] ?? ''; // active, depleted, all
+$bWhere = "1=1";
+$bParams = [];
+if ($batchSearch) { $bWhere .= " AND (p.name LIKE ? OR sb.batch_ref LIKE ?)"; $bParams[] = "%$batchSearch%"; $bParams[] = "%$batchSearch%"; }
+if ($batchFilter === 'active') { $bWhere .= " AND sb.quantity_remaining > 0"; }
+elseif ($batchFilter === 'depleted') { $bWhere .= " AND sb.quantity_remaining = 0"; }
+
+$batches = [];
+try {
+    $batches = $db->fetchAll("SELECT sb.*, p.name as product_name, p.sku, p.featured_image, w.name as warehouse_name, w.code as warehouse_code,
+        COALESCE(au.full_name, 'System') as created_by_name,
+        COALESCE(s.company_name, '') as supplier_name
+        FROM stock_batches sb
+        JOIN products p ON p.id = sb.product_id
+        LEFT JOIN warehouses w ON w.id = sb.warehouse_id
+        LEFT JOIN admin_users au ON au.id = sb.created_by
+        LEFT JOIN suppliers s ON s.id = sb.supplier_id
+        WHERE {$bWhere}
+        ORDER BY sb.received_date DESC, sb.id DESC
+        LIMIT 100", $bParams);
+} catch (\Throwable $e) {}
+
+// FIFO summary stats
+$fifoStats = ['total_batches' => 0, 'active_batches' => 0, 'total_value' => 0, 'avg_cost' => 0];
+try {
+    $fs = $db->fetch("SELECT COUNT(*) as total, SUM(CASE WHEN quantity_remaining > 0 THEN 1 ELSE 0 END) as active, COALESCE(SUM(quantity_remaining * cost_price),0) as value, COALESCE(AVG(CASE WHEN quantity_remaining > 0 THEN cost_price END),0) as avg_cost FROM stock_batches");
+    $fifoStats = ['total_batches' => intval($fs['total']), 'active_batches' => intval($fs['active']), 'total_value' => floatval($fs['value']), 'avg_cost' => floatval($fs['avg_cost'])];
+} catch (\Throwable $e) {}
+
+// Recent consumption
+$recentConsumption = [];
+try {
+    $recentConsumption = $db->fetchAll("SELECT sc.*, sb.batch_ref, sb.cost_price as batch_cost, p.name as product_name, o.order_number
+        FROM stock_consumption sc
+        JOIN stock_batches sb ON sb.id = sc.batch_id
+        JOIN products p ON p.id = sc.product_id
+        LEFT JOIN orders o ON o.id = sc.order_id
+        ORDER BY sc.consumed_at DESC LIMIT 20");
+} catch (\Throwable $e) {}
+?>
+
+<!-- FIFO Summary Cards -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+    <div class="bg-white rounded-xl border p-4">
+        <p class="text-xs text-gray-500 mb-1">Active Batches</p>
+        <p class="text-2xl font-bold text-blue-600"><?= number_format($fifoStats['active_batches']) ?></p>
+        <p class="text-[10px] text-gray-400"><?= number_format($fifoStats['total_batches']) ?> total</p>
+    </div>
+    <div class="bg-white rounded-xl border p-4">
+        <p class="text-xs text-gray-500 mb-1">Inventory Value (FIFO)</p>
+        <p class="text-2xl font-bold text-green-600">৳<?= number_format($fifoStats['total_value']) ?></p>
+        <p class="text-[10px] text-gray-400">Based on batch cost prices</p>
+    </div>
+    <div class="bg-white rounded-xl border p-4">
+        <p class="text-xs text-gray-500 mb-1">Avg. Unit Cost</p>
+        <p class="text-2xl font-bold text-gray-800">৳<?= number_format($fifoStats['avg_cost'], 2) ?></p>
+        <p class="text-[10px] text-gray-400">Weighted across active batches</p>
+    </div>
+    <div class="bg-white rounded-xl border p-4">
+        <p class="text-xs text-gray-500 mb-1">FIFO Method</p>
+        <p class="text-lg font-bold text-indigo-600">First In, First Out</p>
+        <p class="text-[10px] text-gray-400">Oldest stock consumed first</p>
+    </div>
+</div>
+
+<div class="grid lg:grid-cols-3 gap-5">
+    <!-- Batches Table -->
+    <div class="lg:col-span-2">
+        <div class="bg-white rounded-xl border shadow-sm">
+            <div class="p-4 border-b">
+                <form class="flex flex-wrap gap-3">
+                    <input type="hidden" name="tab" value="batches">
+                    <input type="text" name="bsearch" value="<?= e($batchSearch) ?>" placeholder="Search product or batch ref..." class="flex-1 min-w-[180px] border rounded-lg px-3 py-2 text-sm">
+                    <select name="bfilter" class="border rounded-lg px-3 py-2 text-sm">
+                        <option value="">All Batches</option>
+                        <option value="active" <?= $batchFilter === 'active' ? 'selected' : '' ?>>Active (Has Stock)</option>
+                        <option value="depleted" <?= $batchFilter === 'depleted' ? 'selected' : '' ?>>Depleted</option>
+                    </select>
+                    <button class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">Filter</button>
+                </form>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50"><tr>
+                        <th class="text-left px-4 py-3 font-medium text-gray-600">Product</th>
+                        <th class="text-left px-4 py-3 font-medium text-gray-600">Batch</th>
+                        <th class="text-center px-4 py-3 font-medium text-gray-600">Received</th>
+                        <th class="text-center px-4 py-3 font-medium text-gray-600">Remaining</th>
+                        <th class="text-right px-4 py-3 font-medium text-gray-600">Cost/Unit</th>
+                        <th class="text-right px-4 py-3 font-medium text-gray-600">Value</th>
+                        <th class="text-left px-4 py-3 font-medium text-gray-600">Date</th>
+                        <th class="text-left px-4 py-3 font-medium text-gray-600">Warehouse</th>
+                    </tr></thead>
+                    <tbody class="divide-y">
+                        <?php foreach ($batches as $b):
+                            $pctRemaining = $b['quantity_received'] > 0 ? round(($b['quantity_remaining'] / $b['quantity_received']) * 100) : 0;
+                            $batchValue = round($b['quantity_remaining'] * $b['cost_price'], 2);
+                            $isDepleted = $b['quantity_remaining'] <= 0;
+                        ?>
+                        <tr class="hover:bg-gray-50 <?= $isDepleted ? 'opacity-50' : '' ?>">
+                            <td class="px-4 py-3">
+                                <div class="flex items-center gap-2">
+                                    <?php if ($b['featured_image']): ?>
+                                    <img src="<?= uploadUrl('products/' . $b['featured_image']) ?>" class="w-8 h-8 rounded border object-cover" onerror="this.style.display='none'">
+                                    <?php endif; ?>
+                                    <div>
+                                        <p class="font-medium text-gray-800 text-xs"><?= e($b['product_name']) ?></p>
+                                        <p class="text-[10px] text-gray-400"><?= e($b['sku'] ?? '') ?></p>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="text-xs font-mono font-medium text-indigo-600"><?= e($b['batch_ref'] ?: 'B-'.$b['id']) ?></span>
+                                <?php if ($b['supplier_name']): ?>
+                                <p class="text-[10px] text-gray-400"><?= e($b['supplier_name']) ?></p>
+                                <?php endif; ?>
+                            </td>
+                            <td class="px-4 py-3 text-center text-gray-600"><?= number_format($b['quantity_received']) ?></td>
+                            <td class="px-4 py-3 text-center">
+                                <span class="font-bold <?= $isDepleted ? 'text-gray-400' : ($pctRemaining <= 20 ? 'text-red-600' : 'text-green-600') ?>"><?= number_format($b['quantity_remaining']) ?></span>
+                                <div class="w-full bg-gray-100 rounded-full h-1 mt-1"><div class="<?= $isDepleted ? 'bg-gray-300' : ($pctRemaining <= 20 ? 'bg-red-400' : 'bg-green-400') ?> h-1 rounded-full" style="width:<?= $pctRemaining ?>%"></div></div>
+                            </td>
+                            <td class="px-4 py-3 text-right text-gray-700">৳<?= number_format($b['cost_price'], 2) ?></td>
+                            <td class="px-4 py-3 text-right font-medium <?= $isDepleted ? 'text-gray-400' : 'text-gray-800' ?>">৳<?= number_format($batchValue) ?></td>
+                            <td class="px-4 py-3 text-xs text-gray-500"><?= date('d M Y', strtotime($b['received_date'])) ?></td>
+                            <td class="px-4 py-3 text-xs text-gray-500"><?= e($b['warehouse_code'] ?? '—') ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                        <?php if (empty($batches)): ?>
+                        <tr><td colspan="8" class="px-4 py-8 text-center text-gray-400">
+                            No batches found. Use "Adjust Stock → Stock In" to create FIFO batches with cost tracking.
+                        </td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right: Recent Consumption -->
+    <div class="lg:col-span-1">
+        <div class="bg-white rounded-xl border shadow-sm">
+            <div class="px-4 py-3 border-b">
+                <h3 class="text-sm font-semibold text-gray-800">FIFO Consumption Log</h3>
+                <p class="text-[10px] text-gray-400 mt-0.5">Shows which batches were consumed and when</p>
+            </div>
+            <div class="divide-y max-h-[600px] overflow-y-auto">
+                <?php foreach ($recentConsumption as $rc): ?>
+                <div class="px-4 py-3 hover:bg-gray-50">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-xs font-medium text-gray-800"><?= e($rc['product_name']) ?></span>
+                        <span class="text-xs font-bold text-red-500">-<?= $rc['quantity_consumed'] ?></span>
+                    </div>
+                    <div class="flex items-center justify-between text-[10px] text-gray-400">
+                        <span>Batch: <span class="font-mono text-indigo-500"><?= e($rc['batch_ref'] ?: 'B-'.$rc['batch_id']) ?></span></span>
+                        <span>৳<?= number_format($rc['total_cost'], 2) ?></span>
+                    </div>
+                    <div class="text-[10px] text-gray-400 mt-0.5">
+                        <?= $rc['order_number'] ? 'Order #'.e($rc['order_number']) : 'Manual adjustment' ?> · <?= date('d M, H:i', strtotime($rc['consumed_at'])) ?>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+                <?php if (empty($recentConsumption)): ?>
+                <div class="px-4 py-8 text-center text-gray-400 text-xs">No consumption records yet. Stock out movements will appear here with FIFO cost tracking.</div>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <!-- FIFO Explanation -->
+        <div class="bg-indigo-50 rounded-xl border border-indigo-200 p-4 mt-4">
+            <h4 class="text-xs font-bold text-indigo-700 mb-2">How FIFO Works</h4>
+            <div class="text-[11px] text-indigo-600 space-y-1.5">
+                <p>When stock comes <strong>in</strong>, a batch is created with the purchase cost per unit.</p>
+                <p>When stock goes <strong>out</strong> (sales, adjustments), the system consumes from the <strong>oldest batch first</strong>.</p>
+                <p>This gives you accurate <strong>Cost of Goods Sold (COGS)</strong> for each order and time period.</p>
+                <p>The Accounting page uses FIFO COGS data for gross profit calculations.</p>
+            </div>
+        </div>
     </div>
 </div>
 
