@@ -142,7 +142,7 @@ $msg = $_GET['msg'] ?? '';
 <div class="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm">✓ Entry <?= e($msg) ?>.</div>
 <?php endif; ?>
 
-<!-- Date Range Bar -->
+<!-- Date Range Bar — Single Source of Truth -->
 <div class="bg-white rounded-xl border shadow-sm p-4 mb-5">
     <div class="flex flex-wrap items-center gap-2">
         <?php
@@ -151,12 +151,27 @@ $msg = $_GET['msg'] ?? '';
         ?>
         <a href="?range=<?= $rk ?>" class="px-3 py-1.5 rounded-lg text-xs font-medium transition <?= $range === $rk ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200' ?>"><?= $rl ?></a>
         <?php endforeach; ?>
-        <div class="ml-auto flex items-center gap-2">
-            <div data-kb-datepicker data-from-param="from" data-to-param="to"></div>
+
+        <!-- Custom Date Range (inline) -->
+        <div class="ml-auto flex items-center gap-1.5">
+            <input type="date" id="acctFrom" value="<?= $range === 'custom' ? e($dateFrom) : '' ?>" class="border rounded-lg px-2.5 py-1.5 text-xs text-gray-600 w-[130px]" title="From date">
+            <span class="text-gray-400 text-xs">—</span>
+            <input type="date" id="acctTo" value="<?= $range === 'custom' ? e($dateTo) : '' ?>" class="border rounded-lg px-2.5 py-1.5 text-xs text-gray-600 w-[130px]" title="To date">
+            <button onclick="applyCustomRange()" class="px-3 py-1.5 rounded-lg text-xs font-medium transition <?= $range === 'custom' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200' ?>">Apply</button>
         </div>
     </div>
     <p class="text-[11px] text-gray-400 mt-2"><?= $rangeLabel ?> · <?= date('d M Y', strtotime($dateFrom)) ?> — <?= date('d M Y', strtotime($dateTo)) ?></p>
 </div>
+<script>
+function applyCustomRange() {
+    var f = document.getElementById('acctFrom').value;
+    var t = document.getElementById('acctTo').value;
+    if (!f && !t) return;
+    if (!f) f = t;
+    if (!t) t = f;
+    window.location.href = '?range=custom&from=' + f + '&to=' + t;
+}
+</script>
 
 <!-- KPI Cards -->
 <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
