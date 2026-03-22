@@ -31,10 +31,10 @@ try {
     ) ENGINE=InnoDB");
 } catch (\Throwable $e) {}
 
-// ── Clean expired locks (no heartbeat for 45s) ──
+// ── Clean expired locks (no heartbeat for 90s) ──
 try {
-    // Clean expired locks AND corrupt locks (admin_user_id=0/NULL = invalid)
-    $db->query("DELETE FROM order_locks WHERE last_heartbeat < DATE_SUB(NOW(), INTERVAL 30 SECOND) OR admin_user_id = 0 OR admin_user_id IS NULL");
+    // Clean expired locks AND corrupt locks (admin_user_id=0/NULL/empty name = invalid)
+    $db->query("DELETE FROM order_locks WHERE last_heartbeat < DATE_SUB(NOW(), INTERVAL 90 SECOND) OR admin_user_id = 0 OR admin_user_id IS NULL OR admin_name = ''");
 } catch (\Throwable $e) {}
 
 $action   = $_POST['action'] ?? $_GET['action'] ?? '';
@@ -49,7 +49,7 @@ if ($action === 'acquire') {
     if (!$orderId) { echo json_encode(['success' => false, 'error' => 'No order ID']); exit; }
     
     // Check if already locked by someone else
-    $existing = $db->fetch("SELECT * FROM order_locks WHERE order_id = ? AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 30 SECOND)", [$orderId]);
+    $existing = $db->fetch("SELECT * FROM order_locks WHERE order_id = ? AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 90 SECOND)", [$orderId]);
     
     if ($existing && intval($existing['admin_user_id']) !== $adminId) {
         // If the lock has admin_user_id=0 it's corrupt — auto-clear and proceed
@@ -155,7 +155,7 @@ if ($action === 'release') {
 // ── CHECK single order ──
 if ($action === 'check') {
     if (!$orderId) { echo json_encode(['success' => false]); exit; }
-    $lock = $db->fetch("SELECT * FROM order_locks WHERE order_id = ? AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 30 SECOND)", [$orderId]);
+    $lock = $db->fetch("SELECT * FROM order_locks WHERE order_id = ? AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 90 SECOND)", [$orderId]);
     if ($lock) {
         $lockName = trim($lock['admin_name'] ?? '');
         if (!$lockName) $lockName = 'Another user';
@@ -179,7 +179,7 @@ if ($action === 'check_bulk') {
     if (empty($orderIds)) { echo json_encode(['success' => true, 'locks' => []]); exit; }
     
     $placeholders = implode(',', array_fill(0, count($orderIds), '?'));
-    $locks = $db->fetchAll("SELECT * FROM order_locks WHERE order_id IN ({$placeholders}) AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 30 SECOND)", $orderIds);
+    $locks = $db->fetchAll("SELECT * FROM order_locks WHERE order_id IN ({$placeholders}) AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 90 SECOND)", $orderIds);
     
     $result = [];
     foreach ($locks as $l) {
@@ -199,10 +199,10 @@ if ($action === 'check_bulk') {
 if ($action === 'active_count') {
     $count = 0;
     try {
-        $row = $db->fetch("SELECT COUNT(DISTINCT admin_user_id) as cnt FROM order_locks WHERE last_heartbeat >= DATE_SUB(NOW(), INTERVAL 30 SECOND) AND admin_user_id != ?", [$adminId]);
+        $row = $db->fetch("SELECT COUNT(DISTINCT admin_user_id) as cnt FROM order_locks WHERE last_heartbeat >= DATE_SUB(NOW(), INTERVAL 90 SECOND) AND admin_user_id != ?", [$adminId]);
         $count = intval($row['cnt'] ?? 0);
         // Also get names
-        $others = $db->fetchAll("SELECT DISTINCT admin_name FROM order_locks WHERE last_heartbeat >= DATE_SUB(NOW(), INTERVAL 30 SECOND) AND admin_user_id != ? LIMIT 5", [$adminId]);
+        $others = $db->fetchAll("SELECT DISTINCT admin_name FROM order_locks WHERE last_heartbeat >= DATE_SUB(NOW(), INTERVAL 90 SECOND) AND admin_user_id != ? LIMIT 5", [$adminId]);
     } catch (\Throwable $e) {}
     echo json_encode(['success'=>true,'count'=>$count,'others'=>array_column($others??[], 'admin_name')]);
     exit;
@@ -212,7 +212,7 @@ if ($action === 'active_count') {
 if ($action === 'co_viewers') {
     if (!$orderId) { echo json_encode(['success'=>false,'viewers',[]]); exit; }
     try {
-        $viewers = $db->fetchAll("SELECT admin_name, locked_at FROM order_locks WHERE order_id = ? AND admin_user_id != ? AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 30 SECOND)", [$orderId, $adminId]);
+        $viewers = $db->fetchAll("SELECT admin_name, locked_at FROM order_locks WHERE order_id = ? AND admin_user_id != ? AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 90 SECOND)", [$orderId, $adminId]);
     } catch (\Throwable $e) { $viewers = []; }
     echo json_encode(['success'=>true,'viewers'=>$viewers]);
     exit;

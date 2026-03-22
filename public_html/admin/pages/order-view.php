@@ -20,9 +20,9 @@ if (!$id && $orderNum) {
 if ($isLockCheck && $id && $isProcSession) {
     header('Content-Type: application/json');
     $meId = getAdminId();
-    try { $db->query("DELETE FROM order_locks WHERE last_heartbeat < DATE_SUB(NOW(), INTERVAL 30 SECOND)"); } catch (\Throwable $e) {}
+    try { $db->query("DELETE FROM order_locks WHERE last_heartbeat < DATE_SUB(NOW(), INTERVAL 90 SECOND)"); } catch (\Throwable $e) {}
     try {
-        $lk = $db->fetch("SELECT admin_user_id, admin_name FROM order_locks WHERE order_id = ? AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 30 SECOND)", [$id]);
+        $lk = $db->fetch("SELECT admin_user_id, admin_name FROM order_locks WHERE order_id = ? AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 90 SECOND)", [$id]);
         if ($lk && intval($lk['admin_user_id']) !== $meId) {
             echo json_encode(['locked'=>true,'locked_by'=>$lk['admin_name'],'order_id'=>$id]);
         } else {
@@ -44,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'save_order' || $action === 'confirm_order') {
         // Conflict check: ensure we still hold the lock before saving
         try {
-            $__currentLock = $db->fetch("SELECT admin_user_id FROM order_locks WHERE order_id = ? AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 30 SECOND)", [$id]);
+            $__currentLock = $db->fetch("SELECT admin_user_id FROM order_locks WHERE order_id = ? AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 90 SECOND)", [$id]);
             if ($__currentLock && intval($__currentLock['admin_user_id']) !== $__currentAdminId) {
                 $__takenBy = $db->fetch("SELECT full_name FROM admin_users WHERE id=?", [intval($__currentLock['admin_user_id'])]);
                 header('Content-Type: application/json');
@@ -281,17 +281,17 @@ if (!$__currentAdminName) $__currentAdminName = trim($_SESSION['admin_name'] ?? 
 
 // Ensure table exists
 try { $db->query("CREATE TABLE IF NOT EXISTS order_locks (id INT AUTO_INCREMENT PRIMARY KEY, order_id INT NOT NULL UNIQUE, admin_user_id INT NOT NULL, admin_name VARCHAR(100) NOT NULL DEFAULT '', locked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, last_heartbeat DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, INDEX idx_order (order_id), INDEX idx_heartbeat (last_heartbeat)) ENGINE=InnoDB"); } catch (\Throwable $e) {}
-// Clean expired locks AND corrupt locks (admin_user_id=0 = stale/invalid)
-try { $db->query("DELETE FROM order_locks WHERE last_heartbeat < DATE_SUB(NOW(), INTERVAL 30 SECOND) OR admin_user_id = 0 OR admin_user_id IS NULL"); } catch (\Throwable $e) {}
+// Clean expired locks (90s timeout — generous to avoid false positives) AND corrupt locks
+try { $db->query("DELETE FROM order_locks WHERE last_heartbeat < DATE_SUB(NOW(), INTERVAL 90 SECOND) OR admin_user_id = 0 OR admin_user_id IS NULL OR admin_name = ''"); } catch (\Throwable $e) {}
 
-// Check existing lock
+// Check existing lock — only consider locks with valid admin_user_id and fresh heartbeat
 $__existingLock = null;
-try { $__existingLock = $db->fetch("SELECT * FROM order_locks WHERE order_id = ? AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 30 SECOND)", [$id]); } catch (\Throwable $e) {}
+try { $__existingLock = $db->fetch("SELECT * FROM order_locks WHERE order_id = ? AND admin_user_id > 0 AND admin_name != '' AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 90 SECOND)", [$id]); } catch (\Throwable $e) {}
 
 if ($__existingLock && intval($__existingLock['admin_user_id']) !== $__currentAdminId) {
     // Locked by another admin
     $__lockBlocked = true;
-    $__lockedByName = $__existingLock['admin_name'] ?: 'Unknown';
+    $__lockedByName = $__existingLock['admin_name'] ?: 'Another user';
     $__lockedById = intval($__existingLock['admin_user_id']);
     // In processing session: signal JS to skip — return JSON, never show lock screen
     if ($isProcSession) {
@@ -346,37 +346,38 @@ if ($__existingLock && intval($__existingLock['admin_user_id']) !== $__currentAd
 
 <?php if ($__lockBlocked): ?>
 <!-- ══════════════════════════ ACCESS RESTRICTED SCREEN ══════════════════════════ -->
-<div id="lockScreen" class="max-w-2xl mx-auto mt-16">
-    <div class="bg-pink-50 border-2 border-pink-200 rounded-2xl p-10 text-center">
-        <h2 class="text-2xl font-bold text-pink-600 mb-3">Access Restricted</h2>
-        <p class="text-pink-500 text-base mb-6">
-            This order is currently being viewed by <strong class="text-pink-700" id="lockOwnerName"><?= htmlspecialchars($__lockedByName ?: 'Another user') ?></strong>.
-        </p>
-        <div class="flex items-center justify-center gap-3 flex-wrap" id="lockActions">
-            <button onclick="doTakeover()" id="btnTakeover"
-                    class="bg-teal-500 hover:bg-teal-600 text-white font-bold px-6 py-2.5 rounded-lg transition shadow-sm">
-                Take Over
-            </button>
-            <button onclick="location.reload()" class="bg-white hover:bg-gray-50 text-gray-700 font-bold px-6 py-2.5 rounded-lg border transition shadow-sm">
-                Retry
-            </button>
-            <?php if (!$__lockedByName || $__lockedByName === 'Unknown'): ?>
-            <button onclick="forceClearLock()" class="bg-gray-700 hover:bg-gray-800 text-white font-bold px-6 py-2.5 rounded-lg transition shadow-sm" title="Clear stale lock and access order">
-                Force Access
-            </button>
-            <?php endif; ?>
+<div id="lockScreen" class="max-w-xl mx-auto mt-16 px-4">
+    <div class="bg-white border border-gray-200 rounded-2xl shadow-lg overflow-hidden">
+        <div class="bg-amber-50 border-b border-amber-200 px-8 py-5 text-center">
+            <div class="text-3xl mb-2">🔒</div>
+            <h2 class="text-lg font-bold text-gray-800">Order Currently Being Edited</h2>
         </div>
-        <div class="hidden mt-4" id="confirmTakeoverBox">
-            <button onclick="confirmTakeover()" id="btnConfirmTakeover"
-                    class="bg-pink-600 hover:bg-pink-700 text-white font-bold px-6 py-2.5 rounded-lg transition shadow-sm">
-                Confirm Take Over
-            </button>
-            <button onclick="cancelTakeover()" class="bg-white hover:bg-gray-50 text-gray-600 font-medium px-5 py-2.5 rounded-lg border transition ml-2">
-                Cancel
-            </button>
-            <button onclick="location.reload()" class="bg-gray-800 hover:bg-gray-900 text-white font-bold px-6 py-2.5 rounded-lg transition ml-2">
-                Retry
-            </button>
+        <div class="px-8 py-6 text-center">
+            <p class="text-gray-600 text-sm mb-6">
+                <strong class="text-gray-800" id="lockOwnerName"><?= htmlspecialchars($__lockedByName ?: 'Another user') ?></strong> is currently working on this order. You can wait for them to finish, or take over editing.
+            </p>
+            <div class="flex items-center justify-center gap-3 flex-wrap" id="lockActions">
+                <button onclick="doTakeover()" id="btnTakeover"
+                        class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5 rounded-lg transition text-sm">
+                    Take Over
+                </button>
+                <button onclick="location.reload()" class="bg-white hover:bg-gray-50 text-gray-700 font-semibold px-5 py-2.5 rounded-lg border border-gray-300 transition text-sm">
+                    Retry
+                </button>
+                <a href="<?= adminUrl('pages/order-management.php') ?>" class="text-gray-400 hover:text-gray-600 font-medium px-4 py-2.5 text-sm transition">
+                    ← Back to Orders
+                </a>
+            </div>
+            <div class="hidden mt-4" id="confirmTakeoverBox">
+                <p class="text-xs text-amber-600 mb-3">This will remove <?= htmlspecialchars($__lockedByName ?: 'the other user') ?>'s access. Are you sure?</p>
+                <button onclick="confirmTakeover()" id="btnConfirmTakeover"
+                        class="bg-red-600 hover:bg-red-700 text-white font-semibold px-5 py-2.5 rounded-lg transition text-sm">
+                    Yes, Take Over
+                </button>
+                <button onclick="cancelTakeover()" class="bg-white hover:bg-gray-50 text-gray-600 font-medium px-5 py-2.5 rounded-lg border border-gray-300 transition text-sm ml-2">
+                    Cancel
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -1747,9 +1748,10 @@ function courierUpdateUI(d) {
     const LOCK_API = '<?= SITE_URL ?>/api/order-lock.php';
     const ORDER_ID = <?= intval($id) ?>;
     let _lockLost = false;
+    let _isNavigating = false;
     
     function heartbeat() {
-        if (_lockLost) return;
+        if (_lockLost || _isNavigating) return;
         fetch(LOCK_API, {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
@@ -1865,23 +1867,23 @@ function courierUpdateUI(d) {
     pollCoViewers();
     setInterval(pollCoViewers, 12000);
 
-    // Heartbeat every 15 seconds
-    setInterval(heartbeat, 10000);
+    // Heartbeat every 20 seconds (lock expires at 90s — plenty of margin)
+    setInterval(heartbeat, 20000);
     
-    // Release lock on page unload / navigation
+    // Release lock ONLY on actual page navigation away (not refresh/reload)
     window.addEventListener('beforeunload', function() {
+        _isNavigating = true;
         navigator.sendBeacon(LOCK_API, new URLSearchParams({action: 'release', order_id: ORDER_ID}));
     });
 
-    // Page Visibility API: release when tab hidden, re-acquire when visible
-    // Prevents sleeping tabs from holding locks indefinitely
+    // Page Visibility API: keep heartbeating in background, only release after 3 minutes hidden
     var _hiddenTimer = null;
     document.addEventListener('visibilitychange', function() {
         if (document.hidden) {
-            // Release lock after 60s of being hidden (user might have just switched tabs briefly)
+            // Release lock after 3 minutes of being hidden (generous — avoids false triggers)
             _hiddenTimer = setTimeout(function() {
                 navigator.sendBeacon(LOCK_API, new URLSearchParams({action: 'release', order_id: ORDER_ID}));
-            }, 60000);
+            }, 180000);
         } else {
             // Tab became visible again — cancel pending release and re-acquire lock
             clearTimeout(_hiddenTimer);
