@@ -7,17 +7,13 @@
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/clerk.php';
 
-// Admin-only access
-session_start();
-$adminId = $_SESSION['admin_id'] ?? 0;
-if (!$adminId) {
-    // Allow with ?key= for remote testing
-    $key = $_GET['key'] ?? '';
-    if ($key !== md5(DB_PASS . 'clerk-diag')) {
-        http_response_code(403);
-        echo "<h2>Access denied</h2><p>Login to admin first, or use ?key= parameter</p>";
-        exit;
-    }
+// Admin-only access — no bypass keys
+require_once __DIR__ . '/../includes/session.php';
+require_once __DIR__ . '/../admin/includes/auth.php';
+if (!isAdminLoggedIn()) {
+    http_response_code(403);
+    echo "<h2>Access denied</h2><p>Login to admin first.</p>";
+    exit;
 }
 
 header('Content-Type: text/html; charset=utf-8');

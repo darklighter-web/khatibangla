@@ -17,6 +17,7 @@ function adminLogin($username, $password) {
     $user = $db->fetch("SELECT au.*, ar.role_name, ar.permissions FROM admin_users au JOIN admin_roles ar ON ar.id = au.role_id WHERE (au.username = ? OR au.email = ?) AND au.is_active = 1", [$username, $username]);
     
     if ($user && verifyPassword($password, $user['password'])) {
+        session_regenerate_id(true); // Prevent session fixation
         $_SESSION['admin_id'] = $user['id'];
         $_SESSION['admin_name'] = $user['full_name'];
         $_SESSION['admin_role'] = $user['role_name'];

@@ -70,7 +70,7 @@ $channelBreakdown = $db->fetchAll("SELECT o.channel, COUNT(*) as orders, COALESC
 
 // CSV Export
 if (isset($_GET['export'])) {
-    $exportType = $_GET['export'];
+    $exportType = $_GET['export'] ?? '';
     header('Content-Type: text/csv');
     $output = fopen('php://output', 'w');
     

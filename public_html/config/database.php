@@ -25,7 +25,7 @@ define('SESSION_LIFETIME', 86400);
 define('ADMIN_SESSION_LIFETIME', 28800);
 
 // Security
-define('ENCRYPTION_KEY', 'your-secret-key-change-this-in-production');
+define('ENCRYPTION_KEY', 'Kh4t1B@ngl4_s3cR3t_X9f2mPqL7vWz8nJk5dHy');
 define('CSRF_TOKEN_NAME', '_csrf_token');
 
 // Pagination

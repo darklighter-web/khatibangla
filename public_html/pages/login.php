@@ -30,7 +30,7 @@ if (($_GET['action'] ?? '') === 'logout') {
     redirect(url('login'));
 }
 
-if (isCustomerLoggedIn()) { redirect($redirectTo); }
+if (isCustomerLoggedIn()) { safeRedirect($redirectTo, url('account')); }
 
 // Legacy POST handler
 $tab = $_POST['tab'] ?? 'login';
@@ -40,14 +40,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'login' && $legacyEnabled) {
         $phone    = sanitize($_POST['phone'] ?? '');
         $password = $_POST['password'] ?? '';
-        if (empty($phone) || empty($password)) {
+
+        // ── Brute-force protection: max 5 attempts per 15 minutes ──
+        $loginRateKey = 'login_attempts_' . md5($phone . ($_SERVER['REMOTE_ADDR'] ?? ''));
+        if (!isset($_SESSION[$loginRateKey])) {
+            $_SESSION[$loginRateKey] = ['count' => 0, 'window' => time()];
+        }
+        if (time() - $_SESSION[$loginRateKey]['window'] > 900) {
+            $_SESSION[$loginRateKey] = ['count' => 0, 'window' => time()];
+        }
+        $loginLocked = ($_SESSION[$loginRateKey]['count'] >= 5);
+
+        if ($loginLocked) {
+            $error = 'অনেকবার চেষ্টা করেছেন। ১৫ মিনিট পর আবার চেষ্টা করুন।';
+        } elseif (empty($phone) || empty($password)) {
             $error = 'ফোন নম্বর ও পাসওয়ার্ড দিন।';
         } elseif (isPhoneBlocked($phone)) {
             $error = 'এই ফোন নম্বর ব্লক করা হয়েছে।';
         } else {
             $customer = customerLogin($phone, $password);
-            if ($customer) { redirect($redirectTo); }
-            else { $error = 'ফোন নম্বর বা পাসওয়ার্ড ভুল।'; }
+            if ($customer) {
+                unset($_SESSION[$loginRateKey]); // Reset on success
+                safeRedirect($redirectTo, url('account'));
+            } else {
+                $_SESSION[$loginRateKey]['count']++;
+                $remaining = 5 - $_SESSION[$loginRateKey]['count'];
+                $error = 'ফোন নম্বর বা পাসওয়ার্ড ভুল।' . ($remaining <= 2 && $remaining > 0 ? " ({$remaining} বার বাকি)" : '');
+            }
         }
     }
 
@@ -73,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $result = customerRegister($regData);
             if (isset($result['error'])) { $error = $result['error']; }
-            else { redirect($redirectTo); }
+            else { safeRedirect($redirectTo, url('account')); }
         }
     }
 }

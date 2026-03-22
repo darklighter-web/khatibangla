@@ -34,7 +34,7 @@ if ($action === 'toggle') {
         echo json_encode(['success' => true, 'added' => $added, 'count' => getWishlistCount()]);
         exit;
     }
-    redirect($_POST['redirect'] ?? url());
+    safeRedirect($_POST['redirect'] ?? '', url());
 }
 
 if ($action === 'add') {
@@ -47,7 +47,7 @@ if ($action === 'add') {
         echo json_encode(['success' => true, 'count' => getWishlistCount()]);
         exit;
     }
-    redirect($_POST['redirect'] ?? url());
+    safeRedirect($_POST['redirect'] ?? '', url());
 }
 
 if ($action === 'remove') {
@@ -57,5 +57,5 @@ if ($action === 'remove') {
         echo json_encode(['success' => true, 'count' => getWishlistCount()]);
         exit;
     }
-    redirect($_POST['redirect'] ?? url('account?tab=wishlist'));
+    safeRedirect($_POST['redirect'] ?? '', url('account?tab=wishlist'));
 }

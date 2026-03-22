@@ -1,10 +1,12 @@
 <?php
 /**
- * Cart API - AJAX Endpoints
+ * Cart API - AJAX Endpoints (Admin manual order cart)
  */
-require_once __DIR__ . '/../includes/session.php';
+require_once __DIR__ . '/../../includes/session.php';
+require_once __DIR__ . '/../includes/auth.php';
+requireAdmin();
 header('Content-Type: application/json');
-require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../../includes/functions.php';
 
 // GET request
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {

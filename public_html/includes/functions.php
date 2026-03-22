@@ -83,6 +83,30 @@ function redirect($url) {
     exit;
 }
 
+/**
+ * Safe redirect — only allows redirects to own domain.
+ * Falls back to $default if URL is external or malformed.
+ */
+function safeRedirect($url, $default = '/') {
+    $url = trim($url);
+    // Must be a relative path or same-domain absolute URL
+    if (empty($url)) {
+        redirect($default);
+    }
+    $parsed = parse_url($url);
+    // Relative URL (no host) — safe
+    if (empty($parsed['host'])) {
+        redirect($url);
+    }
+    // Absolute URL — check domain
+    $siteHost = parse_url(SITE_URL, PHP_URL_HOST);
+    if (strcasecmp($parsed['host'], $siteHost) === 0 || strcasecmp($parsed['host'], 'www.' . $siteHost) === 0) {
+        redirect($url);
+    }
+    // External URL — reject
+    redirect($default);
+}
+
 function currentUrl() {
     return (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") 
            . "://" . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
@@ -1253,6 +1277,7 @@ function customerLogin($phone, $password) {
     $db = Database::getInstance();
     $customer = $db->fetch("SELECT * FROM customers WHERE phone = ? AND is_blocked = 0", [$phone]);
     if ($customer && $customer['password'] && verifyPassword($password, $customer['password'])) {
+        session_regenerate_id(true); // Prevent session fixation
         $_SESSION['customer_id'] = $customer['id'];
         $_SESSION['customer_name'] = $customer['name'];
         $_SESSION['customer_phone'] = $customer['phone'];

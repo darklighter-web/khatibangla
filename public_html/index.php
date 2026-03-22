@@ -3,6 +3,11 @@
  * Main Router / Entry Point
  */
 
+// ── Production error handling — never expose errors to users ──
+error_reporting(E_ALL);
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+
 // Prevent stale cached error pages from being served
 header('X-LiteSpeed-Cache-Control: no-cache');
 http_response_code(200); // Explicitly set 200 OK

@@ -99,27 +99,6 @@ if ($action === 'validate') {
     exit;
 }
 
-// Debug endpoint — remove after testing
-if ($action === 'debug' && isset($_GET['code'])) {
-    $db = Database::getInstance();
-    $code = strtoupper(trim($_GET['code']));
-    $coupon = $db->fetch("SELECT * FROM coupons WHERE UPPER(code) = ?", [$code]);
-    if ($coupon) {
-        echo json_encode([
-            'found' => true,
-            'code' => $coupon['code'],
-            'is_active' => $coupon['is_active'],
-            'start_date' => $coupon['start_date'],
-            'end_date' => $coupon['end_date'],
-            'start_ts' => $coupon['start_date'] ? strtotime($coupon['start_date']) : null,
-            'now_ts' => time(),
-            'server_time' => date('Y-m-d H:i:s'),
-            'usage' => $coupon['used_count'] . '/' . ($coupon['usage_limit'] ?: 'unlimited'),
-        ]);
-    } else {
-        echo json_encode(['found' => false, 'code' => $code]);
-    }
-    exit;
-}
+// Debug endpoint removed for security
 
 echo json_encode(['success' => false, 'message' => 'Invalid action']);

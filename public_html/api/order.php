@@ -19,6 +19,22 @@ try {
     header('Content-Type: application/json');
     require_once __DIR__ . '/../includes/functions.php';
 
+    // ── Rate limit: max 5 orders per IP per 10 minutes ──
+    $orderRateIp = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    $orderRateKey = 'order_rate_' . md5($orderRateIp);
+    if (!isset($_SESSION[$orderRateKey])) {
+        $_SESSION[$orderRateKey] = ['count' => 0, 'window' => time()];
+    }
+    if (time() - $_SESSION[$orderRateKey]['window'] > 600) {
+        $_SESSION[$orderRateKey] = ['count' => 0, 'window' => time()];
+    }
+    $_SESSION[$orderRateKey]['count']++;
+    if ($_SESSION[$orderRateKey]['count'] > 5) {
+        ob_end_clean();
+        echo json_encode(['success' => false, 'message' => 'Too many order attempts. Please wait a few minutes.']);
+        exit;
+    }
+
     // Ensure 'landing_page' channel exists in orders table ENUM
     if (($_POST['channel'] ?? '') === 'landing_page') {
         try {

@@ -4,9 +4,9 @@
  * Handles: init, send, poll, close, history
  * Supports: guest (session-based, 24hr TTL) + logged-in customers
  */
-require_once __DIR__ . '/../includes/session.php';
-require_once __DIR__ . '/../config/database.php';
-require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../../includes/session.php';
+require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../includes/functions.php';
 
 header('Content-Type: application/json');
 

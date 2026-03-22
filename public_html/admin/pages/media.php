@@ -6,10 +6,10 @@ require_once __DIR__ . '/../includes/auth.php';
 if (isset($_GET['api'])) {
     header('Content-Type: application/json');
     $folders = ['products', 'banners', 'logos', 'categories', 'general'];
-    $allowed = ['jpg','jpeg','png','gif','webp','svg'];
+    $allowed = ['jpg','jpeg','png','gif','webp'];
     $activeFolder = $_GET['folder'] ?? 'all';
     
-    if ($_GET['api'] === 'list') {
+    if (($_GET['api'] ?? '') === 'list') {
         $allFiles = [];
         $scanFolders = ($activeFolder === 'all') ? $folders : [$activeFolder];
         foreach ($scanFolders as $folder) {
@@ -34,7 +34,7 @@ if (isset($_GET['api'])) {
         exit;
     }
     
-    if ($_GET['api'] === 'upload' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (($_GET['api'] ?? '') === 'upload' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $folder = sanitize($_POST['folder'] ?? 'general');
         if (!in_array($folder, $folders)) $folder = 'general';
         $count = 0;
@@ -66,7 +66,7 @@ $pickerFolder = $_GET['folder'] ?? '';
 // All upload folders to scan
 $folders = ['products', 'banners', 'logos', 'general'];
 $activeFolder = $_GET['f'] ?? 'all';
-$allowed = ['jpg','jpeg','png','gif','webp','svg'];
+$allowed = ['jpg','jpeg','png','gif','webp'];
 
 // Scan all folders
 $allFiles = [];

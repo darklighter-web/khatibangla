@@ -77,7 +77,7 @@ try {
                 if ($size > 10 * 1024 * 1024) { $errors[] = "{$name}: too large (max 10MB)"; continue; }
 
                 $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
-                if (!in_array($ext, ['jpg','jpeg','png','gif','webp','svg'])) { $errors[] = "{$name}: invalid type"; continue; }
+                if (!in_array($ext, ['jpg','jpeg','png','gif','webp'])) { $errors[] = "{$name}: invalid type (svg not allowed)"; continue; }
 
                 $newName = preg_replace('/[^a-zA-Z0-9_-]/', '_', pathinfo($name, PATHINFO_FILENAME));
                 $newName = substr($newName, 0, 50) . '_' . time() . '_' . $i . '.' . $ext;
@@ -159,7 +159,7 @@ try {
             $folder = $input['folder'] ?? $_GET['folder'] ?? 'products';
             if (!in_array($folder, $allowedFolders)) $folder = 'products';
             $dir = UPLOAD_PATH . $folder . '/';
-            $allowed = ['jpg','jpeg','png','gif','webp','svg'];
+            $allowed = ['jpg','jpeg','png','gif','webp'];
             $result = [];
             if (is_dir($dir)) {
                 foreach (scandir($dir, SCANDIR_SORT_DESCENDING) as $f) {
