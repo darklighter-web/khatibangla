@@ -291,18 +291,18 @@ function formatPrice(amount) {
                     <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
                 </div>
                 <div>
-                    <h3 class="font-bold text-white text-sm" id="guideTitle">Page Guide</h3>
-                    <p class="text-blue-200 text-[11px]">Employee Training Guide</p>
+                    <h3 class="font-bold text-white text-sm" id="guideTitle">পেইজ গাইড</h3>
+                    <p class="text-blue-200 text-[11px]">কর্মী প্রশিক্ষণ গাইড</p>
                 </div>
             </div>
             <button onclick="closePageGuide()" class="text-white/70 hover:text-white text-xl leading-none p-1">&times;</button>
         </div>
         <div class="flex-1 overflow-y-auto px-6 py-5" id="guideBody">
-            <div class="text-center text-gray-400 py-8">Loading...</div>
+            <div class="text-center text-gray-400 py-8">লোড হচ্ছে...</div>
         </div>
         <div class="px-6 py-3 border-t bg-gray-50 shrink-0 flex items-center justify-between">
-            <p class="text-[10px] text-gray-400">Khatibangla Admin · Training Guide</p>
-            <button onclick="closePageGuide()" class="px-4 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-300 transition">Got it</button>
+            <p class="text-[10px] text-gray-400">খাটিবাংলা অ্যাডমিন · প্রশিক্ষণ গাইড</p>
+            <button onclick="closePageGuide()" class="px-4 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-300 transition">বুঝেছি</button>
         </div>
     </div>
 </div>
@@ -311,168 +311,186 @@ function openPageGuide(){
     document.getElementById('pageGuideModal').classList.remove('hidden');
     var page = '<?= basename($_SERVER['PHP_SELF'] ?? '', '.php') ?>';
     var pageLabel = (document.querySelector('h2')?.textContent?.trim() || 'Page');
-    document.getElementById('guideTitle').textContent = pageLabel;
+    document.getElementById('guideTitle').textContent = pageLabel + ' — গাইড';
     var guides = {
         'dashboard': {
             sections: [
-                {h:'📊 What is this page?', t:'The Dashboard is your store\'s command center. It shows a real-time snapshot of today\'s performance — orders received, revenue earned, and which orders need attention.'},
-                {h:'📦 Summary Cards', t:'The top row shows today\'s total orders, revenue, and counts by status (Processing, Confirmed, Shipped). Click any card to jump directly to those orders.'},
-                {h:'📋 Recent Orders', t:'The table below shows the latest 10 orders with status badges, customer info, and amount. Click any order number to open full details.'},
-                {h:'💡 Quick Tip', t:'Check this page first thing every morning. If "Processing" count is high, those orders need to be confirmed and shipped. Use Order Management for bulk processing.'},
+                {h:'📊 এই পেইজ কী?', t:'ড্যাশবোর্ড হলো আপনার স্টোরের কমান্ড সেন্টার। এখানে আজকের সব তথ্য দেখা যায় — কতটি অর্ডার এসেছে, কত টাকা আয় হয়েছে, এবং কোন অর্ডারগুলো দ্রুত প্রসেস করা দরকার।'},
+                {h:'📦 সামারি কার্ড', t:'উপরের কার্ডগুলো আজকের অর্ডার সংখ্যা, রেভিনিউ, Processing/Confirmed/Shipped কাউন্ট দেখায়। যেকোনো কার্ডে ক্লিক করলে সেই অর্ডারগুলোতে সরাসরি যেতে পারবেন।'},
+                {h:'📋 সাম্প্রতিক অর্ডার', t:'নিচের টেবিলে সর্বশেষ ১০টি অর্ডার দেখা যায় — স্ট্যাটাস, কাস্টমার নাম, এবং মোট টাকা। অর্ডার নম্বরে ক্লিক করলে বিস্তারিত দেখা যাবে।'},
+                {h:'💡 প্রতিদিনের কাজ', t:'প্রতিদিন সকালে প্রথমে ড্যাশবোর্ড চেক করুন। Processing সংখ্যা বেশি থাকলে দ্রুত Order Management-এ গিয়ে অর্ডার কনফার্ম করুন।'},
             ]
         },
         'accounting': {
             sections: [
-                {h:'📊 What is this page?', t:'The Accounting Dashboard shows your store\'s complete financial picture. All numbers are pulled automatically from real order data, expenses, and income — nothing needs to be manually calculated.'},
-                {h:'💰 Revenue', t:'This is the total amount from delivered orders only. It uses the date the order was actually delivered (or last updated). If you see ৳0 for "This Month" but expect data, try "Last Month" or "All Time" to see older orders.'},
-                {h:'🏭 COGS (Cost of Goods Sold)', t:'This is how much the products cost you to buy/make. It\'s calculated from FIFO batch costs (set when you do "Stock In" in Inventory) or falls back to each product\'s cost_price. To get accurate COGS, make sure products have cost prices set.'},
-                {h:'📈 Gross Profit', t:'Revenue minus COGS = Gross Profit. This tells you how much you earn from sales BEFORE paying for rent, salaries, shipping, etc. A healthy store should have 30%+ gross margin.'},
-                {h:'💸 Expenses', t:'Total of operating expenses (from Expenses section) plus advertising spend (from Ad Expenses). Add new expenses via the sidebar menu → New Expense.'},
-                {h:'✅ Net Profit', t:'Gross Profit + Other Income - All Expenses - Refunds = Net Profit. This is your actual bottom line — how much money the business is really making.'},
-                {h:'📅 Date Range', t:'Use the preset buttons (Today, 7D, This Month, etc.) to change the period. All numbers, charts, and the P&L section update automatically. Use the date inputs on the right for a custom range.'},
-                {h:'📊 Trend Chart', t:'The bar chart compares Revenue (green) vs Expenses (red) over the last 6 months. Watch for months where red bars approach green — that means margins are shrinking.'},
-                {h:'⚠️ Important', t:'Revenue only counts DELIVERED orders. Pending, processing, or cancelled orders are not included. This gives you the true collected revenue.'},
+                {h:'📊 এই পেইজ কী?', t:'অ্যাকাউন্টিং ড্যাশবোর্ড আপনার স্টোরের সম্পূর্ণ আর্থিক চিত্র দেখায়। সব সংখ্যা অটোমেটিক ক্যালকুলেট হয় — অর্ডার, খরচ, আয়, এবং দায় থেকে।'},
+                {h:'💰 Revenue (রেভিনিউ)', t:'শুধুমাত্র ডেলিভার হওয়া অর্ডার থেকে আয়। এটি আপনার আসল সংগৃহীত টাকা। "This Month"-এ ০ দেখালে "Last Month" বা "All Time" ট্রাই করুন।'},
+                {h:'🏭 COGS (পণ্য খরচ)', t:'পণ্য কিনতে/তৈরি করতে কত খরচ হয়েছে। Inventory-তে Stock In করার সময় "Cost Per Unit" দিলে সবচেয়ে সঠিক হিসাব পাবেন।'},
+                {h:'📈 Gross Profit (মোট লাভ)', t:'Revenue - COGS = মোট লাভ। ৩০%+ মার্জিন ভালো। এর কম হলে পণ্যের দাম বাড়ানো বা সাপ্লাইয়ার থেকে কম দামে কেনার চেষ্টা করুন।'},
+                {h:'💸 Expenses (খরচ)', t:'Expenses সেকশন থেকে অপারেটিং খরচ + Ad Expenses থেকে বিজ্ঞাপন খরচ। নতুন খরচ যোগ করতে সাইডবার → New Expense।'},
+                {h:'✅ Net Profit (নিট লাভ)', t:'মোট লাভ + অন্যান্য আয় - সব খরচ - রিফান্ড = নিট লাভ। এটাই আপনার প্রকৃত আয়।'},
+                {h:'📅 তারিখ ফিল্টার', t:'বাটনগুলো ব্যবহার করুন (Today, 7D, This Month ইত্যাদি)। অথবা ডানে কাস্টম তারিখ দিন। সব তথ্য সেই সময়ের জন্য আপডেট হবে।'},
             ]
         },
         'expenses': {
             sections: [
-                {h:'📊 What is this page?', t:'This page shows all recorded business expenses — shipping costs, salaries, rent, office supplies, etc. Use this to track where money is going.'},
-                {h:'➕ Adding Expenses', t:'Click "+ New Expense" for operating costs (rent, salary, shipping) or "+ New Ad Expense" for advertising spend (Facebook, Google ads). Each expense is automatically counted in the Accounting dashboard.'},
-                {h:'🏷️ Categories', t:'Every expense should have a category (Shipping, Marketing, Salary, Rent, etc.). This helps the Accounting dashboard show you which category is eating the most money. You can add new categories from the left panel.'},
-                {h:'🔍 Filtering', t:'Use the date inputs and category dropdown to filter. The total amount at the bottom reflects your filtered view only.'},
-                {h:'💡 Quick Tip', t:'Enter expenses daily as they happen — don\'t wait until month end. This keeps the Accounting dashboard accurate and helps you spot overspending early.'},
+                {h:'📊 এই পেইজ কী?', t:'সব ব্যবসায়িক খরচের তালিকা — শিপিং, বেতন, ভাড়া, অফিস সামগ্রী ইত্যাদি। ক্যাটেগরি, পরিমাণ, এবং কে যোগ করেছে দেখা যায়।'},
+                {h:'➕ খরচ যোগ করা', t:'"+ New Expense" বাটনে ক্লিক করুন অপারেটিং খরচের জন্য। বিজ্ঞাপন খরচের জন্য "+ New Ad Expense" ব্যবহার করুন।'},
+                {h:'🏷️ ক্যাটেগরি', t:'প্রতিটি খরচে ক্যাটেগরি দিন (Shipping, Marketing, Salary ইত্যাদি)। এটি Accounting ড্যাশবোর্ডে খরচের ব্রেকডাউন দেখাতে সাহায্য করে।'},
+                {h:'💡 গুরুত্বপূর্ণ', t:'প্রতিদিন খরচ লিখুন — মাসের শেষে করবেন না। এতে Accounting ড্যাশবোর্ড সবসময় সঠিক থাকবে।'},
             ]
         },
         'expense-new': {
             sections: [
-                {h:'📊 What is this page?', t:'Use this form to record a business operating expense — anything that costs money but isn\'t product cost (COGS) or ad spend.'},
-                {h:'📝 What to Enter Here', t:'Shipping/courier charges, office rent, employee salaries, packaging materials, utility bills, software subscriptions, equipment purchases, travel costs.'},
-                {h:'⚠️ What NOT to Enter Here', t:'Product purchase costs → use Inventory → Stock In with cost price instead. Ad spend → use New Ad Expense. Customer refunds → these are tracked automatically when orders are marked as "Returned".'},
-                {h:'✅ Required Fields', t:'Title, Amount, Category, and Date are mandatory. Payment method and receipt image are optional but help when reconciling accounts later.'},
-                {h:'🔄 Auto-Sync', t:'Once saved, the expense immediately appears in: Expenses List, Accounting Dashboard (under Expenses), and the Accounting Ledger.'},
+                {h:'📊 এই পেইজ কী?', t:'নতুন ব্যবসায়িক খরচ যোগ করার ফর্ম। শিপিং, বেতন, ভাড়া, প্যাকেজিং ইত্যাদি।'},
+                {h:'✅ প্রয়োজনীয় তথ্য', t:'Title (শিরোনাম), Amount (টাকা), Category (ক্যাটেগরি), এবং Date (তারিখ) অবশ্যই দিতে হবে।'},
+                {h:'⚠️ যা এখানে দেবেন না', t:'পণ্য কেনার খরচ → Inventory → Stock In ব্যবহার করুন। বিজ্ঞাপন খরচ → New Ad Expense ব্যবহার করুন।'},
+                {h:'🔄 অটো সিঙ্ক', t:'সেভ করলে খরচটি স্বয়ংক্রিয়ভাবে Expenses List এবং Accounting Dashboard-এ দেখাবে।'},
             ]
         },
         'ad-expense-new': {
             sections: [
-                {h:'📊 What is this page?', t:'Record advertising expenses with campaign-level detail. Supports Meta (Facebook/Instagram), Google, TikTok, and other platforms.'},
-                {h:'💱 USD / BDT', t:'If you spend in USD, enter the USD amount and exchange rate — the BDT amount calculates automatically. Or just enter the BDT amount directly if you already know it.'},
-                {h:'📈 Performance Metrics', t:'Enter impressions, clicks, and conversions if available. The system calculates CPM (cost per 1000 views), CPC (cost per click), and CPA (cost per conversion) automatically.'},
-                {h:'🔄 Data Connection', t:'Ad expenses show up in the Accounting dashboard as "Ad Spend" and in the Meta Ads Report for campaign performance analysis.'},
+                {h:'📊 এই পেইজ কী?', t:'বিজ্ঞাপন খরচ রেকর্ড করুন — Meta (Facebook/Instagram), Google, TikTok ইত্যাদি প্ল্যাটফর্মে।'},
+                {h:'💱 USD / BDT', t:'USD-তে খরচ হলে USD এমাউন্ট ও এক্সচেঞ্জ রেট দিন — BDT অটো ক্যালকুলেট হবে। বা সরাসরি BDT দিন।'},
+                {h:'📈 পারফরম্যান্স মেট্রিক্স', t:'Impressions, Clicks, Conversions দিলে CPM, CPC, CPA অটো ক্যালকুলেট হবে।'},
             ]
         },
         'income': {
             sections: [
-                {h:'📊 What is this page?', t:'Track manual income — money coming in from sources OTHER than regular customer orders. Order revenue is tracked automatically and doesn\'t need to be entered here.'},
-                {h:'📝 When to Use', t:'Record income from: direct cash sales not in the system, service fees charged, supplier refunds received, investment/loan money received, rental income, or any other non-order income.'},
-                {h:'⚠️ Don\'t Double-Count', t:'Order-based revenue (from delivered orders) is already counted automatically. Don\'t add it here again — it would double your income numbers.'},
-                {h:'🔄 Data Connection', t:'Manual income entries appear in the Accounting dashboard under "Other Income" and add to the Net Profit calculation.'},
+                {h:'📊 এই পেইজ কী?', t:'অর্ডার ছাড়া অন্যান্য আয় রেকর্ড করুন — সার্ভিস ফি, বিনিয়োগ, সাপ্লায়ার রিফান্ড ইত্যাদি।'},
+                {h:'⚠️ সতর্কতা', t:'অর্ডার থেকে আয় অটোমেটিক ট্র্যাক হয়। এখানে আবার যোগ করবেন না — তাহলে ডাবল কাউন্ট হবে।'},
+                {h:'🔄 কখন ব্যবহার করবেন', t:'সিস্টেমে নেই এমন ক্যাশ সেল, সার্ভিস চার্জ, লোন প্রাপ্তি, বিনিয়োগ রিটার্ন ইত্যাদি।'},
             ]
         },
         'liabilities': {
             sections: [
-                {h:'📊 What is this page?', t:'Track money your business owes — supplier invoices, loans, rent due, salary payables, or any other debts.'},
-                {h:'🔄 Status Flow', t:'<strong>Pending</strong> → money owed but not yet paid. <strong>Partial</strong> → some amount paid. <strong>Paid</strong> → fully settled. <strong>Overdue</strong> → automatically set when due date passes without full payment.'},
-                {h:'💳 Making Payments', t:'Click the "Pay" button on any unpaid liability. Enter the amount being paid now — partial payments are fully supported. The system tracks the remaining balance.'},
-                {h:'🔄 Data Connection', t:'Outstanding liabilities show in the Accounting dashboard under "Liabilities". Each payment is also recorded as an expense entry.'},
-                {h:'💡 Quick Tip', t:'Add liabilities as soon as you receive an invoice or take on a debt. Set the due date so the system can auto-mark overdue items.'},
+                {h:'📊 এই পেইজ কী?', t:'ব্যবসার সব দায় ট্র্যাক করুন — সাপ্লায়ার বকেয়া, লোন, ভাড়া বকেয়া, বেতন বকেয়া।'},
+                {h:'🔄 স্ট্যাটাস', t:'<strong>Pending</strong> = বকেয়া আছে। <strong>Partial</strong> = কিছু দেওয়া হয়েছে। <strong>Paid</strong> = পুরো পরিশোধ। <strong>Overdue</strong> = মেয়াদ শেষ।'},
+                {h:'💳 পেমেন্ট করা', t:'"Pay" বাটনে ক্লিক করুন। আংশিক পেমেন্ট সাপোর্ট করে — বাকি ব্যালেন্স অটো ট্র্যাক হয়।'},
+                {h:'💡 পরামর্শ', t:'ইনভয়েস পাওয়ার সাথে সাথে এখানে যোগ করুন। Due date দিন যাতে অটো overdue হয়।'},
             ]
         },
         'inventory': {
             sections: [
-                {h:'📊 What is this page?', t:'Manage your product stock across warehouses. The FIFO (First In, First Out) system tracks the cost of each batch of stock you receive.'},
-                {h:'📦 Stock Levels Tab', t:'Shows all products with current stock count, low-stock threshold, and status. Red = Out of Stock, Yellow = Low Stock, Green = In Stock.'},
-                {h:'➕ Adjust Stock Tab', t:'Add or remove stock here. When doing "Stock In", always enter the <strong>Cost Per Unit</strong> — this is critical for accurate profit calculations. Each Stock In creates a FIFO batch.'},
-                {h:'🔢 FIFO Batches Tab', t:'Shows all stock batches with their purchase cost and remaining quantity. When products sell, the system automatically uses the OLDEST batch first (First In, First Out). This gives you accurate Cost of Goods Sold.'},
-                {h:'🎨 Variant Stock Tab', t:'For products with sizes/colors — manage stock per variant with quick +/- buttons.'},
-                {h:'📋 Movements Tab', t:'Full audit trail: every stock change is logged with who did it, when, and why.'},
-                {h:'🏢 Warehouses Tab', t:'Create and manage multiple warehouses. Each product\'s stock is tracked per warehouse.'},
-                {h:'💡 Key Concept: Cost Price', t:'When you add stock, the "Cost Per Unit" you enter is what the Accounting page uses to calculate COGS (Cost of Goods Sold). Higher accuracy here = more accurate profit numbers.'},
+                {h:'📊 এই পেইজ কী?', t:'পণ্যের স্টক ম্যানেজমেন্ট। FIFO (First In, First Out) সিস্টেমে প্রতিটি স্টক ইন-এর খরচ ট্র্যাক হয়।'},
+                {h:'📦 Stock Levels', t:'সব পণ্যের বর্তমান স্টক দেখুন। লাল = স্টক নেই, হলুদ = কম স্টক, সবুজ = পর্যাপ্ত স্টক।'},
+                {h:'➕ Adjust Stock', t:'Stock In করলে <strong>Cost Per Unit অবশ্যই দিন</strong> — এটি Accounting-এ COGS হিসাবের জন্য জরুরি। Stock Out করলে সবচেয়ে পুরনো ব্যাচ থেকে প্রথমে কাটা হয়।'},
+                {h:'🔢 FIFO Batches', t:'প্রতিটি Stock In একটি ব্যাচ তৈরি করে (কস্ট + পরিমাণ সহ)। বিক্রি হলে পুরনো ব্যাচ আগে ব্যবহার হয়। এটি সঠিক COGS দেয়।'},
+                {h:'💡 গুরুত্বপূর্ণ', t:'Cost Per Unit সঠিক দিলে Accounting-এ লাভ-ক্ষতির হিসাব সঠিক হবে। ভুল দিলে প্রফিট ভুল দেখাবে।'},
             ]
         },
         'inventory-dashboard': {
             sections: [
-                {h:'📊 What is this page?', t:'Visual overview of your entire inventory health — which products need attention, stock value, and movement patterns.'},
-                {h:'🔴 Attention Required', t:'Products listed here need restocking. Sort by priority — Out of Stock items should be restocked first.'},
-                {h:'💡 Quick Tip', t:'Check this page weekly. If many products are in "Low Stock", place bulk supplier orders to avoid stockouts.'},
+                {h:'📊 এই পেইজ কী?', t:'ইনভেন্টরির সামগ্রিক অবস্থা — কোন পণ্যে স্টক কম, কোনটিতে নেই, মোট স্টক ভ্যালু কত।'},
+                {h:'🔴 মনোযোগ দরকার', t:'এখানে তালিকাভুক্ত পণ্যগুলো রিস্টক করা দরকার। Out of Stock আইটেমগুলো আগে রিস্টক করুন।'},
+                {h:'💡 পরামর্শ', t:'প্রতি সপ্তাহে চেক করুন। অনেক পণ্য Low Stock-এ থাকলে সাপ্লায়ারকে বাল্ক অর্ডার দিন।'},
             ]
         },
         'order-management': {
             sections: [
-                {h:'📊 What is this page?', t:'The main hub for managing all customer orders. This is where you\'ll spend most of your time — confirming orders, assigning couriers, and tracking deliveries.'},
-                {h:'🔄 Order Status Flow', t:'<strong>Processing</strong> → new order received. <strong>Confirmed</strong> → verified and ready to pack. <strong>Shipped</strong> → handed to courier. <strong>Delivered</strong> → customer received it.'},
-                {h:'📑 Status Tabs', t:'Click any tab to filter orders by status. The badge number shows the count. Typically you\'ll work through Processing → Confirmed → assign courier.'},
-                {h:'🚚 Courier Sub-Tabs', t:'After selecting a status (e.g., Shipped), filter by courier (Pathao, Steadfast, etc.) to see which orders went where.'},
-                {h:'☑️ Bulk Actions', t:'Check multiple orders → click "Actions" dropdown → Bulk status change, print invoices/stickers, or upload to courier. Saves time when processing many orders at once.'},
-                {h:'🔍 Search', t:'Search by order number (e.g., k0003), customer name, or phone number. Use "Filters" button for date range, channel, tags, and staff assignment.'},
-                {h:'🟢 Open Button', t:'Click "Open" to view full order details — edit customer info, change status, add notes, or upload to courier.'},
-                {h:'🔒 Order Locking', t:'When you open an order, it\'s locked so other team members can\'t edit the same order simultaneously. The lock releases automatically when you leave.'},
-                {h:'💡 Daily Workflow', t:'1. Check Processing tab → confirm legitimate orders. 2. Move to Confirmed → assign courier and ship. 3. Check No Response → follow up. 4. Review Returned/Cancelled for patterns.'},
+                {h:'📊 এই পেইজ কী?', t:'অর্ডার ম্যানেজমেন্ট হলো আপনার প্রধান কর্মক্ষেত্র। এখান থেকে সব অর্ডার কনফার্ম, শিপ, এবং ট্র্যাক করবেন। দিনের বেশিরভাগ কাজ এই পেইজে হবে।'},
+                {h:'🔄 অর্ডার স্ট্যাটাস ফ্লো', t:'<strong>Processing</strong> → নতুন অর্ডার এসেছে, যাচাই করা দরকার।<br><strong>Confirmed</strong> → যাচাই শেষ, প্যাক করার জন্য প্রস্তুত।<br><strong>Shipped</strong> → কুরিয়ারে দেওয়া হয়েছে।<br><strong>Delivered</strong> → কাস্টমার পেয়ে গেছে।<br><strong>On Hold</strong> → সাময়িকভাবে থামানো।<br><strong>No Response</strong> → কাস্টমার ফোন ধরছে না।<br><strong>Cancelled</strong> → বাতিল হয়েছে।<br><strong>Returned</strong> → পণ্য ফেরত এসেছে।'},
+                {h:'📑 স্ট্যাটাস ট্যাব', t:'উপরে ট্যাবগুলো ক্লিক করে স্ট্যাটাস অনুযায়ী ফিল্টার করুন। ব্যাজে সংখ্যা দেখায় কতটি অর্ডার সেই স্ট্যাটাসে আছে। ALL ক্লিক করলে সব অর্ডার দেখায়।'},
+                {h:'🚚 কুরিয়ার সাব-ট্যাব', t:'কোনো স্ট্যাটাস সিলেক্ট করার পর (যেমন Shipped), কুরিয়ার অনুযায়ী ফিল্টার করুন — Pathao, Steadfast, RedX, বা Unassigned।'},
+                {h:'☑️ বাল্ক অ্যাকশন', t:'একাধিক অর্ডার সিলেক্ট করুন (চেকবক্স) → "Actions" ড্রপডাউন ক্লিক করুন → বাল্ক স্ট্যাটাস চেঞ্জ, ইনভয়েস প্রিন্ট, স্টিকার প্রিন্ট, বা কুরিয়ারে আপলোড করুন।'},
+                {h:'🔍 সার্চ', t:'অর্ডার নম্বর (যেমন k0003), কাস্টমার নাম, বা ফোন নম্বর দিয়ে সার্চ করুন। "Filters" বাটনে ক্লিক করলে ডেট রেঞ্জ, চ্যানেল, ট্যাগ, ও স্টাফ ফিল্টার পাবেন।'},
+                {h:'🟢 Open বাটন', t:'প্রতিটি অর্ডারের পাশে "Open" বাটন আছে। ক্লিক করলে অর্ডারের সম্পূর্ণ বিবরণ দেখা যায় — এডিট, স্ট্যাটাস চেঞ্জ, নোট যোগ, কুরিয়ার আপলোড সব সেখানে।'},
+                {h:'🔒 অর্ডার লক', t:'যখন আপনি একটি অর্ডার ওপেন করবেন, সেটি লক হয়ে যায় যাতে অন্য কর্মী একই সাথে এডিট করতে না পারে। পেইজ ছেড়ে গেলে অটো আনলক হয়।'},
+                {h:'📄 প্রিন্টিং', t:'অর্ডার সিলেক্ট করে Actions → Print Invoice (ইনভয়েস) বা Print Sticker (স্টিকার) ক্লিক করুন। একাধিক অর্ডার একসাথে প্রিন্ট করা যায়।'},
+                {h:'🔍 ফ্রড চেক', t:'"Check" বাটনে ক্লিক করে কাস্টমারের ফোন নম্বর দিয়ে ডেলিভারি সাকসেস রেট দেখুন। Pathao, Steadfast, RedX, ও লোকাল ডেটা থেকে তথ্য আসে।'},
+                {h:'💡 প্রতিদিনের কাজের ধাপ', t:'<strong>ধাপ ১:</strong> Processing ট্যাব চেক করুন → বৈধ অর্ডার কনফার্ম করুন।<br><strong>ধাপ ২:</strong> Confirmed ট্যাব → কুরিয়ার অ্যাসাইন করুন ও শিপ করুন।<br><strong>ধাপ ৩:</strong> No Response ট্যাব → কাস্টমারকে ফলো আপ করুন।<br><strong>ধাপ ৪:</strong> Returned/Cancelled চেক করুন — প্যাটার্ন দেখুন।'},
             ]
         },
         'order-view': {
             sections: [
-                {h:'📊 What is this page?', t:'Complete details of a single order — customer info, products ordered, pricing breakdown, courier tracking, and status history.'},
-                {h:'✏️ Editing', t:'You can edit customer name, phone, address, and notes directly. Changes are saved when you click Save.'},
-                {h:'🔄 Status Change', t:'Use the status dropdown to move the order forward (Confirm → Ship → Deliver). Each change is logged in the history below.'},
-                {h:'🚚 Courier', t:'Assign a courier provider (Pathao, Steadfast, RedX) to generate a consignment number and tracking link.'},
-                {h:'📝 Three Note Types', t:'<strong>Shipping Note</strong> (orange dot) — sent to the courier. <strong>Order Note</strong> (blue dot) — printed on the invoice. <strong>Panel Note</strong> (green dot) — internal only, never visible to customer or courier.'},
-                {h:'🔒 Order Lock', t:'While you\'re viewing this order, it\'s locked for other team members. If someone else has it open, you\'ll see a message and can choose to take over.'},
+                {h:'📊 এই পেইজ কী?', t:'একটি অর্ডারের সম্পূর্ণ বিবরণ — কাস্টমার তথ্য, পণ্য, মূল্য, কুরিয়ার ট্র্যাকিং, ও স্ট্যাটাস ইতিহাস।'},
+                {h:'✏️ এডিট করা', t:'কাস্টমারের নাম, ফোন, ঠিকানা, নোট সরাসরি পরিবর্তন করা যায়। পরিবর্তন করে Save ক্লিক করুন।'},
+                {h:'🔄 স্ট্যাটাস পরিবর্তন', t:'স্ট্যাটাস ড্রপডাউন ব্যবহার করে অর্ডার এগিয়ে নিন (Confirm → Ship → Deliver)। প্রতিটি পরিবর্তন ইতিহাসে রেকর্ড হয়।'},
+                {h:'🚚 কুরিয়ার', t:'কুরিয়ার প্রোভাইডার (Pathao, Steadfast, RedX) সিলেক্ট করলে কনসাইনমেন্ট নম্বর ও ট্র্যাকিং লিংক তৈরি হবে।'},
+                {h:'📝 তিন ধরনের নোট', t:'<strong>🟠 Shipping Note</strong> — কুরিয়ারে পাঠানো হয়।<br><strong>🔵 Order Note</strong> — ইনভয়েসে প্রিন্ট হয়।<br><strong>🟢 Panel Note</strong> — শুধু অ্যাডমিনের জন্য, কাস্টমার বা কুরিয়ার দেখতে পায় না।'},
+                {h:'🔒 লক সিস্টেম', t:'আপনি যখন এই অর্ডার দেখছেন, অন্য কর্মীরা এটি এডিট করতে পারবে না। আপনি চলে গেলে অটো আনলক হবে।'},
+            ]
+        },
+        'order-processing': {
+            sections: [
+                {h:'📊 এই পেইজ কী?', t:'Processing অর্ডারগুলো কার্ড ভিউতে দেখায়। এখান থেকে দ্রুত একটি একটি করে অর্ডার প্রসেস করা যায়।'},
+                {h:'▶️ Start Processing', t:'"Start Processing" বাটনে ক্লিক করলে Processing অর্ডারগুলো একটি কিউতে আসবে। একটি শেষ হলে পরেরটি অটো লোড হয়।'},
+                {h:'💡 পরামর্শ', t:'অনেক অর্ডার থাকলে এই ভিউ ব্যবহার করুন — দ্রুত কনফার্ম/ক্যান্সেল করা যায়।'},
+            ]
+        },
+        'approved-orders': {
+            sections: [
+                {h:'📊 এই পেইজ কী?', t:'এটি Order Management-এর confirmed স্ট্যাটাসে রিডাইরেক্ট করে।'},
+            ]
+        },
+        'incomplete-orders': {
+            sections: [
+                {h:'📊 এই পেইজ কী?', t:'অসম্পূর্ণ অর্ডারের তালিকা — কাস্টমার চেকআউট শুরু করেছে কিন্তু অর্ডার প্লেস করেনি। ফোন নম্বর, কার্টের আইটেম, ও ডিভাইস তথ্য দেখা যায়।'},
+                {h:'📞 ফলো আপ', t:'এই কাস্টমারদের ফোন করে অর্ডার নিশ্চিত করুন। "Convert" বাটনে ক্লিক করলে অসম্পূর্ণ অর্ডার থেকে নতুন অর্ডার তৈরি হয়।'},
+                {h:'💡 পরামর্শ', t:'প্রতিদিন চেক করুন। দ্রুত ফলো আপ করলে রিকভারি রেট বেশি হয়।'},
             ]
         },
         'customers': {
             sections: [
-                {h:'📊 What is this page?', t:'All customers who have placed orders or registered accounts. Use this to look up customer history and manage accounts.'},
-                {h:'👤 Customer Types', t:'<strong>Guests</strong> — placed orders without creating an account. <strong>Registered</strong> — have a password or logged in via Google/Facebook.'},
-                {h:'📋 Customer Profile', t:'Click a customer to see their full order history, delivery success rate, total spent, and store credit balance.'},
-                {h:'🔍 Search', t:'Search by name, phone number, or email. Use tabs to filter by type (All/Guest/Registered).'},
+                {h:'📊 এই পেইজ কী?', t:'সব কাস্টমারের তালিকা — অর্ডার হিস্ট্রি, রেজিস্ট্রেশন স্ট্যাটাস, ও যোগাযোগের তথ্য।'},
+                {h:'👤 কাস্টমার ধরন', t:'<strong>Guest</strong> = অ্যাকাউন্ট ছাড়া অর্ডার দিয়েছে। <strong>Registered</strong> = অ্যাকাউন্ট আছে (পাসওয়ার্ড বা Google/Facebook লগইন)।'},
+                {h:'📋 প্রোফাইল', t:'কাস্টমারে ক্লিক করলে সম্পূর্ণ অর্ডার হিস্ট্রি, ডেলিভারি সাকসেস রেট, মোট খরচ, ও স্টোর ক্রেডিট দেখা যায়।'},
             ]
         },
         'products': {
             sections: [
-                {h:'📊 What is this page?', t:'All products in your store with price, stock count, category, and status.'},
-                {h:'📦 Product Types', t:'<strong>Simple</strong> — single item, one price. <strong>Variable</strong> — has variants like size/color with individual stock. <strong>Bundle</strong> — multiple products sold together at a package price.'},
-                {h:'📈 Stock Numbers', t:'The stock count shown here is the total across all warehouses. Manage stock details via Inventory section.'},
-                {h:'💰 Cost Price', t:'Each product has a "Cost Price" field — this is used for COGS calculations in Accounting when FIFO batch data isn\'t available. Keep it accurate.'},
+                {h:'📊 এই পেইজ কী?', t:'স্টোরের সব পণ্যের তালিকা — দাম, স্টক, ক্যাটেগরি, ও স্ট্যাটাস।'},
+                {h:'📦 পণ্যের ধরন', t:'<strong>Simple</strong> = একটি আইটেম, একটি দাম। <strong>Variable</strong> = সাইজ/কালার ভ্যারিয়েন্ট আছে। <strong>Bundle</strong> = একাধিক পণ্য একসাথে প্যাকেজ দামে।'},
+                {h:'💰 Cost Price', t:'প্রতিটি পণ্যে "Cost Price" ফিল্ড আছে। এটি Accounting-এ COGS ক্যালকুলেশনে ব্যবহার হয়। সঠিক রাখুন।'},
             ]
         },
         'courier': {
             sections: [
-                {h:'📊 What is this page?', t:'Manage courier provider settings — API credentials, default settings, and provider-specific configuration for Pathao, Steadfast, RedX, etc.'},
-                {h:'🔧 Setup', t:'Each courier needs API credentials (key/secret/token) entered here. Contact the courier provider to get your merchant API access.'},
+                {h:'📊 এই পেইজ কী?', t:'কুরিয়ার প্রোভাইডার সেটিংস — API ক্রেডেনশিয়াল, ডিফল্ট সেটিংস, Pathao/Steadfast/RedX কনফিগারেশন।'},
+                {h:'🔧 সেটআপ', t:'প্রতিটি কুরিয়ারের API key/secret/token এখানে দিতে হবে। মার্চেন্ট API অ্যাক্সেসের জন্য কুরিয়ার প্রোভাইডারের সাথে যোগাযোগ করুন।'},
             ]
         },
         'settings': {
             sections: [
-                {h:'📊 What is this page?', t:'Global site settings — store name, contact info, logos, payment methods, SEO, and feature toggles.'},
-                {h:'⚠️ Careful', t:'Changes here affect the entire store immediately. Double-check before saving, especially payment and shipping settings.'},
+                {h:'📊 এই পেইজ কী?', t:'স্টোরের গ্লোবাল সেটিংস — নাম, যোগাযোগ, লোগো, পেমেন্ট, SEO, ও ফিচার টগল।'},
+                {h:'⚠️ সতর্কতা', t:'এখানে পরিবর্তন করলে পুরো সাইটে প্রভাব পড়বে। সেভ করার আগে দুইবার চেক করুন, বিশেষ করে পেমেন্ট ও শিপিং সেটিংস।'},
             ]
         },
         'reports': {
             sections: [
-                {h:'📊 What is this page?', t:'Analytics and reports hub. Access detailed reports on orders, products, employees, and business performance.'},
-                {h:'📋 Available Reports', t:'Order Reports (status breakdown by date), Product Reports (top sellers, stock analysis), Employee Reports (performance tracking), Profit & Sales (P&L by period), Business Report (comprehensive overview).'},
+                {h:'📊 এই পেইজ কী?', t:'রিপোর্ট ও অ্যানালিটিক্স হাব। অর্ডার, পণ্য, কর্মী, ও ব্যবসায়িক পারফরম্যান্সের বিস্তারিত রিপোর্ট।'},
             ]
         },
         'blog': {
             sections: [
-                {h:'📊 What is this page?', t:'Manage blog posts for SEO and content marketing. Create, edit, and publish articles that appear on your store\'s blog section.'},
+                {h:'📊 এই পেইজ কী?', t:'ব্লগ পোস্ট ম্যানেজ করুন। SEO ও কন্টেন্ট মার্কেটিং-এর জন্য আর্টিকেল তৈরি, এডিট ও পাবলিশ করুন।'},
             ]
         },
         'reviews': {
             sections: [
-                {h:'📊 What is this page?', t:'Manage customer product reviews and Q&A. Approve, reject, or respond to customer feedback.'},
-                {h:'✅ Approval', t:'New reviews need approval before they appear on the product page. Auto-approve can be enabled in Settings.'},
+                {h:'📊 এই পেইজ কী?', t:'কাস্টমারের পণ্য রিভিউ ও প্রশ্ন ম্যানেজ করুন। অনুমোদন, রিজেক্ট, বা উত্তর দিন।'},
+                {h:'✅ অনুমোদন', t:'নতুন রিভিউ প্রথমে অনুমোদন দরকার। Settings-এ অটো-অনুমোদন চালু করা যায়।'},
             ]
         },
         'coupons': {
             sections: [
-                {h:'📊 What is this page?', t:'Create and manage discount coupons — percentage off, fixed amount, or free shipping. Set usage limits, date ranges, and minimum order amounts.'},
+                {h:'📊 এই পেইজ কী?', t:'ডিসকাউন্ট কুপন তৈরি ও ম্যানেজ করুন — শতাংশ ছাড়, নির্দিষ্ট পরিমাণ, বা ফ্রি শিপিং।'},
             ]
         },
         'security': {
             sections: [
-                {h:'📊 What is this page?', t:'Security settings — firewall rules, rate limiting, brute force protection, IP blocking, and security headers.'},
-                {h:'⚠️ Careful', t:'Incorrect settings can lock you out of the admin panel. Don\'t change settings you don\'t understand.'},
+                {h:'📊 এই পেইজ কী?', t:'সিকিউরিটি সেটিংস — ফায়ারওয়াল, রেট লিমিটিং, ব্রুট ফোর্স প্রোটেকশন, IP ব্লকিং।'},
+                {h:'⚠️ সতর্কতা', t:'ভুল সেটিংস দিলে আপনি নিজেই অ্যাডমিন প্যানেল থেকে লক আউট হতে পারেন। না বুঝলে পরিবর্তন করবেন না।'},
+            ]
+        },
+        'scan-to-update': {
+            sections: [
+                {h:'📊 এই পেইজ কী?', t:'বারকোড/QR কোড স্ক্যান করে অর্ডার স্ট্যাটাস আপডেট করুন। শিপিং বা ডেলিভারি কনফার্ম করতে দ্রুত।'},
+            ]
+        },
+        'call-center': {
+            sections: [
+                {h:'📊 এই পেইজ কী?', t:'কল সেন্টার ভিউ — কাস্টমারদের ফোন করার জন্য অর্ডার তালিকা। No Response ও Follow Up অর্ডার এখানে দেখুন।'},
             ]
         },
     };
@@ -482,11 +500,11 @@ function openPageGuide(){
         g.sections.forEach(function(s, i){
             html += '<div class="mb-5 pb-4 ' + (i < g.sections.length - 1 ? 'border-b border-gray-100' : '') + '">';
             html += '<h4 class="font-semibold text-gray-800 text-[13px] mb-1.5">' + s.h + '</h4>';
-            html += '<p class="text-gray-600 text-[12.5px] leading-[1.7]">' + s.t + '</p>';
+            html += '<p class="text-gray-600 text-[12.5px] leading-[1.8]">' + s.t + '</p>';
             html += '</div>';
         });
     } else {
-        html = '<div class="text-center py-10"><div class="text-3xl mb-3">📖</div><p class="text-gray-500 text-sm">No specific guide available for this page yet.</p><p class="text-gray-400 text-xs mt-1">Contact your admin to add training content for this section.</p></div>';
+        html = '<div class="text-center py-10"><div class="text-3xl mb-3">📖</div><p class="text-gray-500 text-sm">এই পেইজের জন্য গাইড এখনো তৈরি হয়নি।</p><p class="text-gray-400 text-xs mt-1">অ্যাডমিনকে জানান এই সেকশনে ট্রেনিং কন্টেন্ট যোগ করতে।</p></div>';
     }
     document.getElementById('guideBody').innerHTML = html;
 }
