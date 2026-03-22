@@ -110,7 +110,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 // ── Auto-migrate: convert any remaining 'pending' orders to 'processing' ──
 try { $db->query("UPDATE orders SET order_status = 'processing' WHERE order_status = 'pending'"); } catch(\Throwable $e) {}
 // Expand ENUM to include all courier-driven statuses
-try { $db->query("ALTER TABLE orders MODIFY COLUMN order_status ENUM('pending','processing','confirmed','shipped','delivered','cancelled','returned','on_hold','no_response','good_but_no_response','advance_payment','incomplete','pending_return','pending_cancel','partial_delivered','lost') DEFAULT 'processing'"); } catch(\Throwable $e) {}
+try { $db->query("ALTER TABLE orders MODIFY COLUMN order_status ENUM('pending','processing','confirmed','ready_to_ship','shipped','delivered','cancelled','returned','on_hold','no_response','good_but_no_response','advance_payment','incomplete','pending_return','pending_cancel','partial_delivered','lost') DEFAULT 'processing'"); } catch(\Throwable $e) {}
 // Add courier_status column for raw courier API status
 try { $db->query("ALTER TABLE orders ADD COLUMN courier_status VARCHAR(100) DEFAULT NULL AFTER courier_tracking_id"); } catch(\Throwable $e) {}
 try { $db->query("ALTER TABLE orders ADD COLUMN courier_tracking_message TEXT DEFAULT NULL AFTER courier_status"); } catch(\Throwable $e) {}
@@ -128,10 +128,10 @@ try { $db->query("ALTER TABLE orders ADD COLUMN advance_amount DECIMAL(12,2) DEF
 try { $db->query("ALTER TABLE orders ADD COLUMN advance_amount DECIMAL(12,2) DEFAULT 0 AFTER discount_amount"); } catch(\Throwable $e) {}
 
 // ── Order Flow Definition ──
-// Main flow: Processing → Confirmed → Shipped → Delivered
+// Main flow: Processing → Confirmed → Ready to Ship → Shipped → Delivered
 // Courier-driven (auto-updated by webhooks): pending_return, pending_cancel, partial_delivered, lost
 // Manual side statuses: cancelled, returned, on_hold, no_response, good_but_no_response, advance_payment
-$mainFlow = ['processing', 'confirmed', 'shipped', 'delivered'];
+$mainFlow = ['processing', 'confirmed', 'ready_to_ship', 'shipped', 'delivered'];
 $courierStatuses = ['pending_return', 'pending_cancel', 'partial_delivered', 'lost'];
 $sideStatuses = ['cancelled', 'returned', 'on_hold', 'no_response', 'good_but_no_response', 'advance_payment'];
 $allStatuses = array_merge($mainFlow, $courierStatuses, $sideStatuses);
@@ -139,7 +139,8 @@ $allStatuses = array_merge($mainFlow, $courierStatuses, $sideStatuses);
 // Next logical action for each status
 $nextAction = [
     'processing' => ['status' => 'confirmed', 'label' => 'Confirm', 'icon' => '✅', 'color' => 'blue'],
-    'confirmed'  => ['status' => 'shipped',   'label' => 'Ship',    'icon' => '🚚', 'color' => 'purple'],
+    'confirmed'  => ['status' => 'ready_to_ship', 'label' => 'Ready to Ship', 'icon' => '📦', 'color' => 'violet'],
+    'ready_to_ship' => ['status' => 'shipped', 'label' => 'Ship', 'icon' => '🚚', 'color' => 'purple'],
     'shipped'    => ['status' => 'delivered',  'label' => 'Deliver', 'icon' => '📦', 'color' => 'green'],
     'pending_return' => ['status' => 'returned', 'label' => 'Confirm Return', 'icon' => '↩', 'color' => 'orange'],
     'pending_cancel' => ['status' => 'cancelled', 'label' => 'Confirm Cancel', 'icon' => '✗', 'color' => 'red'],
@@ -243,12 +244,14 @@ $incompleteCount = 0;
 try { $incompleteCount = $db->fetch("SELECT COUNT(*) as cnt FROM incomplete_orders WHERE recovered = 0 AND created_at > DATE_SUB(NOW(), INTERVAL 7 DAY)")['cnt']; } catch(Exception $e){}
 
 // Today's summary
-$todaySummary = $db->fetch("SELECT COUNT(*) as total, SUM(total) as revenue, SUM(CASE WHEN order_status IN ('processing','pending') THEN 1 ELSE 0 END) as processing, SUM(CASE WHEN order_status='confirmed' THEN 1 ELSE 0 END) as confirmed, SUM(CASE WHEN order_status='shipped' THEN 1 ELSE 0 END) as shipped, SUM(CASE WHEN order_status='delivered' THEN 1 ELSE 0 END) as delivered, SUM(CASE WHEN order_status='cancelled' THEN 1 ELSE 0 END) as cancelled, SUM(CASE WHEN order_status='pending_return' THEN 1 ELSE 0 END) as pending_return, SUM(CASE WHEN order_status='pending_cancel' THEN 1 ELSE 0 END) as pending_cancel FROM orders WHERE DATE(created_at) = CURDATE()");
+$todaySummary = $db->fetch("SELECT COUNT(*) as total, COALESCE(SUM(total),0) as revenue FROM orders WHERE DATE(created_at) = CURDATE()");
+$totalRevenue = $db->fetch("SELECT COALESCE(SUM(total),0) as revenue FROM orders WHERE order_status = 'delivered'");
 
 // Tab config
 $tabConfig = [
     'processing' => ['icon'=>'⚙','color'=>'yellow','label'=>'PROCESSING'],
     'confirmed'  => ['icon'=>'✅','color'=>'blue','label'=>'CONFIRMED'],
+    'ready_to_ship'=>['icon'=>'📦','color'=>'violet','label'=>'READY TO SHIP'],
     'shipped'    => ['icon'=>'🚚','color'=>'purple','label'=>'SHIPPED'],
     'delivered'  => ['icon'=>'📦','color'=>'green','label'=>'DELIVERED'],
     'pending_return'=>['icon'=>'🔄','color'=>'amber','label'=>'PENDING RETURN'],
@@ -374,35 +377,37 @@ function sortIcon($col) {
 
 <?php if (empty($_isProcessingView)): ?>
 <!-- Summary Cards -->
-<div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-2 mb-3">
+<div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-8 gap-2 mb-3">
     <div class="bg-white rounded-lg border p-2.5 text-center">
         <p class="text-xl font-bold text-gray-800"><?= intval($todaySummary['total'] ?? 0) ?></p>
         <p class="text-[9px] text-gray-400 uppercase tracking-wider">Today</p>
     </div>
-    <div class="bg-yellow-50 rounded-lg border border-yellow-200 p-2.5 text-center cursor-pointer hover:shadow-sm" onclick="location='?status=processing'">
+    <div class="bg-yellow-50 rounded-lg border border-yellow-200 p-2.5 text-center cursor-pointer hover:shadow-sm" onclick="OM.go({status:'processing',page:1})">
         <p class="text-xl font-bold text-yellow-600"><?= $statusCounts['processing'] ?></p>
         <p class="text-[9px] text-yellow-600 uppercase tracking-wider">Processing</p>
     </div>
-    <div class="bg-blue-50 rounded-lg border border-blue-200 p-2.5 text-center cursor-pointer hover:shadow-sm" onclick="location='?status=confirmed'">
+    <div class="bg-blue-50 rounded-lg border border-blue-200 p-2.5 text-center cursor-pointer hover:shadow-sm" onclick="OM.go({status:'confirmed',page:1})">
         <p class="text-xl font-bold text-blue-600"><?= $statusCounts['confirmed'] ?></p>
         <p class="text-[9px] text-blue-600 uppercase tracking-wider">Confirmed</p>
     </div>
-    <?php if (($statusCounts['ready_to_ship'] ?? 0) > 0): ?>
-    <div class="bg-violet-50 rounded-lg border border-violet-200 p-2.5 text-center cursor-pointer hover:shadow-sm" onclick="location='?status=ready_to_ship'">
+    <div class="bg-violet-50 rounded-lg border border-violet-200 p-2.5 text-center cursor-pointer hover:shadow-sm" onclick="OM.go({status:'ready_to_ship',page:1})">
         <p class="text-xl font-bold text-violet-600"><?= $statusCounts['ready_to_ship'] ?? 0 ?></p>
-        <p class="text-[9px] text-violet-600 uppercase tracking-wider">RTS</p>
+        <p class="text-[9px] text-violet-600 uppercase tracking-wider">Ready to Ship</p>
     </div>
-    <?php endif; ?>
-    <div class="bg-purple-50 rounded-lg border border-purple-200 p-2.5 text-center cursor-pointer hover:shadow-sm" onclick="location='?status=shipped'">
+    <div class="bg-purple-50 rounded-lg border border-purple-200 p-2.5 text-center cursor-pointer hover:shadow-sm" onclick="OM.go({status:'shipped',page:1})">
         <p class="text-xl font-bold text-purple-600"><?= $statusCounts['shipped'] ?></p>
         <p class="text-[9px] text-purple-600 uppercase tracking-wider">Shipped</p>
     </div>
-    <div class="bg-green-50 rounded-lg border border-green-200 p-2.5 text-center cursor-pointer hover:shadow-sm" onclick="location='?status=delivered'">
+    <div class="bg-green-50 rounded-lg border border-green-200 p-2.5 text-center cursor-pointer hover:shadow-sm" onclick="OM.go({status:'delivered',page:1})">
         <p class="text-xl font-bold text-green-600"><?= $statusCounts['delivered'] ?></p>
         <p class="text-[9px] text-green-600 uppercase tracking-wider">Delivered</p>
     </div>
+    <div class="bg-red-50 rounded-lg border border-red-200 p-2.5 text-center cursor-pointer hover:shadow-sm" onclick="OM.go({status:'cancelled',page:1})">
+        <p class="text-xl font-bold text-red-600"><?= ($statusCounts['cancelled'] ?? 0) + ($statusCounts['returned'] ?? 0) ?></p>
+        <p class="text-[9px] text-red-600 uppercase tracking-wider">Cancel/Return</p>
+    </div>
     <div class="bg-white rounded-lg border p-2.5 text-center">
-        <p class="text-xl font-bold text-gray-800">৳<?= number_format($todaySummary['revenue'] ?? 0) ?></p>
+        <p class="text-xl font-bold text-gray-800">৳<?= number_format($totalRevenue['revenue'] ?? 0) ?></p>
         <p class="text-[9px] text-gray-400 uppercase tracking-wider">Revenue</p>
     </div>
 </div>
