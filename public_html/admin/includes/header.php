@@ -768,7 +768,10 @@ document.addEventListener('click',e=>{
                         <svg class="w-5 h-5 <?= $tc['hamburgerIcon'] ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
                     </button>
                     <h2 class="text-lg font-semibold <?= $tc['pageTitle'] ?>"><?= $pageTitle ?? 'Dashboard' ?></h2>
-                    <button onclick="openPageGuide()" class="ml-2 w-6 h-6 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200 flex items-center justify-center text-xs font-bold transition flex-shrink-0" title="Page Guide">?</button>
+                    <button onclick="openPageGuide()" class="ml-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition shadow-sm flex-shrink-0" title="Learn how this page works">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M12 18h.01"/></svg>
+                        Page Guide
+                    </button>
                 </div>
             </div>
         </header>

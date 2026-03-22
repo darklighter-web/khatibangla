@@ -282,18 +282,27 @@ function formatPrice(amount) {
     document.head.appendChild(style);
 })();
 </script>
-<!-- ══════ Page Guide Modal ══════ -->
-<div id="pageGuideModal" class="fixed inset-0 z-[9999] hidden bg-black/40 flex items-center justify-center" onclick="if(event.target===this)closePageGuide()">
-    <div class="bg-white rounded-2xl shadow-2xl w-[95vw] max-w-lg max-h-[80vh] flex flex-col overflow-hidden" onclick="event.stopPropagation()">
-        <div class="flex items-center justify-between px-5 py-3 border-b bg-blue-50 shrink-0">
-            <div class="flex items-center gap-2">
-                <div class="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center text-sm">📖</div>
-                <h3 class="font-semibold text-gray-800 text-sm" id="guideTitle">Page Guide</h3>
+<!-- ══════ Page Guide Modal (Employee Training) ══════ -->
+<div id="pageGuideModal" class="fixed inset-0 z-[9999] hidden bg-black/50 flex items-center justify-center" onclick="if(event.target===this)closePageGuide()">
+    <div class="bg-white rounded-2xl shadow-2xl w-[95vw] max-w-xl max-h-[85vh] flex flex-col overflow-hidden" onclick="event.stopPropagation()">
+        <div class="flex items-center justify-between px-6 py-4 border-b bg-gradient-to-r from-blue-600 to-blue-700 shrink-0">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+                </div>
+                <div>
+                    <h3 class="font-bold text-white text-sm" id="guideTitle">Page Guide</h3>
+                    <p class="text-blue-200 text-[11px]">Employee Training Guide</p>
+                </div>
             </div>
-            <button onclick="closePageGuide()" class="text-gray-400 hover:text-gray-600 text-lg leading-none">&times;</button>
+            <button onclick="closePageGuide()" class="text-white/70 hover:text-white text-xl leading-none p-1">&times;</button>
         </div>
-        <div class="flex-1 overflow-y-auto px-5 py-4 text-sm text-gray-700 leading-relaxed" id="guideBody">
+        <div class="flex-1 overflow-y-auto px-6 py-5" id="guideBody">
             <div class="text-center text-gray-400 py-8">Loading...</div>
+        </div>
+        <div class="px-6 py-3 border-t bg-gray-50 shrink-0 flex items-center justify-between">
+            <p class="text-[10px] text-gray-400">Khatibangla Admin · Training Guide</p>
+            <button onclick="closePageGuide()" class="px-4 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-300 transition">Got it</button>
         </div>
     </div>
 </div>
@@ -301,140 +310,184 @@ function formatPrice(amount) {
 function openPageGuide(){
     document.getElementById('pageGuideModal').classList.remove('hidden');
     var page = '<?= basename($_SERVER['PHP_SELF'] ?? '', '.php') ?>';
-    document.getElementById('guideTitle').textContent = (document.querySelector('h2')?.textContent?.trim() || 'Page') + ' — Guide';
+    var pageLabel = (document.querySelector('h2')?.textContent?.trim() || 'Page');
+    document.getElementById('guideTitle').textContent = pageLabel;
     var guides = {
         'dashboard': {
-            title: 'Dashboard',
             sections: [
-                {h:'Overview', t:'The dashboard shows a snapshot of your store\'s performance for today and recent periods. All numbers update in real-time as orders come in.'},
-                {h:'Summary Cards', t:'Top cards show today\'s orders, revenue, processing/confirmed/shipped counts. Click any card to jump to those orders.'},
-                {h:'Recent Orders', t:'Shows the latest 10 orders with status, customer, and amount. Click any order to view details.'},
+                {h:'📊 What is this page?', t:'The Dashboard is your store\'s command center. It shows a real-time snapshot of today\'s performance — orders received, revenue earned, and which orders need attention.'},
+                {h:'📦 Summary Cards', t:'The top row shows today\'s total orders, revenue, and counts by status (Processing, Confirmed, Shipped). Click any card to jump directly to those orders.'},
+                {h:'📋 Recent Orders', t:'The table below shows the latest 10 orders with status badges, customer info, and amount. Click any order number to open full details.'},
+                {h:'💡 Quick Tip', t:'Check this page first thing every morning. If "Processing" count is high, those orders need to be confirmed and shipped. Use Order Management for bulk processing.'},
             ]
         },
         'accounting': {
-            title: 'Accounting Dashboard',
             sections: [
-                {h:'What This Shows', t:'A complete financial overview pulling real data from your orders, expenses, income, and liabilities. All numbers are computed in real-time — not manually entered.'},
-                {h:'Revenue', t:'Total from delivered orders only. Uses the date the order was delivered (or last updated if delivery date isn\'t set). This is your actual collected revenue.'},
-                {h:'COGS (Cost of Goods Sold)', t:'Calculated from FIFO batch costs when available. Falls back to each product\'s cost_price × quantity sold. Set cost prices in Products or via Inventory → Stock In batches.'},
-                {h:'Gross Profit', t:'Revenue minus COGS. This tells you how much you earn after product costs, before operating expenses.'},
-                {h:'Expenses', t:'Pulled from the Expenses section (operating costs) plus Ad Expenses (Meta/Google ad spend). Add expenses via Accounting → New Expense.'},
-                {h:'Net Profit', t:'Gross Profit + Other Income - Expenses - Ad Spend - Refunds. This is your bottom line.'},
-                {h:'Liabilities', t:'Total outstanding debts from the Liabilities section. The "paid" amount shows how much has been settled.'},
-                {h:'Date Range', t:'Use the preset buttons (Today, 7D, This Month, etc.) or enter custom dates on the right. All KPIs, charts, and the P&L recalculate for the selected period.'},
-                {h:'Trend Chart', t:'6-month bar chart comparing Revenue (green) vs Expenses (red) by month.'},
-                {h:'Recent Transactions', t:'Combined feed of the latest delivered orders (income), expenses, and refunds across all sources.'},
+                {h:'📊 What is this page?', t:'The Accounting Dashboard shows your store\'s complete financial picture. All numbers are pulled automatically from real order data, expenses, and income — nothing needs to be manually calculated.'},
+                {h:'💰 Revenue', t:'This is the total amount from delivered orders only. It uses the date the order was actually delivered (or last updated). If you see ৳0 for "This Month" but expect data, try "Last Month" or "All Time" to see older orders.'},
+                {h:'🏭 COGS (Cost of Goods Sold)', t:'This is how much the products cost you to buy/make. It\'s calculated from FIFO batch costs (set when you do "Stock In" in Inventory) or falls back to each product\'s cost_price. To get accurate COGS, make sure products have cost prices set.'},
+                {h:'📈 Gross Profit', t:'Revenue minus COGS = Gross Profit. This tells you how much you earn from sales BEFORE paying for rent, salaries, shipping, etc. A healthy store should have 30%+ gross margin.'},
+                {h:'💸 Expenses', t:'Total of operating expenses (from Expenses section) plus advertising spend (from Ad Expenses). Add new expenses via the sidebar menu → New Expense.'},
+                {h:'✅ Net Profit', t:'Gross Profit + Other Income - All Expenses - Refunds = Net Profit. This is your actual bottom line — how much money the business is really making.'},
+                {h:'📅 Date Range', t:'Use the preset buttons (Today, 7D, This Month, etc.) to change the period. All numbers, charts, and the P&L section update automatically. Use the date inputs on the right for a custom range.'},
+                {h:'📊 Trend Chart', t:'The bar chart compares Revenue (green) vs Expenses (red) over the last 6 months. Watch for months where red bars approach green — that means margins are shrinking.'},
+                {h:'⚠️ Important', t:'Revenue only counts DELIVERED orders. Pending, processing, or cancelled orders are not included. This gives you the true collected revenue.'},
             ]
         },
         'expenses': {
-            title: 'Expenses List',
             sections: [
-                {h:'What This Shows', t:'All recorded business expenses with category, amount, payment method, and who created it.'},
-                {h:'Adding Expenses', t:'Use the "+ New Expense" button to record operating costs (shipping, salary, rent, etc.) or "+ New Ad Expense" for advertising spend.'},
-                {h:'Categories', t:'Filter by category to see spending breakdowns. Add new categories from the left panel. Categories help the Accounting dashboard show expense breakdowns.'},
-                {h:'Date Filter', t:'Use the date inputs to filter expenses by period. The total at the bottom reflects the filtered results.'},
-                {h:'Data Connection', t:'Every expense automatically creates an accounting_entries record, which the Accounting dashboard reads for its P&L calculations.'},
+                {h:'📊 What is this page?', t:'This page shows all recorded business expenses — shipping costs, salaries, rent, office supplies, etc. Use this to track where money is going.'},
+                {h:'➕ Adding Expenses', t:'Click "+ New Expense" for operating costs (rent, salary, shipping) or "+ New Ad Expense" for advertising spend (Facebook, Google ads). Each expense is automatically counted in the Accounting dashboard.'},
+                {h:'🏷️ Categories', t:'Every expense should have a category (Shipping, Marketing, Salary, Rent, etc.). This helps the Accounting dashboard show you which category is eating the most money. You can add new categories from the left panel.'},
+                {h:'🔍 Filtering', t:'Use the date inputs and category dropdown to filter. The total amount at the bottom reflects your filtered view only.'},
+                {h:'💡 Quick Tip', t:'Enter expenses daily as they happen — don\'t wait until month end. This keeps the Accounting dashboard accurate and helps you spot overspending early.'},
             ]
         },
         'expense-new': {
-            title: 'New Expense',
             sections: [
-                {h:'Purpose', t:'Record a business operating expense — anything that isn\'t product cost (COGS) or ad spend.'},
-                {h:'Examples', t:'Shipping charges, courier fees, office rent, salaries, packaging materials, utilities, software subscriptions.'},
-                {h:'Required Fields', t:'Title, Amount, Category, and Date are required. Payment method and receipt are optional but help with reconciliation.'},
-                {h:'Auto-Sync', t:'Saved expenses automatically appear in the Accounting dashboard under "Expenses" and in the Expenses List.'},
+                {h:'📊 What is this page?', t:'Use this form to record a business operating expense — anything that costs money but isn\'t product cost (COGS) or ad spend.'},
+                {h:'📝 What to Enter Here', t:'Shipping/courier charges, office rent, employee salaries, packaging materials, utility bills, software subscriptions, equipment purchases, travel costs.'},
+                {h:'⚠️ What NOT to Enter Here', t:'Product purchase costs → use Inventory → Stock In with cost price instead. Ad spend → use New Ad Expense. Customer refunds → these are tracked automatically when orders are marked as "Returned".'},
+                {h:'✅ Required Fields', t:'Title, Amount, Category, and Date are mandatory. Payment method and receipt image are optional but help when reconciling accounts later.'},
+                {h:'🔄 Auto-Sync', t:'Once saved, the expense immediately appears in: Expenses List, Accounting Dashboard (under Expenses), and the Accounting Ledger.'},
             ]
         },
         'ad-expense-new': {
-            title: 'New Ad Expense',
             sections: [
-                {h:'Purpose', t:'Track advertising spend across platforms (Meta/Facebook, Google, TikTok, etc.) with campaign-level detail.'},
-                {h:'USD/BDT', t:'Enter the USD amount and exchange rate — BDT is calculated automatically. Or enter BDT directly.'},
-                {h:'Metrics', t:'Impressions, clicks, and conversions help calculate CPM, CPC, and CPA for campaign performance analysis.'},
-                {h:'Data Connection', t:'Ad expenses feed into the Accounting dashboard\'s "Ad Spend" line item and the Meta Ads Report.'},
+                {h:'📊 What is this page?', t:'Record advertising expenses with campaign-level detail. Supports Meta (Facebook/Instagram), Google, TikTok, and other platforms.'},
+                {h:'💱 USD / BDT', t:'If you spend in USD, enter the USD amount and exchange rate — the BDT amount calculates automatically. Or just enter the BDT amount directly if you already know it.'},
+                {h:'📈 Performance Metrics', t:'Enter impressions, clicks, and conversions if available. The system calculates CPM (cost per 1000 views), CPC (cost per click), and CPA (cost per conversion) automatically.'},
+                {h:'🔄 Data Connection', t:'Ad expenses show up in the Accounting dashboard as "Ad Spend" and in the Meta Ads Report for campaign performance analysis.'},
             ]
         },
         'income': {
-            title: 'Income',
             sections: [
-                {h:'What This Shows', t:'Manual income entries — revenue sources outside of regular orders (investments, service fees, refunds received, etc.).'},
-                {h:'Order Revenue', t:'Order-based revenue (from delivered orders) is tracked automatically. You don\'t need to enter it here — it appears in the Accounting dashboard.'},
-                {h:'When to Use', t:'Record income from: direct cash sales not in the system, service fees, loan disbursements, investment returns, refunds received from suppliers.'},
-                {h:'Data Connection', t:'Manual income entries appear in the Accounting dashboard under "Other Income" and feed into the Net Profit calculation.'},
+                {h:'📊 What is this page?', t:'Track manual income — money coming in from sources OTHER than regular customer orders. Order revenue is tracked automatically and doesn\'t need to be entered here.'},
+                {h:'📝 When to Use', t:'Record income from: direct cash sales not in the system, service fees charged, supplier refunds received, investment/loan money received, rental income, or any other non-order income.'},
+                {h:'⚠️ Don\'t Double-Count', t:'Order-based revenue (from delivered orders) is already counted automatically. Don\'t add it here again — it would double your income numbers.'},
+                {h:'🔄 Data Connection', t:'Manual income entries appear in the Accounting dashboard under "Other Income" and add to the Net Profit calculation.'},
             ]
         },
         'liabilities': {
-            title: 'Liabilities',
             sections: [
-                {h:'What This Shows', t:'Outstanding debts, payables, and financial obligations your business owes.'},
-                {h:'Status Flow', t:'Pending → Partial (some paid) → Paid (fully settled). Overdue is auto-set when due date passes.'},
-                {h:'Making Payments', t:'Click "Pay" on any liability to record a payment. Partial payments are supported — the system tracks remaining balance.'},
-                {h:'Data Connection', t:'Outstanding liabilities appear in the Accounting dashboard\'s "Liabilities" card. Payments are recorded as expenses in accounting_entries.'},
+                {h:'📊 What is this page?', t:'Track money your business owes — supplier invoices, loans, rent due, salary payables, or any other debts.'},
+                {h:'🔄 Status Flow', t:'<strong>Pending</strong> → money owed but not yet paid. <strong>Partial</strong> → some amount paid. <strong>Paid</strong> → fully settled. <strong>Overdue</strong> → automatically set when due date passes without full payment.'},
+                {h:'💳 Making Payments', t:'Click the "Pay" button on any unpaid liability. Enter the amount being paid now — partial payments are fully supported. The system tracks the remaining balance.'},
+                {h:'🔄 Data Connection', t:'Outstanding liabilities show in the Accounting dashboard under "Liabilities". Each payment is also recorded as an expense entry.'},
+                {h:'💡 Quick Tip', t:'Add liabilities as soon as you receive an invoice or take on a debt. Set the due date so the system can auto-mark overdue items.'},
             ]
         },
         'inventory': {
-            title: 'Inventory Management',
             sections: [
-                {h:'Stock Levels', t:'Shows all products with current stock, threshold, and status (In Stock / Low / Out). Filter by warehouse or stock status.'},
-                {h:'Adjust Stock', t:'Add or remove stock. "Stock In" creates a FIFO batch with cost per unit. "Stock Out" consumes from the oldest batch first.'},
-                {h:'FIFO Batches', t:'First In, First Out costing. Each stock-in creates a batch with a purchase cost. When stock is consumed, the system uses the oldest batch\'s cost to calculate COGS accurately.'},
-                {h:'Cost Per Unit', t:'When adding stock, enter the purchase cost per unit. This is used for COGS calculations in the Accounting dashboard. If left blank, the product\'s default cost_price is used.'},
-                {h:'Variant Stock', t:'Manage stock for individual product variants (sizes, colors, etc.) with quick +/- adjustment buttons.'},
-                {h:'Movements', t:'Full audit trail of all stock changes — who did what, when, and why.'},
-                {h:'Warehouses', t:'Multi-warehouse support. Each product\'s stock is tracked per warehouse and aggregated for the total.'},
+                {h:'📊 What is this page?', t:'Manage your product stock across warehouses. The FIFO (First In, First Out) system tracks the cost of each batch of stock you receive.'},
+                {h:'📦 Stock Levels Tab', t:'Shows all products with current stock count, low-stock threshold, and status. Red = Out of Stock, Yellow = Low Stock, Green = In Stock.'},
+                {h:'➕ Adjust Stock Tab', t:'Add or remove stock here. When doing "Stock In", always enter the <strong>Cost Per Unit</strong> — this is critical for accurate profit calculations. Each Stock In creates a FIFO batch.'},
+                {h:'🔢 FIFO Batches Tab', t:'Shows all stock batches with their purchase cost and remaining quantity. When products sell, the system automatically uses the OLDEST batch first (First In, First Out). This gives you accurate Cost of Goods Sold.'},
+                {h:'🎨 Variant Stock Tab', t:'For products with sizes/colors — manage stock per variant with quick +/- buttons.'},
+                {h:'📋 Movements Tab', t:'Full audit trail: every stock change is logged with who did it, when, and why.'},
+                {h:'🏢 Warehouses Tab', t:'Create and manage multiple warehouses. Each product\'s stock is tracked per warehouse.'},
+                {h:'💡 Key Concept: Cost Price', t:'When you add stock, the "Cost Per Unit" you enter is what the Accounting page uses to calculate COGS (Cost of Goods Sold). Higher accuracy here = more accurate profit numbers.'},
             ]
         },
         'inventory-dashboard': {
-            title: 'Inventory Dashboard',
             sections: [
-                {h:'Overview', t:'Visual summary of stock health across all products and warehouses.'},
-                {h:'Stock Health', t:'Pie chart showing the proportion of products that are In Stock, Low Stock, or Out of Stock.'},
-                {h:'Attention Required', t:'Lists products that need restocking or are completely out of stock.'},
+                {h:'📊 What is this page?', t:'Visual overview of your entire inventory health — which products need attention, stock value, and movement patterns.'},
+                {h:'🔴 Attention Required', t:'Products listed here need restocking. Sort by priority — Out of Stock items should be restocked first.'},
+                {h:'💡 Quick Tip', t:'Check this page weekly. If many products are in "Low Stock", place bulk supplier orders to avoid stockouts.'},
             ]
         },
         'order-management': {
-            title: 'Order Management',
             sections: [
-                {h:'Status Flow', t:'Orders flow: Processing → Confirmed → Shipped → Delivered. Side statuses include: On Hold, No Response, Cancelled, Returned.'},
-                {h:'Status Tabs', t:'Click any status tab to filter. The count badge shows how many orders are in each status.'},
-                {h:'Courier Sub-Tabs', t:'When viewing a specific status, filter by courier (Pathao, Steadfast, etc.) to see which orders are assigned where.'},
-                {h:'Bulk Actions', t:'Select multiple orders with checkboxes, then use the Actions menu for bulk status changes, printing, or courier upload.'},
-                {h:'Search', t:'Search by order number, customer name, or phone number. Use Advanced Filters for date range, channel, and staff assignment.'},
-                {h:'Open Button', t:'Click "Open" to view full order details, edit, and manage the order.'},
+                {h:'📊 What is this page?', t:'The main hub for managing all customer orders. This is where you\'ll spend most of your time — confirming orders, assigning couriers, and tracking deliveries.'},
+                {h:'🔄 Order Status Flow', t:'<strong>Processing</strong> → new order received. <strong>Confirmed</strong> → verified and ready to pack. <strong>Shipped</strong> → handed to courier. <strong>Delivered</strong> → customer received it.'},
+                {h:'📑 Status Tabs', t:'Click any tab to filter orders by status. The badge number shows the count. Typically you\'ll work through Processing → Confirmed → assign courier.'},
+                {h:'🚚 Courier Sub-Tabs', t:'After selecting a status (e.g., Shipped), filter by courier (Pathao, Steadfast, etc.) to see which orders went where.'},
+                {h:'☑️ Bulk Actions', t:'Check multiple orders → click "Actions" dropdown → Bulk status change, print invoices/stickers, or upload to courier. Saves time when processing many orders at once.'},
+                {h:'🔍 Search', t:'Search by order number (e.g., k0003), customer name, or phone number. Use "Filters" button for date range, channel, tags, and staff assignment.'},
+                {h:'🟢 Open Button', t:'Click "Open" to view full order details — edit customer info, change status, add notes, or upload to courier.'},
+                {h:'🔒 Order Locking', t:'When you open an order, it\'s locked so other team members can\'t edit the same order simultaneously. The lock releases automatically when you leave.'},
+                {h:'💡 Daily Workflow', t:'1. Check Processing tab → confirm legitimate orders. 2. Move to Confirmed → assign courier and ship. 3. Check No Response → follow up. 4. Review Returned/Cancelled for patterns.'},
             ]
         },
         'order-view': {
-            title: 'Order Details',
             sections: [
-                {h:'Order Info', t:'Full order details including customer info, products, pricing, status history, and courier tracking.'},
-                {h:'Status Changes', t:'Use the status dropdown to move orders through the flow. Each change is logged in the status history.'},
-                {h:'Courier Upload', t:'Assign to a courier (Pathao, Steadfast, RedX) to generate a consignment and tracking number.'},
-                {h:'Order Lock', t:'When you open an order, it\'s locked so other team members can\'t edit simultaneously. The lock releases when you leave the page.'},
-                {h:'Notes', t:'Three note types: Shipping Note (sent to courier), Order Note (printed on invoice), Panel Note (internal only).'},
+                {h:'📊 What is this page?', t:'Complete details of a single order — customer info, products ordered, pricing breakdown, courier tracking, and status history.'},
+                {h:'✏️ Editing', t:'You can edit customer name, phone, address, and notes directly. Changes are saved when you click Save.'},
+                {h:'🔄 Status Change', t:'Use the status dropdown to move the order forward (Confirm → Ship → Deliver). Each change is logged in the history below.'},
+                {h:'🚚 Courier', t:'Assign a courier provider (Pathao, Steadfast, RedX) to generate a consignment number and tracking link.'},
+                {h:'📝 Three Note Types', t:'<strong>Shipping Note</strong> (orange dot) — sent to the courier. <strong>Order Note</strong> (blue dot) — printed on the invoice. <strong>Panel Note</strong> (green dot) — internal only, never visible to customer or courier.'},
+                {h:'🔒 Order Lock', t:'While you\'re viewing this order, it\'s locked for other team members. If someone else has it open, you\'ll see a message and can choose to take over.'},
             ]
         },
         'customers': {
-            title: 'Customers',
             sections: [
-                {h:'Overview', t:'All customers with order history, registration status, and contact info.'},
-                {h:'Tabs', t:'All / Guests (no account) / Registered (have password or Clerk login).'},
-                {h:'Customer Profile', t:'Click a customer to see their full order history, delivery success rate, and store credit balance.'},
+                {h:'📊 What is this page?', t:'All customers who have placed orders or registered accounts. Use this to look up customer history and manage accounts.'},
+                {h:'👤 Customer Types', t:'<strong>Guests</strong> — placed orders without creating an account. <strong>Registered</strong> — have a password or logged in via Google/Facebook.'},
+                {h:'📋 Customer Profile', t:'Click a customer to see their full order history, delivery success rate, total spent, and store credit balance.'},
+                {h:'🔍 Search', t:'Search by name, phone number, or email. Use tabs to filter by type (All/Guest/Registered).'},
             ]
         },
         'products': {
-            title: 'Products',
             sections: [
-                {h:'Product List', t:'All products with price, stock, status, and category. Click to edit.'},
-                {h:'Product Types', t:'Simple (single item), Variable (has size/color variants), Bundle (multiple products sold together).'},
-                {h:'Stock', t:'Stock is managed via the Inventory section. The number shown here is the aggregate across all warehouses.'},
+                {h:'📊 What is this page?', t:'All products in your store with price, stock count, category, and status.'},
+                {h:'📦 Product Types', t:'<strong>Simple</strong> — single item, one price. <strong>Variable</strong> — has variants like size/color with individual stock. <strong>Bundle</strong> — multiple products sold together at a package price.'},
+                {h:'📈 Stock Numbers', t:'The stock count shown here is the total across all warehouses. Manage stock details via Inventory section.'},
+                {h:'💰 Cost Price', t:'Each product has a "Cost Price" field — this is used for COGS calculations in Accounting when FIFO batch data isn\'t available. Keep it accurate.'},
+            ]
+        },
+        'courier': {
+            sections: [
+                {h:'📊 What is this page?', t:'Manage courier provider settings — API credentials, default settings, and provider-specific configuration for Pathao, Steadfast, RedX, etc.'},
+                {h:'🔧 Setup', t:'Each courier needs API credentials (key/secret/token) entered here. Contact the courier provider to get your merchant API access.'},
+            ]
+        },
+        'settings': {
+            sections: [
+                {h:'📊 What is this page?', t:'Global site settings — store name, contact info, logos, payment methods, SEO, and feature toggles.'},
+                {h:'⚠️ Careful', t:'Changes here affect the entire store immediately. Double-check before saving, especially payment and shipping settings.'},
+            ]
+        },
+        'reports': {
+            sections: [
+                {h:'📊 What is this page?', t:'Analytics and reports hub. Access detailed reports on orders, products, employees, and business performance.'},
+                {h:'📋 Available Reports', t:'Order Reports (status breakdown by date), Product Reports (top sellers, stock analysis), Employee Reports (performance tracking), Profit & Sales (P&L by period), Business Report (comprehensive overview).'},
+            ]
+        },
+        'blog': {
+            sections: [
+                {h:'📊 What is this page?', t:'Manage blog posts for SEO and content marketing. Create, edit, and publish articles that appear on your store\'s blog section.'},
+            ]
+        },
+        'reviews': {
+            sections: [
+                {h:'📊 What is this page?', t:'Manage customer product reviews and Q&A. Approve, reject, or respond to customer feedback.'},
+                {h:'✅ Approval', t:'New reviews need approval before they appear on the product page. Auto-approve can be enabled in Settings.'},
+            ]
+        },
+        'coupons': {
+            sections: [
+                {h:'📊 What is this page?', t:'Create and manage discount coupons — percentage off, fixed amount, or free shipping. Set usage limits, date ranges, and minimum order amounts.'},
+            ]
+        },
+        'security': {
+            sections: [
+                {h:'📊 What is this page?', t:'Security settings — firewall rules, rate limiting, brute force protection, IP blocking, and security headers.'},
+                {h:'⚠️ Careful', t:'Incorrect settings can lock you out of the admin panel. Don\'t change settings you don\'t understand.'},
             ]
         },
     };
-    var g = guides[page] || {title: document.querySelector('h2')?.textContent || 'This Page', sections: [{h:'About', t:'This page is part of the admin panel. Use the navigation sidebar to access different sections.'}]};
+    var g = guides[page];
     var html = '';
-    g.sections.forEach(function(s){
-        html += '<div class="mb-4"><h4 class="font-semibold text-gray-800 mb-1">' + s.h + '</h4><p class="text-gray-600 text-[13px] leading-relaxed">' + s.t + '</p></div>';
-    });
+    if (g && g.sections) {
+        g.sections.forEach(function(s, i){
+            html += '<div class="mb-5 pb-4 ' + (i < g.sections.length - 1 ? 'border-b border-gray-100' : '') + '">';
+            html += '<h4 class="font-semibold text-gray-800 text-[13px] mb-1.5">' + s.h + '</h4>';
+            html += '<p class="text-gray-600 text-[12.5px] leading-[1.7]">' + s.t + '</p>';
+            html += '</div>';
+        });
+    } else {
+        html = '<div class="text-center py-10"><div class="text-3xl mb-3">📖</div><p class="text-gray-500 text-sm">No specific guide available for this page yet.</p><p class="text-gray-400 text-xs mt-1">Contact your admin to add training content for this section.</p></div>';
+    }
     document.getElementById('guideBody').innerHTML = html;
 }
 function closePageGuide(){ document.getElementById('pageGuideModal').classList.add('hidden'); }
