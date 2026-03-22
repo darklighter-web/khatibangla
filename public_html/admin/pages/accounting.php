@@ -9,10 +9,18 @@ require_once __DIR__ . '/../includes/auth.php';
 $db = Database::getInstance();
 
 // ── Date Range ──
-$range = $_GET['range'] ?? 'this_month';
+$range = $_GET['range'] ?? '';
 $customFrom = $_GET['from'] ?? '';
 $customTo   = $_GET['to'] ?? '';
 $today = date('Y-m-d');
+
+// Auto-detect: if from/to provided without explicit range, treat as custom
+if (!$range && ($customFrom || $customTo)) {
+    $range = 'custom';
+}
+if (!$range) {
+    $range = 'this_month';
+}
 
 switch ($range) {
     case 'today':      $dateFrom = $today; $dateTo = $today; $rangeLabel = 'Today'; break;
@@ -28,7 +36,7 @@ switch ($range) {
 }
 
 // ── Revenue from delivered orders ──
-$orderRevenue = $db->fetch("SELECT COALESCE(SUM(total),0) as revenue, COUNT(*) as count FROM orders WHERE order_status = 'delivered' AND DATE(COALESCE(delivered_at, updated_at)) BETWEEN ? AND ?", [$dateFrom, $dateTo]);
+$orderRevenue = $db->fetch("SELECT COALESCE(SUM(total),0) as revenue, COUNT(*) as count FROM orders WHERE order_status = 'delivered' AND DATE(COALESCE(delivered_at, updated_at, created_at)) BETWEEN ? AND ?", [$dateFrom, $dateTo]);
 $revenue = floatval($orderRevenue['revenue']);
 $deliveredCount = intval($orderRevenue['count']);
 
@@ -40,7 +48,7 @@ try {
 } catch (\Throwable $e) {}
 if ($cogs == 0 && $revenue > 0) {
     try {
-        $cogsEst = $db->fetch("SELECT COALESCE(SUM(oi.quantity * COALESCE(p.cost_price,0)),0) as cogs FROM order_items oi JOIN orders o ON o.id=oi.order_id JOIN products p ON p.id=oi.product_id WHERE o.order_status='delivered' AND DATE(COALESCE(o.delivered_at,o.updated_at)) BETWEEN ? AND ?", [$dateFrom, $dateTo]);
+        $cogsEst = $db->fetch("SELECT COALESCE(SUM(oi.quantity * COALESCE(p.cost_price,0)),0) as cogs FROM order_items oi JOIN orders o ON o.id=oi.order_id JOIN products p ON p.id=oi.product_id WHERE o.order_status='delivered' AND DATE(COALESCE(o.delivered_at, o.updated_at, o.created_at)) BETWEEN ? AND ?", [$dateFrom, $dateTo]);
         $cogs = floatval($cogsEst['cogs']);
     } catch (\Throwable $e) {}
 }
@@ -79,7 +87,7 @@ $netMargin = $totalIncome > 0 ? round(($netProfit / $totalIncome) * 100, 1) : 0;
 $daysDiff = max(1, (strtotime($dateTo) - strtotime($dateFrom)) / 86400 + 1);
 $prevFrom = date('Y-m-d', strtotime($dateFrom . " - {$daysDiff} days"));
 $prevTo = date('Y-m-d', strtotime($dateFrom . " - 1 day"));
-$prevRevenue = floatval($db->fetch("SELECT COALESCE(SUM(total),0) as t FROM orders WHERE order_status='delivered' AND DATE(COALESCE(delivered_at,updated_at)) BETWEEN ? AND ?", [$prevFrom, $prevTo])['t']);
+$prevRevenue = floatval($db->fetch("SELECT COALESCE(SUM(total),0) as t FROM orders WHERE order_status='delivered' AND DATE(COALESCE(delivered_at, updated_at, created_at)) BETWEEN ? AND ?", [$prevFrom, $prevTo])['t']);
 $prevExpense = floatval($db->fetch("SELECT COALESCE(SUM(amount),0) as t FROM expenses WHERE expense_date BETWEEN ? AND ?", [$prevFrom, $prevTo])['t']);
 $revenueChange = $prevRevenue > 0 ? round((($revenue - $prevRevenue) / $prevRevenue) * 100, 1) : 0;
 $expenseChange = $prevExpense > 0 ? round((($totalExpenses - $prevExpense) / $prevExpense) * 100, 1) : 0;
@@ -91,7 +99,7 @@ for ($i = 5; $i >= 0; $i--) {
     $trendMonths[] = date('M', strtotime($m . '-01'));
     $trendRevArr[$m] = 0; $trendExpArr[$m] = 0;
 }
-$trendData = $db->fetchAll("SELECT DATE_FORMAT(COALESCE(delivered_at,updated_at), '%Y-%m') as month, SUM(total) as revenue FROM orders WHERE order_status='delivered' AND COALESCE(delivered_at,updated_at) >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH) GROUP BY month ORDER BY month");
+$trendData = $db->fetchAll("SELECT DATE_FORMAT(COALESCE(delivered_at, updated_at, created_at), '%Y-%m') as month, SUM(total) as revenue FROM orders WHERE order_status='delivered' AND COALESCE(delivered_at, updated_at, created_at) >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH) GROUP BY month ORDER BY month");
 $trendExpData = $db->fetchAll("SELECT DATE_FORMAT(expense_date, '%Y-%m') as month, SUM(amount) as expense FROM expenses WHERE expense_date >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH) GROUP BY month ORDER BY month");
 foreach ($trendData as $t) { if (isset($trendRevArr[$t['month']])) $trendRevArr[$t['month']] = floatval($t['revenue']); }
 foreach ($trendExpData as $t) { if (isset($trendExpArr[$t['month']])) $trendExpArr[$t['month']] = floatval($t['expense']); }
@@ -99,7 +107,7 @@ foreach ($trendExpData as $t) { if (isset($trendExpArr[$t['month']])) $trendExpA
 // ── Recent transactions ──
 $recentTxns = [];
 try {
-    $recentTxns = $db->fetchAll("(SELECT 'order' as source, order_number as ref, total as amount, 'income' as type, COALESCE(delivered_at,updated_at) as txn_date FROM orders WHERE order_status='delivered' AND COALESCE(delivered_at,updated_at) IS NOT NULL ORDER BY txn_date DESC LIMIT 8)
+    $recentTxns = $db->fetchAll("(SELECT 'order' as source, order_number as ref, total as amount, 'income' as type, COALESCE(delivered_at, updated_at, created_at) as txn_date FROM orders WHERE order_status='delivered' AND COALESCE(delivered_at, updated_at, created_at) IS NOT NULL ORDER BY txn_date DESC LIMIT 8)
     UNION ALL (SELECT 'expense' as source, title as ref, amount, 'expense' as type, expense_date as txn_date FROM expenses ORDER BY expense_date DESC LIMIT 5)
     UNION ALL (SELECT 'refund' as source, order_number as ref, total as amount, 'refund' as type, updated_at as txn_date FROM orders WHERE order_status='returned' ORDER BY updated_at DESC LIMIT 3)
     ORDER BY txn_date DESC LIMIT 15");
