@@ -418,8 +418,11 @@ function sortIcon($col) {
     </div>
 </div>
 
-<!-- Courier Sub-Tabs (always visible when a status is selected) -->
-<?php if ($status): ?>
+<!-- Courier Sub-Tabs (from confirmed onwards) -->
+<?php
+$_courierVisibleStatuses = ['confirmed','ready_to_ship','shipped','delivered','pending_return','returned','partial_delivered','cancelled','pending_cancel','on_hold','lost'];
+if ($status && in_array($status, $_courierVisibleStatuses)):
+?>
 <div class="bg-white rounded-lg border mb-3 overflow-hidden om-courier-bar">
     <div class="overflow-x-auto">
         <div class="flex items-center min-w-max gap-1 px-3 py-2">
@@ -909,10 +912,11 @@ const OM = {
       // Update courier counts + active states
       OM._updateCourierTabs(data.courierCounts, params.courier || '');
 
-      // Show/hide courier sub-tab bar
+      // Show/hide courier sub-tab bar (from confirmed onwards)
       const courierBar = document.querySelector('.om-courier-bar');
       if (courierBar) {
-        courierBar.classList.toggle('hidden', !params.status || params.status === 'processing');
+        var _noCourrierStatuses = ['', 'processing', 'no_response', 'good_but_no_response', 'advance_payment'];
+        courierBar.classList.toggle('hidden', !params.status || _noCourrierStatuses.indexOf(params.status) >= 0);
       }
 
       // Re-init polling for new rows
