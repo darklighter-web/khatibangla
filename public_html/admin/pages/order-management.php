@@ -732,7 +732,7 @@ function sortIcon($col) {
         ?>
             <span class="tag-badge <?= $tc2 ?>" style="margin-bottom:2px"><?= e($tag['tag_name']) ?></span><br>
         <?php endforeach; ?>
-        <button onclick="addTag(<?= $order['id'] ?>)" style="font-size:9px;color:#93c5fd;border:none;background:none;cursor:pointer;padding:0">+tag</button>
+        
     </td>
     
     <!-- Total -->

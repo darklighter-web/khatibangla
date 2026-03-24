@@ -64,6 +64,20 @@ require_once __DIR__ . '/../includes/header.php';
                 <i class="fas fa-home mr-2"></i> হোমপেজে যান
             </a>
         </div>
+
+        <?php if (!isCustomerLoggedIn()): ?>
+        <!-- Guest → Register CTA -->
+        <div class="mt-6 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-5">
+            <div class="flex items-center justify-center gap-2 mb-2">
+                <span class="text-xl">🎁</span>
+                <h3 class="font-bold text-gray-800">একাউন্ট তৈরি করে বিশেষ সুবিধা পান!</h3>
+            </div>
+            <p class="text-sm text-gray-600 mb-4">রেজিস্ট্রেশন করলে পাচ্ছেন — অর্ডার ট্র্যাকিং, বিশেষ ডিসকাউন্ট, স্টোর ক্রেডিট, ও ভবিষ্যতে দ্রুত অর্ডার!</p>
+            <a href="<?= url('register') ?>" class="inline-flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 transition shadow-sm">
+                <i class="fas fa-user-plus"></i> ফ্রি একাউন্ট তৈরি করুন
+            </a>
+        </div>
+        <?php endif; ?>
         
         <div class="mt-8 pt-6 border-t">
             <p class="text-sm text-gray-500 mb-2">যেকোনো প্রশ্নে যোগাযোগ করুন:</p>

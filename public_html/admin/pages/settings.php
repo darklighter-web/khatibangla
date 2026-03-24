@@ -193,6 +193,7 @@ require_once __DIR__ . '/../includes/header.php';
                 'ads' => ['Ads Tracking', 'fa-bullhorn'],
                 'checkout' => ['Checkout & Labels', 'fa-shopping-cart'],
                 'ordersku' => ['Order & SKU', 'fa-barcode'],
+                'notetemplates' => ['Note Templates', 'fa-sticky-note'],
                 'print' => ['Print & Invoice', 'fa-print'],
                 'registration' => ['Registration Fields', 'fa-user-plus'],
                 'clerk' => ['Clerk Auth', 'fa-shield-alt'],
@@ -2574,6 +2575,35 @@ require_once __DIR__ . '/../includes/header.php';
                     </div>
                 </div>
             </div>
+            <?php endif; ?>
+
+            <?php if ($tab === 'notetemplates'): ?>
+            <!-- Note Templates for Order Management -->
+            <div class="bg-white rounded-xl shadow-sm border p-5 space-y-5">
+                <h4 class="font-semibold text-gray-800"><i class="fas fa-sticky-note mr-2 text-orange-500"></i>Shipping Note Templates</h4>
+                <p class="text-xs text-gray-500">এই টেমপ্লেটগুলো অর্ডার এডিট পেইজে Shipping Note ফিল্ডের পাশে দেখাবে। দ্রুত নোট যোগ করতে ব্যবহার করুন।</p>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Templates (one per line)</label>
+                    <textarea name="note_tpl_shipping" rows="6" class="w-full border rounded-lg px-3 py-2.5 text-sm font-mono" placeholder="***No Exchange or Return***&#10;ভাঙ্গলে রিটার্ন হবে না&#10;Handle with care — fragile item&#10;COD: Collect ৳{total}"><?= e($s['note_tpl_shipping'] ?? "***No Exchange or Return***\nভাঙ্গলে রিটার্ন হবে না\nHandle with care — fragile item") ?></textarea>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border p-5 space-y-5">
+                <h4 class="font-semibold text-gray-800"><i class="fas fa-file-invoice mr-2 text-blue-500"></i>Order Note Templates</h4>
+                <p class="text-xs text-gray-500">ইনভয়েসে প্রিন্ট হওয়া নোট টেমপ্লেট।</p>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Templates (one per line)</label>
+                    <textarea name="note_tpl_order" rows="6" class="w-full border rounded-lg px-3 py-2.5 text-sm font-mono" placeholder="ধন্যবাদ! আপনার পরবর্তী অর্ডারে ১০% ছাড়&#10;গিফট র‌্যাপ করা হয়েছে&#10;ফ্রি স্যাম্পল অন্তর্ভুক্ত"><?= e($s['note_tpl_order'] ?? "ধন্যবাদ! আপনার পরবর্তী অর্ডারে ১০% ছাড়\nগিফট র‍্যাপ করা হয়েছে\nফ্রি স্যাম্পল অন্তর্ভুক্ত") ?></textarea>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border p-5 space-y-5">
+                <h4 class="font-semibold text-gray-800"><i class="fas fa-lock mr-2 text-green-500"></i>Panel Note Templates</h4>
+                <p class="text-xs text-gray-500">অভ্যন্তরীণ নোট — শুধু অ্যাডমিনরা দেখতে পারবে।</p>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Templates (one per line)</label>
+                    <textarea name="note_tpl_panel" rows="6" class="w-full border rounded-lg px-3 py-2.5 text-sm font-mono" placeholder="ফোন করে কনফার্ম করা হয়েছে&#10;কাস্টমার রিপিটার — VIP&#10;ডেলিভারি চার্জ বাকি&#10;অ্যাডভান্স পেমেন্ট রিসিভড"><?= e($s['note_tpl_panel'] ?? "ফোন করে কনফার্ম করা হয়েছে\nকাস্টমার রিপিটার — VIP\nডেলিভারি চার্জ বাকি\nঅ্যাডভান্স পেমেন্ট রিসিভড") ?></textarea>
+                </div>
+            </div>
+            <button type="submit" class="bg-blue-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700">Save Templates</button>
             <?php endif; ?>
 
             <?php if ($tab === 'ordersku'): ?>
