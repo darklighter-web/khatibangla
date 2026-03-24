@@ -2217,17 +2217,23 @@ function showNoteTpl(targetField, tplKey) {
         var form = document.getElementById('orderForm');
         if (!form) return;
 
+        // Track which submit button was clicked
+        var _clickedAction = '';
+        form.querySelectorAll('button[type="submit"][name="action"]').forEach(function(btn){
+            btn.addEventListener('click', function(){ _clickedAction = this.value; });
+        });
+
         form.addEventListener('submit', function(e) {
-            var actionEl = form.querySelector('[name="action"]');
-            var action = actionEl ? actionEl.value : '';
+            var action = _clickedAction || '';
             if (action !== 'confirm_order' && action !== 'save_order') return;
 
             e.preventDefault();
-            var btn = form.querySelector('button[type="submit"]');
-            var origText = btn ? btn.textContent : '';
-            if (btn) { btn.disabled = true; btn.textContent = '⏳ Saving…'; }
+            var btn = form.querySelector('button[type="submit"][value="' + action + '"]');
+            var origHtml = btn ? btn.innerHTML : '';
+            if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Saving…'; }
 
-            var fd  = new FormData(form);
+            var fd = new FormData(form);
+            fd.append('action', action); // Explicitly append since button value isn't auto-included
             var url = (form.action || window.location.pathname);
             url += (url.indexOf('?') < 0 ? '?' : '&') + 'proc_session=1';
 
@@ -2235,13 +2241,22 @@ function showNoteTpl(targetField, tplKey) {
                 .then(function(r) {
                     var ct = r.headers.get('Content-Type') || '';
                     if (ct.indexOf('json') >= 0) return r.json();
-                    return { success: true };
+                    // If redirected or returned HTML, treat as success (normal form save)
+                    if (r.redirected || r.ok) return { success: true };
+                    return r.text().then(function(t) {
+                        // Check if HTML contains error
+                        if (t.indexOf('Warning') >= 0 || t.indexOf('Fatal') >= 0) {
+                            console.error('PHP Error:', t.substring(0, 500));
+                            return { success: false, error: 'Server error' };
+                        }
+                        return { success: true };
+                    });
                 })
                 .then(function(d) {
                     if (d && d.success) {
                         advance();
                     } else if (d && d.conflict) {
-                        if (btn) { btn.disabled = false; btn.textContent = origText; }
+                        if (btn) { btn.disabled = false; btn.innerHTML = origHtml; }
                         // First-wins: show who saved first, then skip to next
                         // First-wins: other user already saved — skip silently to next
                         var next = pos + 1;
@@ -2250,12 +2265,12 @@ function showNoteTpl(targetField, tplKey) {
                         sessionStorage.setItem(SESSION_KEY, JSON.stringify(ps));
                         psGoToOrder(ps.queue[next]);
                     } else {
-                        if (btn) { btn.disabled = false; btn.textContent = origText; }
+                        if (btn) { btn.disabled = false; btn.innerHTML = origHtml; }
                         alert('Save failed — please try again.');
                     }
                 })
                 .catch(function() {
-                    if (btn) { btn.disabled = false; btn.textContent = origText; }
+                    if (btn) { btn.disabled = false; btn.innerHTML = origHtml; }
                     alert('Network error — please try again.');
                 });
         });
