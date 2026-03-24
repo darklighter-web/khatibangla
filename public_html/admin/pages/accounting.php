@@ -46,6 +46,9 @@ try { $db->query("SELECT 1 FROM fixed_expenses LIMIT 1"); } catch (\Throwable $e
         title VARCHAR(200) NOT NULL,
         amount DECIMAL(12,2) NOT NULL,
         category_id INT DEFAULT NULL,
+        expense_type ENUM('fixed','salary') DEFAULT 'fixed',
+        employee_name VARCHAR(200) DEFAULT NULL,
+        employee_role VARCHAR(100) DEFAULT NULL,
         frequency ENUM('monthly','quarterly','yearly') DEFAULT 'monthly',
         start_date DATE NOT NULL,
         end_date DATE DEFAULT NULL,
@@ -54,9 +57,14 @@ try { $db->query("SELECT 1 FROM fixed_expenses LIMIT 1"); } catch (\Throwable $e
         notes TEXT,
         created_by INT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        KEY idx_active (is_active)
+        KEY idx_active (is_active),
+        KEY idx_type (expense_type)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
+// Migrate existing tables to add salary columns
+try { $db->query("ALTER TABLE fixed_expenses ADD COLUMN expense_type ENUM('fixed','salary') DEFAULT 'fixed' AFTER category_id"); } catch (\Throwable $e) {}
+try { $db->query("ALTER TABLE fixed_expenses ADD COLUMN employee_name VARCHAR(200) DEFAULT NULL AFTER expense_type"); } catch (\Throwable $e) {}
+try { $db->query("ALTER TABLE fixed_expenses ADD COLUMN employee_role VARCHAR(100) DEFAULT NULL AFTER employee_name"); } catch (\Throwable $e) {}
 
 // ── Auto-generate fixed expenses for completed months ──
 try {
@@ -98,11 +106,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     $qs = http_build_query(array_filter(['range' => $range, 'from' => $customFrom, 'to' => $customTo]));
 
-    if ($action === 'add_fixed') {
-        $db->query("INSERT INTO fixed_expenses (title, amount, category_id, frequency, start_date, end_date, day_of_month, notes, created_by) VALUES (?,?,?,?,?,?,?,?,?)", [
-            sanitize($_POST['fe_title']),
+    if ($action === 'add_fixed' || $action === 'add_salary') {
+        $isSalary = $action === 'add_salary';
+        $db->query("INSERT INTO fixed_expenses (title, amount, category_id, expense_type, employee_name, employee_role, frequency, start_date, end_date, day_of_month, notes, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", [
+            $isSalary ? 'Salary: ' . sanitize($_POST['fe_employee']) : sanitize($_POST['fe_title']),
             floatval($_POST['fe_amount']),
-            intval($_POST['fe_category']) ?: null,
+            intval($_POST['fe_category'] ?? 0) ?: null,
+            $isSalary ? 'salary' : 'fixed',
+            $isSalary ? sanitize($_POST['fe_employee']) : null,
+            $isSalary ? sanitize($_POST['fe_role'] ?? '') : null,
             in_array($_POST['fe_frequency'] ?? '', ['monthly','quarterly','yearly']) ? $_POST['fe_frequency'] : 'monthly',
             $_POST['fe_start_date'] ?: date('Y-m-01'),
             $_POST['fe_end_date'] ?: null,
@@ -110,7 +122,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             sanitize($_POST['fe_notes'] ?? ''),
             getAdminId()
         ]);
-        redirect(adminUrl('pages/accounting.php?' . $qs . '&msg=Fixed expense added'));
+        redirect(adminUrl('pages/accounting.php?' . $qs . '&msg=' . ($isSalary ? 'Salary added' : 'Fixed expense added')));
     }
     if ($action === 'toggle_fixed') {
         $fid = intval($_POST['fe_id']);
@@ -130,14 +142,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Load fixed expenses for display
 $fixedExpenses = [];
-try { $fixedExpenses = $db->fetchAll("SELECT fe.*, ec.name as category_name FROM fixed_expenses fe LEFT JOIN expense_categories ec ON ec.id = fe.category_id ORDER BY fe.is_active DESC, fe.title"); } catch (\Throwable $e) {}
+try { $fixedExpenses = $db->fetchAll("SELECT fe.*, ec.name as category_name FROM fixed_expenses fe LEFT JOIN expense_categories ec ON ec.id = fe.category_id ORDER BY fe.expense_type, fe.is_active DESC, fe.title"); } catch (\Throwable $e) {}
 $fixedMonthlyTotal = 0;
+$salaryMonthlyTotal = 0;
+$fixedOnly = [];
+$salaryOnly = [];
 foreach ($fixedExpenses as $fe) {
-    if ($fe['is_active']) {
-        $amt = floatval($fe['amount']);
-        if ($fe['frequency'] === 'yearly') $fixedMonthlyTotal += $amt / 12;
-        elseif ($fe['frequency'] === 'quarterly') $fixedMonthlyTotal += $amt / 3;
-        else $fixedMonthlyTotal += $amt;
+    $amt = floatval($fe['amount']);
+    $monthly = $fe['frequency'] === 'yearly' ? $amt / 12 : ($fe['frequency'] === 'quarterly' ? $amt / 3 : $amt);
+    if (($fe['expense_type'] ?? 'fixed') === 'salary') {
+        $salaryOnly[] = $fe;
+        if ($fe['is_active']) $salaryMonthlyTotal += $monthly;
+    } else {
+        $fixedOnly[] = $fe;
+        if ($fe['is_active']) $fixedMonthlyTotal += $monthly;
     }
 }
 
@@ -409,17 +427,78 @@ function applyCustomRange() {
             </div>
         </div>
 
+        <!-- Employee Salaries -->
+        <div class="bg-white rounded-xl border shadow-sm p-5">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-semibold text-gray-800">👤 Employee Salaries</h3>
+                <span class="text-[10px] bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full font-medium">৳<?= number_format($salaryMonthlyTotal) ?>/mo</span>
+            </div>
+            <?php if (!empty($salaryOnly)): ?>
+            <div class="space-y-2 mb-3 max-h-[180px] overflow-y-auto">
+                <?php foreach ($salaryOnly as $fe): ?>
+                <div class="flex items-center gap-2 py-1.5 <?= $fe['is_active'] ? '' : 'opacity-40' ?> border-b border-gray-50 last:border-0">
+                    <div class="w-7 h-7 bg-purple-100 rounded-full flex items-center justify-center text-[10px] flex-shrink-0">👤</div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs font-medium text-gray-800 truncate"><?= e($fe['employee_name'] ?? $fe['title']) ?></p>
+                        <p class="text-[10px] text-gray-400"><?= e($fe['employee_role'] ?? '') ?> · <?= ucfirst($fe['frequency']) ?> · Day <?= $fe['day_of_month'] ?></p>
+                    </div>
+                    <span class="text-xs font-bold text-purple-600 whitespace-nowrap">৳<?= number_format($fe['amount']) ?></span>
+                    <div class="flex gap-1">
+                        <form method="POST" class="inline"><input type="hidden" name="action" value="toggle_fixed"><input type="hidden" name="fe_id" value="<?= $fe['id'] ?>">
+                            <button class="text-[10px] px-1.5 py-0.5 rounded <?= $fe['is_active'] ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500' ?>"><?= $fe['is_active'] ? '✓' : '⏸' ?></button>
+                        </form>
+                        <form method="POST" class="inline" onsubmit="return confirm('Remove this salary entry?')"><input type="hidden" name="action" value="delete_fixed"><input type="hidden" name="fe_id" value="<?= $fe['id'] ?>">
+                            <button class="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-400">×</button>
+                        </form>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+            <details class="group">
+                <summary class="cursor-pointer text-xs text-purple-600 hover:text-purple-800 font-medium flex items-center gap-1">
+                    <span class="group-open:rotate-90 transition-transform text-[10px]">▶</span> Add Employee Salary
+                </summary>
+                <form method="POST" class="mt-3 space-y-2.5 bg-purple-50/50 rounded-lg p-3">
+                    <input type="hidden" name="action" value="add_salary">
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="text" name="fe_employee" required placeholder="Employee Name" class="border rounded-lg px-2.5 py-2 text-xs">
+                        <input type="text" name="fe_role" placeholder="Role/Position" class="border rounded-lg px-2.5 py-2 text-xs">
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="number" name="fe_amount" step="0.01" min="0" required placeholder="Salary Amount (৳)" class="border rounded-lg px-2.5 py-2 text-xs">
+                        <select name="fe_category" class="border rounded-lg px-2.5 py-2 text-xs">
+                            <option value="">Category</option>
+                            <?php foreach ($expCategories as $cat): ?>
+                            <option value="<?= $cat['id'] ?>" <?= strtolower($cat['name']) === 'salary' ? 'selected' : '' ?>><?= e($cat['name']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2">
+                        <select name="fe_frequency" class="border rounded-lg px-2.5 py-2 text-xs">
+                            <option value="monthly" selected>Monthly</option>
+                            <option value="quarterly">Quarterly</option>
+                            <option value="yearly">Yearly</option>
+                        </select>
+                        <input type="number" name="fe_day" min="1" max="28" value="28" class="border rounded-lg px-2.5 py-2 text-xs" title="Pay day (1-28)">
+                        <input type="date" name="fe_start_date" value="<?= date('Y-m-01') ?>" required class="border rounded-lg px-2.5 py-2 text-xs">
+                    </div>
+                    <input type="date" name="fe_end_date" class="w-full border rounded-lg px-2.5 py-2 text-xs" title="Leave empty for ongoing">
+                    <input type="text" name="fe_notes" placeholder="Notes (bank account, etc.)" class="w-full border rounded-lg px-2.5 py-2 text-xs">
+                    <button type="submit" class="w-full bg-purple-600 text-white py-2 rounded-lg text-xs font-medium hover:bg-purple-700">Add Salary</button>
+                </form>
+            </details>
+        </div>
+
         <!-- Fixed/Recurring Expenses -->
         <div class="bg-white rounded-xl border shadow-sm p-5">
             <div class="flex items-center justify-between mb-3">
                 <h3 class="text-sm font-semibold text-gray-800">🔄 Fixed Expenses</h3>
                 <span class="text-[10px] bg-red-50 text-red-600 px-2 py-0.5 rounded-full font-medium">৳<?= number_format($fixedMonthlyTotal) ?>/mo</span>
             </div>
-
-            <!-- Existing fixed expenses -->
-            <?php if (!empty($fixedExpenses)): ?>
-            <div class="space-y-2 mb-4 max-h-[200px] overflow-y-auto">
-                <?php foreach ($fixedExpenses as $fe): ?>
+            <?php if (!empty($fixedOnly)): ?>
+            <div class="space-y-2 mb-3 max-h-[180px] overflow-y-auto">
+                <?php foreach ($fixedOnly as $fe): ?>
                 <div class="flex items-center gap-2 py-1.5 <?= $fe['is_active'] ? '' : 'opacity-40' ?> border-b border-gray-50 last:border-0">
                     <div class="flex-1 min-w-0">
                         <p class="text-xs font-medium text-gray-800 truncate"><?= e($fe['title']) ?></p>
@@ -428,27 +507,23 @@ function applyCustomRange() {
                     <span class="text-xs font-bold text-red-600 whitespace-nowrap">৳<?= number_format($fe['amount']) ?></span>
                     <div class="flex gap-1">
                         <form method="POST" class="inline"><input type="hidden" name="action" value="toggle_fixed"><input type="hidden" name="fe_id" value="<?= $fe['id'] ?>">
-                            <button class="text-[10px] px-1.5 py-0.5 rounded <?= $fe['is_active'] ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500' ?>" title="<?= $fe['is_active'] ? 'Pause' : 'Activate' ?>"><?= $fe['is_active'] ? '✓' : '⏸' ?></button>
+                            <button class="text-[10px] px-1.5 py-0.5 rounded <?= $fe['is_active'] ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500' ?>"><?= $fe['is_active'] ? '✓' : '⏸' ?></button>
                         </form>
-                        <form method="POST" class="inline" onsubmit="return confirm('Delete this fixed expense?')"><input type="hidden" name="action" value="delete_fixed"><input type="hidden" name="fe_id" value="<?= $fe['id'] ?>">
-                            <button class="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-400 hover:text-red-600">×</button>
+                        <form method="POST" class="inline" onsubmit="return confirm('Delete?')"><input type="hidden" name="action" value="delete_fixed"><input type="hidden" name="fe_id" value="<?= $fe['id'] ?>">
+                            <button class="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-400">×</button>
                         </form>
                     </div>
                 </div>
                 <?php endforeach; ?>
             </div>
             <?php endif; ?>
-
-            <!-- Add new fixed expense -->
             <details class="group">
                 <summary class="cursor-pointer text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1">
                     <span class="group-open:rotate-90 transition-transform text-[10px]">▶</span> Add Fixed Expense
                 </summary>
                 <form method="POST" class="mt-3 space-y-2.5 bg-gray-50 rounded-lg p-3">
                     <input type="hidden" name="action" value="add_fixed">
-                    <div>
-                        <input type="text" name="fe_title" required placeholder="Title (e.g., Office Rent, Internet Bill)" class="w-full border rounded-lg px-2.5 py-2 text-xs">
-                    </div>
+                    <input type="text" name="fe_title" required placeholder="Title (e.g., Office Rent, Internet)" class="w-full border rounded-lg px-2.5 py-2 text-xs">
                     <div class="grid grid-cols-2 gap-2">
                         <input type="number" name="fe_amount" step="0.01" min="0" required placeholder="Amount (৳)" class="border rounded-lg px-2.5 py-2 text-xs">
                         <select name="fe_category" class="border rounded-lg px-2.5 py-2 text-xs">
@@ -464,20 +539,15 @@ function applyCustomRange() {
                             <option value="quarterly">Quarterly</option>
                             <option value="yearly">Yearly</option>
                         </select>
-                        <input type="number" name="fe_day" min="1" max="28" value="28" placeholder="Day" class="border rounded-lg px-2.5 py-2 text-xs" title="Day of month (1-28)">
+                        <input type="number" name="fe_day" min="1" max="28" value="28" class="border rounded-lg px-2.5 py-2 text-xs" title="Day (1-28)">
                         <input type="date" name="fe_start_date" value="<?= date('Y-m-01') ?>" required class="border rounded-lg px-2.5 py-2 text-xs">
                     </div>
-                    <div>
-                        <input type="date" name="fe_end_date" placeholder="End date (optional)" class="w-full border rounded-lg px-2.5 py-2 text-xs" title="Leave empty for ongoing">
-                        <p class="text-[9px] text-gray-400 mt-0.5">End date — leave empty for ongoing expenses</p>
-                    </div>
-                    <div>
-                        <input type="text" name="fe_notes" placeholder="Notes (optional)" class="w-full border rounded-lg px-2.5 py-2 text-xs">
-                    </div>
+                    <input type="date" name="fe_end_date" class="w-full border rounded-lg px-2.5 py-2 text-xs" title="Leave empty for ongoing">
+                    <input type="text" name="fe_notes" placeholder="Notes" class="w-full border rounded-lg px-2.5 py-2 text-xs">
                     <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded-lg text-xs font-medium hover:bg-blue-700">Add Fixed Expense</button>
                 </form>
             </details>
-            <p class="text-[9px] text-gray-400 mt-2">Fixed expenses auto-generate in the Expenses list on their scheduled day each month/quarter/year.</p>
+            <p class="text-[9px] text-gray-400 mt-2">Salaries & fixed expenses auto-generate in Expenses on their scheduled day.</p>
         </div>
     </div>
 

@@ -110,6 +110,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $updateData['order_status'] = 'confirmed';
             $db->insert('order_status_history', ['order_id'=>$id,'status'=>'confirmed','changed_by'=>getAdminId(),'note'=>'Order confirmed']);
             logActivity(getAdminId(), 'confirm_order', 'orders', $id, 'Confirmed order');
+
+            // ── Reduce stock on confirmation (not on order placement) ──
+            try {
+                $confirmItems = $db->fetchAll("SELECT oi.product_id, oi.quantity, oi.variant_id FROM order_items oi WHERE oi.order_id = ?", [$id]);
+                foreach ($confirmItems as $ci) {
+                    if (!$ci['product_id']) continue;
+                    $prod = $db->fetch("SELECT manage_stock FROM products WHERE id = ?", [$ci['product_id']]);
+                    if ($prod && intval($prod['manage_stock'] ?? 1)) {
+                        $db->query("UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?", [intval($ci['quantity']), $ci['product_id']]);
+                        $db->query("UPDATE products SET stock_status = CASE WHEN stock_quantity > 0 THEN 'in_stock' ELSE 'out_of_stock' END WHERE id = ? AND manage_stock = 1", [$ci['product_id']]);
+                        // Reduce variant stock if applicable
+                        if (!empty($ci['variant_id'])) {
+                            try { $db->query("UPDATE product_variants SET stock = stock - ? WHERE id = ?", [intval($ci['quantity']), $ci['variant_id']]); } catch (\Throwable $e) {}
+                        }
+                    }
+                }
+            } catch (\Throwable $e) { error_log("Stock reduce on confirm failed for order {$id}: " . $e->getMessage()); }
         }
 
         $db->update('orders', $updateData, 'id = ?', [$id]);
@@ -138,14 +155,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'update_status') {
         $newStatus = sanitize($_POST['status']);
         $notes     = sanitize($_POST['notes'] ?? '');
+        $oldStatus = $order['order_status'];
         $db->update('orders', ['order_status' => $newStatus, 'updated_at' => date('Y-m-d H:i:s')], 'id = ?', [$id]);
         $db->insert('order_status_history', ['order_id'=>$id,'status'=>$newStatus,'changed_by'=>getAdminId(),'note'=>$notes]);
         logActivity(getAdminId(), 'update_status', 'orders', $id, "Changed to {$newStatus}");
         if ($newStatus === 'delivered')  { try { awardOrderCredits($id); } catch (\Throwable $e) {} }
         if ($newStatus === 'cancelled')  { try { refundOrderCreditsOnCancel($id); } catch (\Throwable $e) {} }
+
+        // ── Stock Management: restore stock on cancel/return ──
+        $stockRestoreStatuses = ['cancelled', 'returned'];
+        $stockActiveStatuses = ['processing', 'pending', 'confirmed', 'ready_to_ship', 'shipped', 'delivered'];
+        if (in_array($newStatus, $stockRestoreStatuses) && in_array($oldStatus, $stockActiveStatuses)) {
+            // Restore stock for all items in this order
+            try {
+                $orderItems = $db->fetchAll("SELECT oi.product_id, oi.quantity, oi.variant_id FROM order_items oi WHERE oi.order_id = ?", [$id]);
+                foreach ($orderItems as $oi) {
+                    if (!$oi['product_id']) continue;
+                    $prod = $db->fetch("SELECT manage_stock FROM products WHERE id = ?", [$oi['product_id']]);
+                    if ($prod && intval($prod['manage_stock'] ?? 1)) {
+                        $db->query("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?", [intval($oi['quantity']), $oi['product_id']]);
+                        // Update stock_status
+                        $db->query("UPDATE products SET stock_status = CASE WHEN stock_quantity > 0 THEN 'in_stock' ELSE 'out_of_stock' END WHERE id = ? AND manage_stock = 1", [$oi['product_id']]);
+                        // Restore variant stock if applicable
+                        if (!empty($oi['variant_id'])) {
+                            try { $db->query("UPDATE product_variants SET stock = stock + ? WHERE id = ?", [intval($oi['quantity']), $oi['variant_id']]); } catch (\Throwable $e) {}
+                        }
+                    }
+                }
+            } catch (\Throwable $e) { error_log("Stock restore failed for order {$id}: " . $e->getMessage()); }
+        }
+
         // Release order lock on status change
         try { $db->query("DELETE FROM order_locks WHERE order_id = ?", [$id]); } catch (\Throwable $e) {}
         if ($isProcSession) {
+            while (ob_get_level()) ob_end_clean();
             header('Content-Type: application/json');
             echo json_encode(['success'=>true,'action'=>'status_updated','new_status'=>$newStatus,'order_id'=>$id]);
             exit;

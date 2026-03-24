@@ -954,8 +954,8 @@ function createOrder($data) {
                     
                     if ($biProductId) {
                         try {
-                            $db->query("UPDATE products SET stock_quantity = stock_quantity - ?, sales_count = sales_count + ? WHERE id = ?", 
-                                [$biQty, $biQty, $biProductId]);
+                            // Only update sales_count on placement. Stock reduced on confirm.
+                            $db->query("UPDATE products SET sales_count = sales_count + ? WHERE id = ?", [$biQty, $biProductId]);
                         } catch (\Throwable $stockErr) {}
                     }
                 }
@@ -979,8 +979,8 @@ function createOrder($data) {
                 
                 if ($itemProductId) {
                     try {
-                        $db->query("UPDATE products SET stock_quantity = stock_quantity - ?, sales_count = sales_count + ? WHERE id = ?", 
-                            [$itemQty, $itemQty, $itemProductId]);
+                        // Only update sales_count on order placement. Stock is reduced when order is CONFIRMED.
+                        $db->query("UPDATE products SET sales_count = sales_count + ? WHERE id = ?", [$itemQty, $itemProductId]);
                     } catch (\Throwable $stockErr) {}
                 }
             }
