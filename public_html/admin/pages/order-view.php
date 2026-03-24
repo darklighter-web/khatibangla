@@ -48,6 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $__currentLock = $db->fetch("SELECT admin_user_id FROM order_locks WHERE order_id = ? AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 90 SECOND)", [$id]);
             if ($__currentLock && intval($__currentLock['admin_user_id']) !== $__currentAdminId) {
                 $__takenBy = $db->fetch("SELECT full_name FROM admin_users WHERE id=?", [intval($__currentLock['admin_user_id'])]);
+                while (ob_get_level()) ob_end_clean();
                 header('Content-Type: application/json');
                 echo json_encode(['success'=>false,'conflict'=>true,'taken_by'=>($__takenBy['full_name']??'Another user')]);
                 exit;
@@ -118,6 +119,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($action === 'confirm_order') {
             if ($isProcSession) {
                 // Return JSON for session mode — JS handles navigation
+                while (ob_get_level()) ob_end_clean(); // Clear any buffered output
                 header('Content-Type: application/json');
                 echo json_encode(['success'=>true,'action'=>'confirmed','order_id'=>$id]);
                 exit;
@@ -125,6 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect(adminUrl("pages/order-management.php?status=confirmed&msg=confirmed"));
         }
         if ($isProcSession) {
+            while (ob_get_level()) ob_end_clean();
             header('Content-Type: application/json');
             echo json_encode(['success'=>true,'action'=>'saved','order_id'=>$id]);
             exit;
@@ -2217,37 +2220,47 @@ function showNoteTpl(targetField, tplKey) {
         var form = document.getElementById('orderForm');
         if (!form) return;
 
-        // Track which submit button was clicked
+        // Track which submit button was clicked (multiple approaches for reliability)
         var _clickedAction = '';
         form.querySelectorAll('button[type="submit"][name="action"]').forEach(function(btn){
-            btn.addEventListener('click', function(){ _clickedAction = this.value; });
+            btn.addEventListener('click', function(e){
+                _clickedAction = this.value;
+            });
+            // Also intercept via mousedown (fires before submit on all browsers)
+            btn.addEventListener('mousedown', function(){ _clickedAction = this.value; });
         });
 
         form.addEventListener('submit', function(e) {
-            var action = _clickedAction || '';
+            // Get action from: submitter (modern), tracked click, or first button fallback
+            var action = '';
+            if (e.submitter && e.submitter.name === 'action') {
+                action = e.submitter.value;
+            } else {
+                action = _clickedAction || '';
+            }
             if (action !== 'confirm_order' && action !== 'save_order') return;
 
             e.preventDefault();
-            var btn = form.querySelector('button[type="submit"][value="' + action + '"]');
+            var btn = e.submitter || form.querySelector('button[type="submit"][value="' + action + '"]');
             var origHtml = btn ? btn.innerHTML : '';
             if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Saving…'; }
 
             var fd = new FormData(form);
-            fd.append('action', action); // Explicitly append since button value isn't auto-included
-            var url = (form.action || window.location.pathname);
-            url += (url.indexOf('?') < 0 ? '?' : '&') + 'proc_session=1';
+            fd.set('action', action); // Always set action explicitly
+
+            var url = window.location.href.split('#')[0]; // Use current URL with query params
 
             fetch(url, { method: 'POST', credentials: 'same-origin', body: fd })
                 .then(function(r) {
                     var ct = r.headers.get('Content-Type') || '';
                     if (ct.indexOf('json') >= 0) return r.json();
-                    // If redirected or returned HTML, treat as success (normal form save)
-                    if (r.redirected || r.ok) return { success: true };
                     return r.text().then(function(t) {
-                        // Check if HTML contains error
+                        if (t.indexOf('"success"') >= 0) {
+                            try { return JSON.parse(t.replace(/^[^{]*/, '')); } catch(ex) {}
+                        }
                         if (t.indexOf('Warning') >= 0 || t.indexOf('Fatal') >= 0) {
-                            console.error('PHP Error:', t.substring(0, 500));
-                            return { success: false, error: 'Server error' };
+                            console.error('PHP Error in response:', t.substring(0, 500));
+                            return { success: false, error: 'Server error — check console' };
                         }
                         return { success: true };
                     });
@@ -2257,8 +2270,6 @@ function showNoteTpl(targetField, tplKey) {
                         advance();
                     } else if (d && d.conflict) {
                         if (btn) { btn.disabled = false; btn.innerHTML = origHtml; }
-                        // First-wins: show who saved first, then skip to next
-                        // First-wins: other user already saved — skip silently to next
                         var next = pos + 1;
                         if (next >= ps.queue.length) { psShowSummary(); return; }
                         ps.current = next;
@@ -2266,10 +2277,11 @@ function showNoteTpl(targetField, tplKey) {
                         psGoToOrder(ps.queue[next]);
                     } else {
                         if (btn) { btn.disabled = false; btn.innerHTML = origHtml; }
-                        alert('Save failed — please try again.');
+                        alert('Save failed: ' + (d && d.error ? d.error : 'Unknown error. Check browser console.'));
                     }
                 })
-                .catch(function() {
+                .catch(function(err) {
+                    console.error('Fetch error:', err);
                     if (btn) { btn.disabled = false; btn.innerHTML = origHtml; }
                     alert('Network error — please try again.');
                 });
