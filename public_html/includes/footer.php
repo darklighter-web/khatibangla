@@ -2456,5 +2456,15 @@ if(_cub){new MutationObserver(function(){var n=parseInt(_cub.textContent)||0;var
 <!-- Padding for mobile bottom nav -->
 <div class="lg:hidden h-16"></div>
 <?= renderClerkInit() ?>
+
+<!-- ══════ Toast Notification (customer-facing) ══════ -->
+<?php $__flash = getFlash(); if ($__flash): ?>
+<style>#kbToastF{position:fixed;top:-80px;left:50%;transform:translateX(-50%);z-index:99999;padding:12px 24px;border-radius:12px;font-size:14px;font-weight:500;box-shadow:0 8px 30px rgba(0,0,0,.12);transition:top .4s cubic-bezier(.22,1,.36,1);max-width:90%}#kbToastF.show{top:20px}#kbToastF.success{background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0}#kbToastF.error{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}#kbToastF.warning{background:#fffbeb;color:#92400e;border:1px solid #fde68a}#kbToastF.info{background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe}</style>
+<div id="kbToastF" class="<?= e($__flash['type']) ?>"><?= e($__flash['message']) ?></div>
+<script>
+(function(){var t=document.getElementById('kbToastF');if(t){setTimeout(function(){t.classList.add('show')},100);setTimeout(function(){t.classList.remove('show')},5000);}})();
+</script>
+<?php endif; ?>
+
 </body>
 </html>

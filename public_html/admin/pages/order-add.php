@@ -227,6 +227,7 @@ $msg = $_GET['msg'] ?? '';
                 <div>
                     <label class="flex items-center gap-1.5 text-sm font-semibold text-gray-800 mb-1.5">
                         <span class="w-2 h-2 rounded-full bg-orange-400"></span> Shipping Note
+                        <button type="button" onclick="showNoteTpl('shipping_note','note_tpl_shipping')" class="ml-1 w-5 h-5 rounded bg-orange-100 text-orange-500 hover:bg-orange-200 flex items-center justify-center text-[10px] font-bold" title="Insert template">+</button>
                     </label>
                     <textarea name="shipping_note" rows="3" class="w-full px-3 py-2 border border-orange-200 rounded-md text-sm focus:border-orange-400 focus:ring-1 focus:ring-orange-100 outline-none resize-none bg-orange-50/30" placeholder="***No Exchange or Return***"></textarea>
                     <p class="text-[9px] text-orange-400 mt-1"><i class="fas fa-truck mr-0.5"></i> Sent to courier only</p>
@@ -235,6 +236,7 @@ $msg = $_GET['msg'] ?? '';
                 <div>
                     <label class="flex items-center gap-1.5 text-sm font-semibold text-gray-800 mb-1.5">
                         <span class="w-2 h-2 rounded-full bg-blue-400"></span> Order Note
+                        <button type="button" onclick="showNoteTpl('order_note','note_tpl_order')" class="ml-1 w-5 h-5 rounded bg-blue-100 text-blue-500 hover:bg-blue-200 flex items-center justify-center text-[10px] font-bold" title="Insert template">+</button>
                     </label>
                     <textarea name="order_note" rows="3" class="w-full px-3 py-2 border border-blue-200 rounded-md text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none resize-none bg-blue-50/30" placeholder="Gift message, packaging instructions..."></textarea>
                     <p class="text-[9px] text-blue-400 mt-1"><i class="fas fa-file-invoice mr-0.5"></i> Printed on invoice only</p>
@@ -243,6 +245,7 @@ $msg = $_GET['msg'] ?? '';
                 <div>
                     <label class="flex items-center gap-1.5 text-sm font-semibold text-gray-800 mb-1.5">
                         <span class="w-2 h-2 rounded-full bg-green-500"></span> Panel Note
+                        <button type="button" onclick="showNoteTpl('panel_note','note_tpl_panel')" class="ml-1 w-5 h-5 rounded bg-green-100 text-green-500 hover:bg-green-200 flex items-center justify-center text-[10px] font-bold" title="Insert template">+</button>
                     </label>
                     <textarea name="panel_note" rows="3" class="w-full px-3 py-2 border border-green-200 rounded-md text-sm focus:border-green-400 focus:ring-1 focus:ring-green-100 outline-none resize-none bg-green-50/30" placeholder="Internal team note..."></textarea>
                     <p class="text-[9px] text-green-500 mt-1"><i class="fas fa-eye-slash mr-0.5"></i> Internal only</p>
@@ -508,6 +511,39 @@ document.querySelector('select[name="channel"]')?.addEventListener('change',func
 
 function esc(s){return s?s.replace(/&/g,'&amp;').replace(/'/g,'&#39;').replace(/"/g,'&quot;').replace(/</g,'&lt;'):''}
 calcTotals();
+</script>
+<script>
+// Note Template Picker for New Order page
+var _noteTplTarget = null;
+var _noteTpls = {
+    note_tpl_shipping: <?= json_encode(array_filter(array_map('trim', explode("\n", getSetting('note_tpl_shipping', "***No Exchange or Return***\nভাঙ্গলে রিটার্ন হবে না"))))) ?>,
+    note_tpl_order: <?= json_encode(array_filter(array_map('trim', explode("\n", getSetting('note_tpl_order', "ধন্যবাদ! আপনার পরবর্তী অর্ডারে ১০% ছাড়"))))) ?>,
+    note_tpl_panel: <?= json_encode(array_filter(array_map('trim', explode("\n", getSetting('note_tpl_panel', "ফোন করে কনফার্ম করা হয়েছে\nকাস্টমার রিপিটার — VIP"))))) ?>
+};
+function showNoteTpl(targetField, tplKey) {
+    _noteTplTarget = targetField;
+    var tpls = _noteTpls[tplKey] || [];
+    if (!tpls.length) { alert('No templates. Add in Settings → Note Templates.'); return; }
+    var m = document.getElementById('noteTplModal');
+    if (!m) {
+        m = document.createElement('div'); m.id = 'noteTplModal';
+        m.style.cssText = 'position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center';
+        m.onclick = function(e){ if(e.target===m) m.style.display='none'; };
+        m.innerHTML = '<div style="background:#fff;border-radius:12px;max-width:400px;width:90%;max-height:70vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.15)" onclick="event.stopPropagation()"><div style="padding:12px 16px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center"><span style="font-weight:700;font-size:13px">📋 টেমপ্লেট বাছাই করুন</span><button onclick="this.closest(\'#noteTplModal\').style.display=\'none\'" style="background:none;border:none;font-size:18px;cursor:pointer;color:#999">&times;</button></div><div id="noteTplList" style="padding:8px"></div></div>';
+        document.body.appendChild(m);
+    }
+    var list = document.getElementById('noteTplList'); list.innerHTML = '';
+    tpls.forEach(function(t){
+        var btn = document.createElement('button'); btn.type = 'button';
+        btn.style.cssText = 'display:block;width:100%;text-align:left;padding:10px 12px;margin:3px 0;border-radius:8px;border:1px solid #e5e7eb;background:#fafafa;cursor:pointer;font-size:12px;color:#374151';
+        btn.textContent = t;
+        btn.onmouseover = function(){ this.style.background='#eff6ff'; };
+        btn.onmouseout = function(){ this.style.background='#fafafa'; };
+        btn.onclick = function(){ var ta = document.querySelector('[name="'+_noteTplTarget+'"]'); if(ta){ta.value=ta.value?ta.value+'\n'+t:t;ta.focus();} m.style.display='none'; };
+        list.appendChild(btn);
+    });
+    m.style.display = 'flex';
+}
 </script>
 <?php include __DIR__ . '/../includes/phone-checker-widget.php'; ?>
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

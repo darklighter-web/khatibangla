@@ -216,7 +216,7 @@ foreach ($phones as $phone) {
 $orderIds = array_column($orders, 'id'); $orderItems=[]; $orderTags=[];
 if (!empty($orderIds)) {
     $ph = implode(',', array_fill(0, count($orderIds), '?'));
-    $items = $db->fetchAll("SELECT oi.order_id, oi.product_name, oi.quantity, oi.price, oi.variant_name, p.featured_image FROM order_items oi LEFT JOIN products p ON p.id = oi.product_id WHERE oi.order_id IN ({$ph})", $orderIds);
+    $items = $db->fetchAll("SELECT oi.order_id, oi.product_name, oi.quantity, oi.price, oi.variant_name, p.featured_image, p.sku FROM order_items oi LEFT JOIN products p ON p.id = oi.product_id WHERE oi.order_id IN ({$ph})", $orderIds);
     foreach ($items as $item) { $orderItems[$item['order_id']][] = $item; }
     try { $tags = $db->fetchAll("SELECT order_id, tag_name FROM order_tags WHERE order_id IN ({$ph})", $orderIds);
         foreach ($tags as $t) { $orderTags[$t['order_id']][] = $t; }
@@ -224,7 +224,17 @@ if (!empty($orderIds)) {
 }
 
 // ── Courier counts (for sub-tabs under each status) ──
-$courierList = ['Pathao', 'Steadfast', 'CarryBee', 'Unassigned'];
+// Build dynamic courier list from actual orders
+$_dbCouriers = [];
+try {
+    $_dbCouriers = $db->fetchAll("SELECT DISTINCT courier_name FROM orders WHERE courier_name IS NOT NULL AND courier_name != '' AND courier_name != 'Unassigned' ORDER BY courier_name");
+} catch (\Throwable $e) {}
+$courierList = [];
+foreach ($_dbCouriers as $_dc) {
+    $cn = trim($_dc['courier_name']);
+    if ($cn && !in_array($cn, $courierList)) $courierList[] = $cn;
+}
+$courierList[] = 'Unassigned'; // Always add Unassigned at end
 $courierCounts = [];
 $_cwStatusWhere = '1=1';
 if ($status === 'processing') { $_cwStatusWhere = "o.order_status IN ('processing','pending')"; }
@@ -376,41 +386,6 @@ function sortIcon($col) {
 <?php if (isset($_GET['msg'])): ?><div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4 text-sm">✓ <?= $_GET['msg'] === 'updated' ? 'Status updated.' : ($_GET['msg'] === 'bulk_updated' ? 'Bulk update completed.' : 'Action completed.') ?></div><?php endif; ?>
 
 <?php if (empty($_isProcessingView)): ?>
-<!-- Summary Cards -->
-<div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-8 gap-2 mb-3">
-    <div class="bg-white rounded-lg border p-2.5 text-center">
-        <p class="text-xl font-bold text-gray-800"><?= intval($todaySummary['total'] ?? 0) ?></p>
-        <p class="text-[9px] text-gray-400 uppercase tracking-wider">Today</p>
-    </div>
-    <div class="bg-yellow-50 rounded-lg border border-yellow-200 p-2.5 text-center cursor-pointer hover:shadow-sm" onclick="OM.go({status:'processing',page:1})">
-        <p class="text-xl font-bold text-yellow-600"><?= $statusCounts['processing'] ?></p>
-        <p class="text-[9px] text-yellow-600 uppercase tracking-wider">Processing</p>
-    </div>
-    <div class="bg-blue-50 rounded-lg border border-blue-200 p-2.5 text-center cursor-pointer hover:shadow-sm" onclick="OM.go({status:'confirmed',page:1})">
-        <p class="text-xl font-bold text-blue-600"><?= $statusCounts['confirmed'] ?></p>
-        <p class="text-[9px] text-blue-600 uppercase tracking-wider">Confirmed</p>
-    </div>
-    <div class="bg-violet-50 rounded-lg border border-violet-200 p-2.5 text-center cursor-pointer hover:shadow-sm" onclick="OM.go({status:'ready_to_ship',page:1})">
-        <p class="text-xl font-bold text-violet-600"><?= $statusCounts['ready_to_ship'] ?? 0 ?></p>
-        <p class="text-[9px] text-violet-600 uppercase tracking-wider">Ready to Ship</p>
-    </div>
-    <div class="bg-purple-50 rounded-lg border border-purple-200 p-2.5 text-center cursor-pointer hover:shadow-sm" onclick="OM.go({status:'shipped',page:1})">
-        <p class="text-xl font-bold text-purple-600"><?= $statusCounts['shipped'] ?></p>
-        <p class="text-[9px] text-purple-600 uppercase tracking-wider">Shipped</p>
-    </div>
-    <div class="bg-green-50 rounded-lg border border-green-200 p-2.5 text-center cursor-pointer hover:shadow-sm" onclick="OM.go({status:'delivered',page:1})">
-        <p class="text-xl font-bold text-green-600"><?= $statusCounts['delivered'] ?></p>
-        <p class="text-[9px] text-green-600 uppercase tracking-wider">Delivered</p>
-    </div>
-    <div class="bg-red-50 rounded-lg border border-red-200 p-2.5 text-center cursor-pointer hover:shadow-sm" onclick="OM.go({status:'cancelled',page:1})">
-        <p class="text-xl font-bold text-red-600"><?= ($statusCounts['cancelled'] ?? 0) + ($statusCounts['returned'] ?? 0) ?></p>
-        <p class="text-[9px] text-red-600 uppercase tracking-wider">Cancel/Return</p>
-    </div>
-    <div class="bg-white rounded-lg border p-2.5 text-center">
-        <p class="text-xl font-bold text-gray-800">৳<?= number_format($totalRevenue['revenue'] ?? 0) ?></p>
-        <p class="text-[9px] text-gray-400 uppercase tracking-wider">Revenue</p>
-    </div>
-</div>
 <?php endif; /* _isProcessingView stats */ ?>
 
 <?php if (empty($_isProcessingView)): ?>
@@ -443,20 +418,25 @@ function sortIcon($col) {
     </div>
 </div>
 
-<!-- Courier Sub-Tabs (hidden on processing/all tabs) -->
-<?php if ($status && $status !== 'processing'): ?>
+<!-- Courier Sub-Tabs (always visible when a status is selected) -->
+<?php if ($status): ?>
 <div class="bg-white rounded-lg border mb-3 overflow-hidden om-courier-bar">
     <div class="overflow-x-auto">
         <div class="flex items-center min-w-max gap-1 px-3 py-2">
             <?php
             $courierIcons = [
                 'Pathao'           => ['icon' => 'fas fa-motorcycle', 'color' => 'teal',   'bg' => 'bg-teal-50',   'border' => 'border-teal-500',   'text' => 'text-teal-700'],
+                'Pathao Courier'   => ['icon' => 'fas fa-motorcycle', 'color' => 'teal',   'bg' => 'bg-teal-50',   'border' => 'border-teal-500',   'text' => 'text-teal-700'],
                 'Steadfast'        => ['icon' => 'fas fa-truck',       'color' => 'blue',   'bg' => 'bg-blue-50',   'border' => 'border-blue-500',   'text' => 'text-blue-700'],
+                'Steadfast Courier'=> ['icon' => 'fas fa-truck',       'color' => 'blue',   'bg' => 'bg-blue-50',   'border' => 'border-blue-500',   'text' => 'text-blue-700'],
+                'RedX'             => ['icon' => 'fas fa-bolt',        'color' => 'red',    'bg' => 'bg-red-50',    'border' => 'border-red-500',    'text' => 'text-red-700'],
                 'CarryBee'         => ['icon' => 'fas fa-box',         'color' => 'amber',  'bg' => 'bg-amber-50',  'border' => 'border-amber-500',  'text' => 'text-amber-700'],
+                'Personal Delivery'=> ['icon' => 'fas fa-walking',     'color' => 'violet', 'bg' => 'bg-violet-50', 'border' => 'border-violet-500', 'text' => 'text-violet-700'],
                 'Unassigned'       => ['icon' => 'fas fa-question-circle','color'=>'gray',  'bg' => 'bg-gray-100',  'border' => 'border-gray-400',   'text' => 'text-gray-600'],
             ];
+            $defaultIcon = ['icon' => 'fas fa-shipping-fast', 'color' => 'slate', 'bg' => 'bg-slate-50', 'border' => 'border-slate-400', 'text' => 'text-slate-700'];
             foreach ($courierList as $cn):
-                $ci = $courierIcons[$cn];
+                $ci = $courierIcons[$cn] ?? $defaultIcon;
                 $cnt = $courierCounts[$cn] ?? 0;
                 $courierParam = $cn === 'Personal Delivery' ? 'Personal Delivery' : $cn;
                 $isActiveCourier = ($courierParam === 'Unassigned')
@@ -702,7 +682,7 @@ function sortIcon($col) {
     </td>
     
     <!-- Products -->
-    <td style="min-width:160px">
+    <td style="min-width:160px;cursor:pointer" onclick='showProductPopup(<?= htmlspecialchars(json_encode(array_map(function($i){return["name"=>$i["product_name"],"variant"=>$i["variant_name"]??"","qty"=>intval($i["quantity"]),"price"=>floatval($i["price"]??0),"image"=>!empty($i["featured_image"])?imgSrc("products",$i["featured_image"]):"","sku"=>$i["sku"]??""];}, $oItems)),ENT_QUOTES) ?>, "<?= e($order["order_number"]) ?>")'>
         <div style="display:inline-flex;align-items:center;gap:3px;margin-bottom:3px">
             <span class="status-dot" style="background:<?= $sDot ?>"></span>
             <span class="tag-badge" style="background:<?= $sDot ?>22;color:<?= $sDot ?>;font-size:9px;padding:1px 6px"><?= strtoupper(str_replace('_',' ',$oStatus)) ?></span>
@@ -1763,8 +1743,64 @@ function closePrintModal() { closeInvModal(); closeStkModal(); }
 function bPrint(t) { var ids = getIds(); if (!ids.length) { alert('Select orders'); return; } if (t && t.startsWith('stk_')) openStkPrint(ids); else openInvPrint(ids); }
 
 document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') { closeInvModal(); closeStkModal(); }
+    if (e.key === 'Escape') { closeInvModal(); closeStkModal(); document.getElementById('prodPopup')&&(document.getElementById('prodPopup').style.display='none'); }
 });
+
+// ══════ Product Detail Popup (Fix #7) ══════
+function showProductPopup(items, orderNum) {
+    var m = document.getElementById('prodPopup');
+    if (!m) {
+        m = document.createElement('div'); m.id = 'prodPopup';
+        m.style.cssText = 'position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center';
+        m.onclick = function(e){ if(e.target===m) m.style.display='none'; };
+        m.innerHTML = '<div style="background:#fff;border-radius:16px;max-width:480px;width:92%;max-height:80vh;overflow-y:auto;box-shadow:0 25px 60px rgba(0,0,0,.2)" onclick="event.stopPropagation()"><div style="padding:14px 20px;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center"><h3 id="prodPopupTitle" style="font-weight:700;font-size:14px;color:#1e293b">Products</h3><button onclick="this.closest(\'#prodPopup\').style.display=\'none\'" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8;line-height:1">&times;</button></div><div id="prodPopupBody" style="padding:12px 20px"></div></div>';
+        document.body.appendChild(m);
+    }
+    document.getElementById('prodPopupTitle').textContent = 'Products — Invoice #' + orderNum;
+    var body = document.getElementById('prodPopupBody');
+    var html = '';
+    items.forEach(function(p){
+        var img = p.image ? '<img src="'+p.image+'" style="width:56px;height:56px;border-radius:8px;object-fit:cover;border:1px solid #e2e8f0;flex-shrink:0">' : '<div style="width:56px;height:56px;border-radius:8px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">📦</div>';
+        html += '<div style="display:flex;gap:12px;padding:12px 0;border-bottom:1px solid #f8fafc">';
+        html += img;
+        html += '<div style="flex:1;min-width:0">';
+        html += '<p style="font-weight:600;font-size:13px;color:#1e293b;margin:0 0 2px">' + (p.name||'—') + '</p>';
+        if (p.variant) html += '<p style="font-size:11px;color:#64748b;margin:0 0 2px">' + p.variant + '</p>';
+        html += '<p style="font-size:11px;color:#94a3b8;margin:0">';
+        if (p.sku) html += 'SKU: ' + p.sku + ' · ';
+        html += 'Quantity: <strong style="color:#334155">' + p.qty + '</strong></p>';
+        if (p.price > 0) html += '<p style="font-size:12px;font-weight:700;color:#0f766e;margin:4px 0 0">৳' + Number(p.price).toLocaleString() + '</p>';
+        html += '</div></div>';
+    });
+    if (!items.length) html = '<p style="text-align:center;color:#94a3b8;padding:20px 0">No products</p>';
+    body.innerHTML = html;
+    m.style.display = 'flex';
+}
+</script>
+
+<!-- ══════ Toast Notification System (Fix #1) ══════ -->
+<style>
+#kbToast{position:fixed;top:-60px;left:50%;transform:translateX(-50%);z-index:99999;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:500;box-shadow:0 8px 30px rgba(0,0,0,.15);transition:top .35s cubic-bezier(.22,1,.36,1);max-width:90%;white-space:nowrap}
+#kbToast.show{top:16px}
+#kbToast.success{background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0}
+#kbToast.error{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+#kbToast.warning{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
+#kbToast.info{background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe}
+</style>
+<div id="kbToast"></div>
+<script>
+function kbToast(msg, type, duration) {
+    type = type || 'info'; duration = duration || 4000;
+    var t = document.getElementById('kbToast');
+    t.className = type; t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(function(){ t.classList.remove('show'); }, duration);
+}
+// Show flash messages from PHP as toast
+<?php if (!empty($_GET['msg'])): ?>
+kbToast('<?= addslashes(e($_GET['msg'] ?? '')) ?>', 'success');
+<?php endif; ?>
 </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
