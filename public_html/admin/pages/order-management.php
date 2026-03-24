@@ -176,10 +176,11 @@ if ($dateFrom) { $where .= " AND DATE(o.created_at) >= ?"; $params[] = $dateFrom
 if ($dateTo) { $where .= " AND DATE(o.created_at) <= ?"; $params[] = $dateTo; }
 if ($channel) { $where .= " AND o.channel = ?"; $params[] = $channel; }
 if ($courier) {
+    $_oce2 = "COALESCE(NULLIF(o.courier_name,''), o.shipping_method)";
     if ($courier === 'Unassigned') {
-        $where .= " AND (o.courier_name IS NULL OR o.courier_name = '' OR o.courier_name = 'Personal Delivery' OR o.courier_name = 'Unassigned')";
+        $where .= " AND ({$_oce2} IS NULL OR {$_oce2} = '' OR {$_oce2} = 'Unassigned')";
     } else {
-        $where .= " AND o.courier_name LIKE ?"; $params[] = '%' . $courier . '%';
+        $where .= " AND {$_oce2} LIKE ?"; $params[] = '%' . $courier . '%';
     }
 }
 if ($assignedTo) { $where .= " AND o.assigned_to = ?"; $params[] = intval($assignedTo); }
@@ -225,26 +226,52 @@ if (!empty($orderIds)) {
 
 // ── Courier counts (for sub-tabs under each status) ──
 // Build dynamic courier list from actual orders
+// ── Courier counts — normalize names, use courier_name OR shipping_method ──
+// Normalize courier names: "Pathao Courier" → "Pathao", "Steadfast Courier" → "Steadfast", etc.
+function normalizeCourierName($raw) {
+    $raw = trim($raw ?? '');
+    if (!$raw) return '';
+    // Strip trailing "Courier", "Express", "Delivery" for grouping
+    $norm = preg_replace('/\s+(Courier|Express|Delivery|Logistics)$/i', '', $raw);
+    $norm = trim($norm);
+    // Capitalize first letter of each word
+    return $norm ?: $raw;
+}
+
+$_courierExpr = "COALESCE(NULLIF(courier_name,''), shipping_method)";
 $_dbCouriers = [];
 try {
-    $_dbCouriers = $db->fetchAll("SELECT DISTINCT courier_name FROM orders WHERE courier_name IS NOT NULL AND courier_name != '' AND courier_name != 'Unassigned' ORDER BY courier_name");
+    $_dbCouriers = $db->fetchAll("SELECT DISTINCT {$_courierExpr} as cname FROM orders WHERE {$_courierExpr} IS NOT NULL AND {$_courierExpr} != '' AND {$_courierExpr} != 'Unassigned' ORDER BY cname");
 } catch (\Throwable $e) {}
+
+// Build normalized list (merge "Pathao" + "Pathao Courier" → "Pathao")
 $courierList = [];
+$_courierRawMap = []; // normalized → [raw1, raw2, ...]
 foreach ($_dbCouriers as $_dc) {
-    $cn = trim($_dc['courier_name']);
-    if ($cn && !in_array($cn, $courierList)) $courierList[] = $cn;
+    $raw = trim($_dc['cname'] ?? '');
+    if (!$raw) continue;
+    $norm = normalizeCourierName($raw);
+    if (!isset($_courierRawMap[$norm])) $_courierRawMap[$norm] = [];
+    if (!in_array($raw, $_courierRawMap[$norm])) $_courierRawMap[$norm][] = $raw;
+    if (!in_array($norm, $courierList)) $courierList[] = $norm;
 }
-$courierList[] = 'Unassigned'; // Always add Unassigned at end
+$courierList[] = 'Unassigned';
+
 $courierCounts = [];
 $_cwStatusWhere = '1=1';
 if ($status === 'processing') { $_cwStatusWhere = "o.order_status IN ('processing','pending')"; }
 elseif ($status) { $_cwStatusWhere = "o.order_status = '" . preg_replace('/[^a-z_]/','',$status) . "'"; }
 
+$_oce = "COALESCE(NULLIF(o.courier_name,''), o.shipping_method)";
 foreach ($courierList as $cn) {
     if ($cn === 'Unassigned') {
-        try { $courierCounts[$cn] = (int)($db->fetch("SELECT COUNT(*) as cnt FROM orders o WHERE {$_cwStatusWhere} AND (o.courier_name IS NULL OR o.courier_name = '' OR o.courier_name = 'Personal Delivery' OR o.courier_name = 'Unassigned')")['cnt'] ?? 0); } catch(\Throwable $e) { $courierCounts[$cn] = 0; }
+        try { $courierCounts[$cn] = (int)($db->fetch("SELECT COUNT(*) as cnt FROM orders o WHERE {$_cwStatusWhere} AND ({$_oce} IS NULL OR {$_oce} = '' OR {$_oce} = 'Unassigned')")['cnt'] ?? 0); } catch(\Throwable $e) { $courierCounts[$cn] = 0; }
     } else {
-        try { $courierCounts[$cn] = (int)($db->fetch("SELECT COUNT(*) as cnt FROM orders o WHERE {$_cwStatusWhere} AND o.courier_name LIKE ?", ['%'.$cn.'%'])['cnt'] ?? 0); } catch(\Throwable $e) { $courierCounts[$cn] = 0; }
+        // Match all raw variants: "Pathao", "Pathao Courier", etc.
+        $variants = $_courierRawMap[$cn] ?? [$cn];
+        $likeConditions = array_map(function($v){ return "{$GLOBALS['_oce']} LIKE ?"; }, $variants);
+        // Simpler: just use the base name with LIKE
+        try { $courierCounts[$cn] = (int)($db->fetch("SELECT COUNT(*) as cnt FROM orders o WHERE {$_cwStatusWhere} AND {$_oce} LIKE ?", ['%'.$cn.'%'])['cnt'] ?? 0); } catch(\Throwable $e) { $courierCounts[$cn] = 0; }
     }
 }
 
@@ -418,12 +445,12 @@ function sortIcon($col) {
     </div>
 </div>
 
-<!-- Courier Sub-Tabs (from confirmed onwards) -->
+<!-- Courier Sub-Tabs (from confirmed onwards, always rendered for AJAX) -->
 <?php
 $_courierVisibleStatuses = ['confirmed','ready_to_ship','shipped','delivered','pending_return','returned','partial_delivered','cancelled','pending_cancel','on_hold','lost'];
-if ($status && in_array($status, $_courierVisibleStatuses)):
+$_courierBarHidden = !$status || !in_array($status, $_courierVisibleStatuses);
 ?>
-<div class="bg-white rounded-lg border mb-3 overflow-hidden om-courier-bar">
+<div class="bg-white rounded-lg border mb-3 overflow-hidden om-courier-bar <?= $_courierBarHidden ? 'hidden' : '' ?>">
     <div class="overflow-x-auto">
         <div class="flex items-center min-w-max gap-1 px-3 py-2">
             <?php
@@ -466,7 +493,6 @@ if ($status && in_array($status, $_courierVisibleStatuses)):
         </div>
     </div>
 </div>
-<?php endif; ?>
 <?php endif; /* _isProcessingView status tabs */ ?>
 
 <!-- Search & Toolbar -->

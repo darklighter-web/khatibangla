@@ -1995,6 +1995,12 @@ function showNoteTpl(targetField, tplKey) {
     var ps = null;
     try { ps = JSON.parse(sessionStorage.getItem(SESSION_KEY)); } catch(e) {}
 
+    // ── Exit session (define early so button always works) ──────────────────
+    window.psExit = function() {
+        sessionStorage.removeItem(SESSION_KEY);
+        window.location.href = PROC_URL;
+    };
+
     // No session — hide bar and bail
     if (!ps || !Array.isArray(ps.queue) || !ps.queue.length) {
         var bar = document.getElementById('procSessionBar');
@@ -2103,14 +2109,6 @@ function showNoteTpl(targetField, tplKey) {
     }
 
 
-
-    // ── Exit session ───────────────────────────────────────────────────────
-    window.psExit = function() {
-        if (confirm('Exit processing session?')) {
-            sessionStorage.removeItem(SESSION_KEY);
-            window.location.href = PROC_URL;
-        }
-    };
 
     // ── Summary overlay ────────────────────────────────────────────────────
     function psShowSummary() {
