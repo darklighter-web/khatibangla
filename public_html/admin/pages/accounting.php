@@ -38,6 +38,113 @@ switch ($range) {
     default:           $dateFrom = date('Y-m-01'); $dateTo = date('Y-m-t'); $rangeLabel = 'This Month'; $range = 'this_month';
 }
 
+// ── Fixed Expenses System ──
+// Ensure fixed_expenses table exists
+try { $db->query("SELECT 1 FROM fixed_expenses LIMIT 1"); } catch (\Throwable $e) {
+    $db->query("CREATE TABLE IF NOT EXISTS fixed_expenses (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        title VARCHAR(200) NOT NULL,
+        amount DECIMAL(12,2) NOT NULL,
+        category_id INT DEFAULT NULL,
+        frequency ENUM('monthly','quarterly','yearly') DEFAULT 'monthly',
+        start_date DATE NOT NULL,
+        end_date DATE DEFAULT NULL,
+        day_of_month TINYINT DEFAULT 28,
+        is_active TINYINT(1) DEFAULT 1,
+        notes TEXT,
+        created_by INT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_active (is_active)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
+// ── Auto-generate fixed expenses for completed months ──
+try {
+    $activeFixed = $db->fetchAll("SELECT * FROM fixed_expenses WHERE is_active = 1");
+    foreach ($activeFixed as $fe) {
+        $startDate = $fe['start_date'];
+        $endDate = $fe['end_date'] ?: date('Y-m-d');
+        $freq = $fe['frequency'];
+
+        // Generate for each period that has passed
+        $current = new DateTime($startDate);
+        $now = new DateTime();
+        $interval = $freq === 'yearly' ? 'P1Y' : ($freq === 'quarterly' ? 'P3M' : 'P1M');
+        
+        while ($current <= $now) {
+            $genDate = $current->format('Y-m') . '-' . str_pad(min($fe['day_of_month'], intval($current->format('t'))), 2, '0', STR_PAD_LEFT);
+            if ($genDate <= date('Y-m-d') && $genDate >= $fe['start_date'] && (!$fe['end_date'] || $genDate <= $fe['end_date'])) {
+                // Check if already generated for this period
+                $exists = $db->fetch("SELECT id FROM expenses WHERE reference = ? AND expense_date = ?", ['fixed:'.$fe['id'], $genDate]);
+                if (!$exists) {
+                    $db->query("INSERT INTO expenses (category_id, title, amount, expense_date, payment_method, reference, notes, created_by) VALUES (?,?,?,?,'auto',?,?,?)", [
+                        $fe['category_id'] ?? null,
+                        $fe['title'],
+                        $fe['amount'],
+                        $genDate,
+                        'fixed:'.$fe['id'],
+                        'Auto-generated fixed expense' . ($fe['notes'] ? ': '.$fe['notes'] : ''),
+                        $fe['created_by']
+                    ]);
+                }
+            }
+            $current->add(new DateInterval($interval));
+        }
+    }
+} catch (\Throwable $e) {}
+
+// ── Handle Fixed Expense POST actions ──
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? '';
+    $qs = http_build_query(array_filter(['range' => $range, 'from' => $customFrom, 'to' => $customTo]));
+
+    if ($action === 'add_fixed') {
+        $db->query("INSERT INTO fixed_expenses (title, amount, category_id, frequency, start_date, end_date, day_of_month, notes, created_by) VALUES (?,?,?,?,?,?,?,?,?)", [
+            sanitize($_POST['fe_title']),
+            floatval($_POST['fe_amount']),
+            intval($_POST['fe_category']) ?: null,
+            in_array($_POST['fe_frequency'] ?? '', ['monthly','quarterly','yearly']) ? $_POST['fe_frequency'] : 'monthly',
+            $_POST['fe_start_date'] ?: date('Y-m-01'),
+            $_POST['fe_end_date'] ?: null,
+            min(28, max(1, intval($_POST['fe_day'] ?? 28))),
+            sanitize($_POST['fe_notes'] ?? ''),
+            getAdminId()
+        ]);
+        redirect(adminUrl('pages/accounting.php?' . $qs . '&msg=Fixed expense added'));
+    }
+    if ($action === 'toggle_fixed') {
+        $fid = intval($_POST['fe_id']);
+        $db->query("UPDATE fixed_expenses SET is_active = NOT is_active WHERE id = ?", [$fid]);
+        redirect(adminUrl('pages/accounting.php?' . $qs . '&msg=Fixed expense updated'));
+    }
+    if ($action === 'delete_fixed') {
+        $fid = intval($_POST['fe_id']);
+        $db->query("DELETE FROM fixed_expenses WHERE id = ?", [$fid]);
+        redirect(adminUrl('pages/accounting.php?' . $qs . '&msg=Fixed expense removed'));
+    }
+    if ($action === 'delete') {
+        $db->delete('accounting_entries', 'id = ?', [intval($_POST['entry_id'])]);
+        redirect(adminUrl('pages/accounting.php?' . $qs . '&msg=Entry deleted'));
+    }
+}
+
+// Load fixed expenses for display
+$fixedExpenses = [];
+try { $fixedExpenses = $db->fetchAll("SELECT fe.*, ec.name as category_name FROM fixed_expenses fe LEFT JOIN expense_categories ec ON ec.id = fe.category_id ORDER BY fe.is_active DESC, fe.title"); } catch (\Throwable $e) {}
+$fixedMonthlyTotal = 0;
+foreach ($fixedExpenses as $fe) {
+    if ($fe['is_active']) {
+        $amt = floatval($fe['amount']);
+        if ($fe['frequency'] === 'yearly') $fixedMonthlyTotal += $amt / 12;
+        elseif ($fe['frequency'] === 'quarterly') $fixedMonthlyTotal += $amt / 3;
+        else $fixedMonthlyTotal += $amt;
+    }
+}
+
+// Load expense categories for the fixed expense form
+$expCategories = [];
+try { $expCategories = $db->fetchAll("SELECT id, name FROM expense_categories ORDER BY name"); } catch (\Throwable $e) {}
+
 // Date expression: use created_at as the order date for all revenue queries
 $dateExpr = "DATE(o.created_at)";
 
@@ -149,15 +256,6 @@ try {
     ORDER BY txn_date DESC LIMIT 15");
 } catch (\Throwable $e) {}
 
-// ── Handle POST (ledger delete) ──
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = $_POST['action'] ?? '';
-    $qs = http_build_query(array_filter(['range' => $range, 'from' => $customFrom, 'to' => $customTo]));
-    if ($action === 'delete') {
-        $db->delete('accounting_entries', 'id = ?', [intval($_POST['entry_id'])]);
-        redirect(adminUrl('pages/accounting.php?' . $qs . '&msg=deleted'));
-    }
-}
 
 require_once __DIR__ . '/../includes/header.php';
 $msg = $_GET['msg'] ?? '';
@@ -309,6 +407,77 @@ function applyCustomRange() {
                 <div class="text-center p-2 bg-green-50 rounded-lg"><p class="text-lg font-bold text-green-600">৳<?= number_format($liabilitySummary['paid']) ?></p><p class="text-[9px] text-gray-500">Paid</p></div>
                 <div class="text-center p-2 bg-gray-50 rounded-lg"><p class="text-lg font-bold text-gray-600">৳<?= number_format($liabilitySummary['total']) ?></p><p class="text-[9px] text-gray-500">Total</p></div>
             </div>
+        </div>
+
+        <!-- Fixed/Recurring Expenses -->
+        <div class="bg-white rounded-xl border shadow-sm p-5">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-semibold text-gray-800">🔄 Fixed Expenses</h3>
+                <span class="text-[10px] bg-red-50 text-red-600 px-2 py-0.5 rounded-full font-medium">৳<?= number_format($fixedMonthlyTotal) ?>/mo</span>
+            </div>
+
+            <!-- Existing fixed expenses -->
+            <?php if (!empty($fixedExpenses)): ?>
+            <div class="space-y-2 mb-4 max-h-[200px] overflow-y-auto">
+                <?php foreach ($fixedExpenses as $fe): ?>
+                <div class="flex items-center gap-2 py-1.5 <?= $fe['is_active'] ? '' : 'opacity-40' ?> border-b border-gray-50 last:border-0">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs font-medium text-gray-800 truncate"><?= e($fe['title']) ?></p>
+                        <p class="text-[10px] text-gray-400"><?= e($fe['category_name'] ?? '') ?> · <?= ucfirst($fe['frequency']) ?> · Day <?= $fe['day_of_month'] ?><?= $fe['end_date'] ? ' · Until '.date('M Y', strtotime($fe['end_date'])) : '' ?></p>
+                    </div>
+                    <span class="text-xs font-bold text-red-600 whitespace-nowrap">৳<?= number_format($fe['amount']) ?></span>
+                    <div class="flex gap-1">
+                        <form method="POST" class="inline"><input type="hidden" name="action" value="toggle_fixed"><input type="hidden" name="fe_id" value="<?= $fe['id'] ?>">
+                            <button class="text-[10px] px-1.5 py-0.5 rounded <?= $fe['is_active'] ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500' ?>" title="<?= $fe['is_active'] ? 'Pause' : 'Activate' ?>"><?= $fe['is_active'] ? '✓' : '⏸' ?></button>
+                        </form>
+                        <form method="POST" class="inline" onsubmit="return confirm('Delete this fixed expense?')"><input type="hidden" name="action" value="delete_fixed"><input type="hidden" name="fe_id" value="<?= $fe['id'] ?>">
+                            <button class="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-400 hover:text-red-600">×</button>
+                        </form>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+
+            <!-- Add new fixed expense -->
+            <details class="group">
+                <summary class="cursor-pointer text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1">
+                    <span class="group-open:rotate-90 transition-transform text-[10px]">▶</span> Add Fixed Expense
+                </summary>
+                <form method="POST" class="mt-3 space-y-2.5 bg-gray-50 rounded-lg p-3">
+                    <input type="hidden" name="action" value="add_fixed">
+                    <div>
+                        <input type="text" name="fe_title" required placeholder="Title (e.g., Office Rent, Internet Bill)" class="w-full border rounded-lg px-2.5 py-2 text-xs">
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="number" name="fe_amount" step="0.01" min="0" required placeholder="Amount (৳)" class="border rounded-lg px-2.5 py-2 text-xs">
+                        <select name="fe_category" class="border rounded-lg px-2.5 py-2 text-xs">
+                            <option value="">Category</option>
+                            <?php foreach ($expCategories as $cat): ?>
+                            <option value="<?= $cat['id'] ?>"><?= e($cat['name']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2">
+                        <select name="fe_frequency" class="border rounded-lg px-2.5 py-2 text-xs">
+                            <option value="monthly">Monthly</option>
+                            <option value="quarterly">Quarterly</option>
+                            <option value="yearly">Yearly</option>
+                        </select>
+                        <input type="number" name="fe_day" min="1" max="28" value="28" placeholder="Day" class="border rounded-lg px-2.5 py-2 text-xs" title="Day of month (1-28)">
+                        <input type="date" name="fe_start_date" value="<?= date('Y-m-01') ?>" required class="border rounded-lg px-2.5 py-2 text-xs">
+                    </div>
+                    <div>
+                        <input type="date" name="fe_end_date" placeholder="End date (optional)" class="w-full border rounded-lg px-2.5 py-2 text-xs" title="Leave empty for ongoing">
+                        <p class="text-[9px] text-gray-400 mt-0.5">End date — leave empty for ongoing expenses</p>
+                    </div>
+                    <div>
+                        <input type="text" name="fe_notes" placeholder="Notes (optional)" class="w-full border rounded-lg px-2.5 py-2 text-xs">
+                    </div>
+                    <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded-lg text-xs font-medium hover:bg-blue-700">Add Fixed Expense</button>
+                </form>
+            </details>
+            <p class="text-[9px] text-gray-400 mt-2">Fixed expenses auto-generate in the Expenses list on their scheduled day each month/quarter/year.</p>
         </div>
     </div>
 
