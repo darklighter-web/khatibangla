@@ -50,7 +50,7 @@
     </td>
     
     <!-- Products -->
-    <td style="min-width:160px">
+    <td style="min-width:160px;cursor:pointer" onclick='showProductPopup(<?= htmlspecialchars(json_encode(array_map(function($i){return["name"=>$i["product_name"],"variant"=>$i["variant_name"]??"","qty"=>intval($i["quantity"]),"price"=>floatval($i["price"]??0),"image"=>!empty($i["featured_image"])?imgSrc("products",$i["featured_image"]):"","sku"=>$i["sku"]??""];}, $oItems)),ENT_QUOTES) ?>, "<?= e($order["order_number"]) ?>")'>
         <div style="display:inline-flex;align-items:center;gap:3px;margin-bottom:3px">
             <span class="status-dot" style="background:<?= $sDot ?>"></span>
             <span class="tag-badge" style="background:<?= $sDot ?>22;color:<?= $sDot ?>;font-size:9px;padding:1px 6px"><?= strtoupper(str_replace('_',' ',$oStatus)) ?></span>

@@ -594,13 +594,26 @@ function createOrder($data) {
     $customer = $db->fetch("SELECT * FROM customers WHERE phone = ?", [$data['phone']]);
     if ($customer) {
         $customerId = $customer['id'];
-        $db->update('customers', [
-            'name' => $data['name'],
-            'address' => $data['address'],
-            'city' => $data['city'] ?? '',
-            'district' => $data['district'] ?? '',
-            'total_orders' => $customer['total_orders'] + 1,
-        ], 'id = ?', [$customerId]);
+        // Only update name if it was empty; never overwrite primary address
+        $updateData = ['total_orders' => $customer['total_orders'] + 1];
+        if (empty($customer['name'])) $updateData['name'] = $data['name'];
+        $db->update('customers', $updateData, 'id = ?', [$customerId]);
+        
+        // Save address as secondary if different from primary
+        $newAddr = trim($data['address'] ?? '');
+        $existingAddr = trim($customer['address'] ?? '');
+        if ($newAddr && strtolower($newAddr) !== strtolower($existingAddr)) {
+            try {
+                $addrExists = $db->fetch("SELECT id FROM customer_addresses WHERE customer_id = ? AND address = ?", [$customerId, $newAddr]);
+                if (!$addrExists) {
+                    $db->insert('customer_addresses', [
+                        'customer_id' => $customerId, 'name' => $data['name'],
+                        'phone' => $data['phone'], 'address' => $newAddr,
+                        'city' => $data['city'] ?? '', 'is_default' => 0
+                    ]);
+                }
+            } catch (\Throwable $e) {}
+        }
     } else {
         $customerId = $db->insert('customers', [
             'name' => $data['name'],
