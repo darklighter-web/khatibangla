@@ -531,6 +531,7 @@ $_courierBarHidden = !$status || !in_array($status, $_courierVisibleStatuses);
             <button type="button" onclick="bStatus('delivered')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">📦 Deliver</button>
             <button type="button" onclick="bStatus('returned')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-orange-600">↩ Return</button>
             <button type="button" onclick="bStatus('cancelled')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-red-600">✗ Cancel</button>
+            <button type="button" onclick="openBulkStatusModal()" class="w-full text-left px-3 py-1.5 text-xs hover:bg-indigo-50 text-indigo-600 font-medium">🔄 Update Status (Any)</button>
             <?php else: ?>
             <hr class="my-0.5"><p class="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase">Quick Action</p>
             <button type="button" onclick="bStatus('confirmed')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 text-blue-700 font-medium">✅ Confirm Selected</button>
@@ -1819,6 +1820,64 @@ function kbToast(msg, type, duration) {
 <?php if (!empty($_GET['msg'])): ?>
 kbToast('<?= addslashes(e($_GET['msg'] ?? '')) ?>', 'success');
 <?php endif; ?>
+</script>
+
+<!-- ══════ Bulk Status Update Modal ══════ -->
+<div id="bulkStatusModal" class="fixed inset-0 z-[9998] hidden bg-black/50 flex items-center justify-center" onclick="if(event.target===this)this.classList.add('hidden')">
+    <div class="bg-white rounded-2xl shadow-2xl w-[95vw] max-w-md overflow-hidden" onclick="event.stopPropagation()">
+        <div class="px-5 py-4 border-b bg-indigo-50">
+            <h3 class="font-bold text-gray-800 text-sm">🔄 Bulk Update Status</h3>
+            <p class="text-[10px] text-gray-500 mt-0.5">Change <span id="bsCount" class="font-bold text-indigo-600">0</span> selected orders to any status</p>
+        </div>
+        <div class="p-5">
+            <div class="grid grid-cols-2 gap-2 mb-4">
+                <?php
+                $allBulkStatuses = [
+                    'processing' => ['⚙️', 'Processing', 'bg-yellow-50 border-yellow-200 hover:bg-yellow-100'],
+                    'confirmed' => ['✅', 'Confirmed', 'bg-blue-50 border-blue-200 hover:bg-blue-100'],
+                    'ready_to_ship' => ['📦', 'Ready to Ship', 'bg-violet-50 border-violet-200 hover:bg-violet-100'],
+                    'shipped' => ['🚚', 'Shipped', 'bg-purple-50 border-purple-200 hover:bg-purple-100'],
+                    'delivered' => ['📬', 'Delivered', 'bg-green-50 border-green-200 hover:bg-green-100'],
+                    'on_hold' => ['⏸️', 'On Hold', 'bg-gray-50 border-gray-200 hover:bg-gray-100'],
+                    'no_response' => ['📵', 'No Response', 'bg-rose-50 border-rose-200 hover:bg-rose-100'],
+                    'good_but_no_response' => ['📱', 'Good No Resp', 'bg-teal-50 border-teal-200 hover:bg-teal-100'],
+                    'advance_payment' => ['💰', 'Advance Payment', 'bg-emerald-50 border-emerald-200 hover:bg-emerald-100'],
+                    'pending_return' => ['🔄', 'Pending Return', 'bg-amber-50 border-amber-200 hover:bg-amber-100'],
+                    'returned' => ['↩️', 'Returned', 'bg-orange-50 border-orange-200 hover:bg-orange-100'],
+                    'cancelled' => ['✗', 'Cancelled', 'bg-red-50 border-red-200 hover:bg-red-100'],
+                    'pending_cancel' => ['⏳', 'Pending Cancel', 'bg-pink-50 border-pink-200 hover:bg-pink-100'],
+                    'partial_delivered' => ['📦½', 'Partial Delivered', 'bg-cyan-50 border-cyan-200 hover:bg-cyan-100'],
+                    'lost' => ['❌', 'Lost', 'bg-stone-50 border-stone-200 hover:bg-stone-100'],
+                ];
+                foreach ($allBulkStatuses as $sk => $sv):
+                ?>
+                <button type="button" onclick="confirmBulkStatus('<?= $sk ?>','<?= $sv[1] ?>')"
+                    class="flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs font-medium text-gray-700 transition <?= $sv[2] ?>">
+                    <span class="text-sm"><?= $sv[0] ?></span> <?= $sv[1] ?>
+                </button>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <div class="px-5 py-3 border-t bg-gray-50 flex justify-end">
+            <button type="button" onclick="document.getElementById('bulkStatusModal').classList.add('hidden')" class="px-4 py-1.5 text-xs text-gray-500 hover:text-gray-700">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function openBulkStatusModal() {
+    var ids = getIds();
+    if (!ids.length) { alert('Select at least one order first.'); return; }
+    document.getElementById('bsCount').textContent = ids.length;
+    document.getElementById('actionsMenu').classList.add('hidden');
+    document.getElementById('bulkStatusModal').classList.remove('hidden');
+}
+function confirmBulkStatus(status, label) {
+    var ids = getIds();
+    if (!ids.length) return;
+    document.getElementById('bulkStatusModal').classList.add('hidden');
+    bStatus(status);
+}
 </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
