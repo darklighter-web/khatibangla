@@ -1200,7 +1200,7 @@ exit; endif; /* end lockBlocked */ ?>
 <style>@keyframes panelNoteIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}</style>
 
 <script>
-const PAPI='<?= SITE_URL ?>/api/pathao-api.php',SAPI='<?= SITE_URL ?>/api/search.php?admin=1';
+const PAPI='<?= SITE_URL ?>/api/pathao-api.php',SAPI='<?= SITE_URL ?>/api/product-search.php',PRODUCT_API='<?= SITE_URL ?>/api/product-search.php';
 let searchTimer=null;
 
 let _lastFetchedPhone='';
@@ -1267,25 +1267,266 @@ function searchProducts(){
     if(q.length<2){document.getElementById('productResults').innerHTML='<div class="py-4 text-center text-gray-400 text-sm">Type to search...</div>';return;}
     searchTimer=setTimeout(async()=>{
         try{
-            const r=await(await fetch(SAPI+'&q='+encodeURIComponent(q))).json();
-            if(!r.results?.length){document.getElementById('productResults').innerHTML='<div class="py-3 text-center text-gray-400 text-sm">No products found</div>';return;}
+            const r=await(await fetch(SAPI+'?q='+encodeURIComponent(q))).json();
+            if(!r.success||!r.results?.length){document.getElementById('productResults').innerHTML='<div class="py-3 text-center text-gray-400 text-sm">No products found</div>';return;}
             let h='';
             r.results.forEach(p=>{
-                h+=`<div class="flex items-center gap-3 p-2.5 hover:bg-blue-50 cursor-pointer transition" onclick="addProduct(${p.id},'${esc(p.name)}',${p.price},'${esc(p.image)}','${esc(p.sku||'')}')">
+                const hasVar = p.has_variants || p.variant_count > 0;
+                const varBadge = hasVar ? '<span style="background:#dbeafe;color:#1d4ed8;font-size:9px;padding:1px 5px;border-radius:8px;margin-left:4px">+Variants</span>' : '';
+                const clickFn = hasVar 
+                    ? `showVariantPicker(${p.id},'${esc(p.name)}',${p.price},'${esc(p.image)}','${esc(p.sku||'')}')`
+                    : `addProduct(${p.id},'${esc(p.name)}',${p.price},'${esc(p.image)}','${esc(p.sku||'')}','')`;
+                h+=`<div class="flex items-center gap-3 p-2.5 hover:bg-blue-50 cursor-pointer transition" onclick="${clickFn}">
                     <img src="${p.image}" class="w-12 h-12 rounded object-cover border border-gray-200" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22><text y=%22.9em%22 font-size=%2230%22>📦</text></svg>'">
-                    <div class="flex-1 min-w-0"><div class="text-sm font-medium text-gray-800 truncate">${esc(p.name)}</div><div class="text-[10px] text-blue-600 font-bold">${p.sku?'SKU: '+esc(p.sku):''}</div><div class="text-[10px] text-gray-500">Price: ৳${p.price.toLocaleString()} · Stock: ${p.stock_quantity??0}</div></div>
-                    <span class="text-yellow-400 text-lg shrink-0">★</span></div>`;
+                    <div class="flex-1 min-w-0"><div class="text-sm font-medium text-gray-800 truncate">${esc(p.name)}${varBadge}</div><div class="text-[10px] text-blue-600 font-bold">${p.sku?'SKU: '+esc(p.sku):''}</div><div class="text-[10px] text-gray-500">Price: ৳${p.price.toLocaleString()} · Stock: ${p.stock_quantity??0}</div></div>
+                    <span class="text-yellow-400 text-lg shrink-0">${hasVar?'⚡':'★'}</span></div>`;
             });
             document.getElementById('productResults').innerHTML=h;
-        }catch(e){}
+        }catch(e){console.error('Search error:',e);}
     },300);
 }
-function addProduct(id,name,price,image,sku){
+
+// Show variant picker modal for products with variants
+async function showVariantPicker(productId, name, basePrice, image, sku) {
+    // Create modal if not exists
+    let m = document.getElementById('variantPickerModal');
+    if (!m) {
+        m = document.createElement('div');
+        m.id = 'variantPickerModal';
+        m.innerHTML = `
+            <div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)closeVariantPicker()">
+                <div style="background:#fff;border-radius:16px;max-width:500px;width:100%;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 25px 60px rgba(0,0,0,.25)" onclick="event.stopPropagation()">
+                    <div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
+                        <div style="display:flex;align-items:center;gap:12px">
+                            <img id="vpImage" src="" style="width:48px;height:48px;border-radius:8px;object-fit:cover;border:1px solid #e5e7eb">
+                            <div>
+                                <div id="vpName" style="font-size:14px;font-weight:700;color:#111827"></div>
+                                <div id="vpSku" style="font-size:11px;color:#6b7280"></div>
+                            </div>
+                        </div>
+                        <button onclick="closeVariantPicker()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;line-height:1">&times;</button>
+                    </div>
+                    <div id="vpContent" style="flex:1;overflow-y:auto;padding:16px 20px">
+                        <div style="text-align:center;padding:30px;color:#9ca3af">Loading...</div>
+                    </div>
+                    <div style="padding:12px 20px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:#f9fafb">
+                        <div>
+                            <span style="font-size:11px;color:#6b7280">Total Price:</span>
+                            <span id="vpTotalPrice" style="font-size:16px;font-weight:700;color:#059669;margin-left:6px">৳0</span>
+                        </div>
+                        <button id="vpAddBtn" onclick="addFromVariantPicker()" style="padding:10px 24px;border-radius:8px;border:none;background:#3b82f6;color:#fff;font-size:13px;font-weight:600;cursor:pointer">Add to Order</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(m);
+    }
+    
+    m.style.display = 'block';
+    document.getElementById('vpImage').src = image || 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22><text y=%22.9em%22 font-size=%2230%22>📦</text></svg>';
+    document.getElementById('vpName').textContent = name;
+    document.getElementById('vpSku').textContent = sku ? 'SKU: ' + sku : '';
+    document.getElementById('vpContent').innerHTML = '<div style="text-align:center;padding:30px;color:#9ca3af"><div style="font-size:24px;margin-bottom:8px">⏳</div>Loading variants...</div>';
+    document.getElementById('vpTotalPrice').textContent = '৳' + basePrice.toLocaleString();
+    
+    // Store product data
+    window._vpProduct = { id: productId, name: name, basePrice: basePrice, image: image, sku: sku };
+    window._vpSelectedVariations = {};
+    window._vpSelectedAddons = [];
+    
+    // Fetch variants
+    try {
+        const resp = await fetch(PRODUCT_API + '?product_id=' + productId);
+        const data = await resp.json();
+        
+        if (!data.success) {
+            document.getElementById('vpContent').innerHTML = '<div style="text-align:center;padding:30px;color:#dc2626">Error loading variants</div>';
+            return;
+        }
+        
+        let html = '';
+        
+        // Variations
+        if (data.variations && Object.keys(data.variations).length > 0) {
+            html += '<div style="margin-bottom:16px">';
+            html += '<div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:8px">📦 Select Variation</div>';
+            
+            for (const [varName, options] of Object.entries(data.variations)) {
+                html += '<div style="margin-bottom:12px">';
+                html += '<label style="font-size:11px;color:#6b7280;display:block;margin-bottom:4px">' + esc(varName) + '</label>';
+                html += '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+                
+                options.forEach((opt, idx) => {
+                    const priceText = opt.absolute_price ? '৳' + Number(opt.absolute_price).toLocaleString() 
+                        : (opt.price_adjustment > 0 ? '+৳' + opt.price_adjustment : (opt.price_adjustment < 0 ? '-৳' + Math.abs(opt.price_adjustment) : ''));
+                    const isDefault = opt.is_default ? 'border-color:#3b82f6;background:#eff6ff' : '';
+                    html += `<button type="button" onclick="selectVariation('${esc(varName)}',${idx})" 
+                        id="var_${esc(varName)}_${idx}"
+                        style="padding:6px 12px;border:2px solid #e5e7eb;border-radius:8px;font-size:12px;cursor:pointer;background:#fff;transition:all .15s;${isDefault}"
+                        data-var-name="${esc(varName)}" data-var-value="${esc(opt.value)}" data-price="${opt.absolute_price || opt.price_adjustment}" data-is-absolute="${opt.absolute_price ? 1 : 0}">
+                        ${esc(opt.value)} ${priceText ? '<span style="color:#6b7280;font-size:10px">(' + priceText + ')</span>' : ''}
+                    </button>`;
+                });
+                
+                html += '</div></div>';
+            }
+            html += '</div>';
+            
+            // Store variations data
+            window._vpVariationsData = data.variations;
+        }
+        
+        // Addons
+        if (data.addons && data.addons.length > 0) {
+            html += '<div>';
+            html += '<div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:8px">➕ Add-ons (optional)</div>';
+            html += '<div style="display:flex;flex-direction:column;gap:6px">';
+            
+            data.addons.forEach((addon, idx) => {
+                const priceText = addon.absolute_price ? '৳' + Number(addon.absolute_price).toLocaleString() 
+                    : (addon.price_adjustment > 0 ? '+৳' + addon.price_adjustment : '');
+                html += `<label style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;transition:all .15s" 
+                    id="addon_label_${idx}" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='#fff'">
+                    <input type="checkbox" id="addon_${idx}" onchange="toggleAddon(${idx})" 
+                        data-addon-name="${esc(addon.name)}" data-addon-value="${esc(addon.value)}" data-price="${addon.absolute_price || addon.price_adjustment}" data-is-absolute="${addon.absolute_price ? 1 : 0}"
+                        style="width:16px;height:16px;accent-color:#3b82f6">
+                    <span style="flex:1;font-size:12px;color:#374151">${esc(addon.name)}: ${esc(addon.value)}</span>
+                    <span style="font-size:11px;color:#059669;font-weight:600">${priceText}</span>
+                </label>`;
+            });
+            
+            html += '</div></div>';
+            
+            window._vpAddonsData = data.addons;
+        }
+        
+        if (!html) {
+            html = '<div style="text-align:center;padding:30px;color:#6b7280">No variants available. Click Add to add base product.</div>';
+        }
+        
+        document.getElementById('vpContent').innerHTML = html;
+        
+        // Auto-select defaults
+        if (data.variations) {
+            for (const [varName, options] of Object.entries(data.variations)) {
+                const defaultIdx = options.findIndex(o => o.is_default);
+                if (defaultIdx >= 0) {
+                    selectVariation(varName, defaultIdx);
+                }
+            }
+        }
+        
+        updateVariantPrice();
+        
+    } catch (e) {
+        console.error('Variant fetch error:', e);
+        document.getElementById('vpContent').innerHTML = '<div style="text-align:center;padding:30px;color:#dc2626">Error: ' + e.message + '</div>';
+    }
+}
+
+function selectVariation(varName, idx) {
+    // Deselect all in this group
+    document.querySelectorAll(`[data-var-name="${varName}"]`).forEach(btn => {
+        btn.style.borderColor = '#e5e7eb';
+        btn.style.background = '#fff';
+    });
+    
+    // Select this one
+    const btn = document.getElementById('var_' + varName + '_' + idx);
+    if (btn) {
+        btn.style.borderColor = '#3b82f6';
+        btn.style.background = '#eff6ff';
+        window._vpSelectedVariations[varName] = {
+            value: btn.dataset.varValue,
+            price: parseFloat(btn.dataset.price) || 0,
+            isAbsolute: btn.dataset.isAbsolute === '1'
+        };
+    }
+    
+    updateVariantPrice();
+}
+
+function toggleAddon(idx) {
+    const cb = document.getElementById('addon_' + idx);
+    const label = document.getElementById('addon_label_' + idx);
+    
+    if (cb.checked) {
+        label.style.borderColor = '#3b82f6';
+        label.style.background = '#eff6ff';
+        window._vpSelectedAddons.push({
+            name: cb.dataset.addonName,
+            value: cb.dataset.addonValue,
+            price: parseFloat(cb.dataset.price) || 0,
+            isAbsolute: cb.dataset.isAbsolute === '1'
+        });
+    } else {
+        label.style.borderColor = '#e5e7eb';
+        label.style.background = '#fff';
+        window._vpSelectedAddons = window._vpSelectedAddons.filter(a => !(a.name === cb.dataset.addonName && a.value === cb.dataset.addonValue));
+    }
+    
+    updateVariantPrice();
+}
+
+function updateVariantPrice() {
+    let price = window._vpProduct.basePrice;
+    let hasAbsolute = false;
+    
+    // Check variations
+    for (const sel of Object.values(window._vpSelectedVariations)) {
+        if (sel.isAbsolute) {
+            price = sel.price;
+            hasAbsolute = true;
+            break; // Use absolute price from variation
+        } else {
+            price += sel.price;
+        }
+    }
+    
+    // Add addon prices
+    for (const addon of window._vpSelectedAddons) {
+        if (addon.isAbsolute) {
+            price += addon.price;
+        } else {
+            price += addon.price;
+        }
+    }
+    
+    document.getElementById('vpTotalPrice').textContent = '৳' + price.toLocaleString();
+    window._vpFinalPrice = price;
+}
+
+function addFromVariantPicker() {
+    const p = window._vpProduct;
+    
+    // Build variant string
+    let variantParts = [];
+    for (const [name, sel] of Object.entries(window._vpSelectedVariations)) {
+        variantParts.push(name + ': ' + sel.value);
+    }
+    for (const addon of window._vpSelectedAddons) {
+        variantParts.push(addon.name + ': ' + addon.value);
+    }
+    
+    const variantStr = variantParts.join(', ');
+    const finalPrice = window._vpFinalPrice || p.basePrice;
+    
+    addProduct(p.id, p.name, finalPrice, p.image, p.sku, variantStr);
+    closeVariantPicker();
+}
+
+function closeVariantPicker() {
+    const m = document.getElementById('variantPickerModal');
+    if (m) m.style.display = 'none';
+}
+
+function addProduct(id,name,price,image,sku,variant){
     const c=document.getElementById('orderedItems'),n=document.getElementById('noItemsMsg');if(n)n.remove();
+    const variantDisplay = variant ? '<div class="text-[10px] text-indigo-600 mt-0.5">' + esc(variant) + '</div>' : '';
     const d=document.createElement('div');d.className='p-3 item-row border-t border-gray-100';
-    d.innerHTML=`<input type="hidden" name="item_product_id[]" value="${id}"><input type="hidden" name="item_product_name[]" value="${esc(name)}"><input type="hidden" name="item_variant_name[]" value="">
+    d.innerHTML=`<input type="hidden" name="item_product_id[]" value="${id}"><input type="hidden" name="item_product_name[]" value="${esc(name)}"><input type="hidden" name="item_variant_name[]" value="${esc(variant||'')}">
         <div class="flex gap-3"><div class="w-14 h-14 bg-gray-100 rounded-lg overflow-hidden shrink-0"><img src="${image}" class="w-full h-full object-cover" onerror="this.parentElement.innerHTML='📦'"></div>
-        <div class="flex-1 min-w-0"><div class="flex justify-between gap-1"><div class="min-w-0"><div class="text-sm font-bold text-gray-800">${sku?esc(sku):''}</div><div class="text-xs text-gray-600 truncate">${esc(name)}</div></div><button type="button" onclick="removeItem(this)" class="text-red-400 hover:text-red-600 shrink-0 p-0.5"><i class="fas fa-trash text-xs"></i></button></div>
+        <div class="flex-1 min-w-0"><div class="flex justify-between gap-1"><div class="min-w-0"><div class="text-sm font-bold text-gray-800">${sku?esc(sku):''}</div><div class="text-xs text-gray-600 truncate">${esc(name)}</div>${variantDisplay}</div><button type="button" onclick="removeItem(this)" class="text-red-400 hover:text-red-600 shrink-0 p-0.5"><i class="fas fa-trash text-xs"></i></button></div>
         <div class="text-[11px] text-gray-400 mt-0.5">৳${price.toLocaleString()}</div>
         <div class="flex items-center gap-2 mt-2 text-xs flex-wrap"><span class="text-gray-500">Qty</span><div class="flex items-center"><button type="button" onclick="changeQty(this,-1)" class="w-7 h-7 border border-gray-200 rounded-l text-gray-500 hover:bg-gray-50 font-bold">−</button><input type="number" name="item_qty[]" value="1" min="1" class="w-10 h-7 border-t border-b border-gray-200 text-center text-sm item-qty" oninput="calcTotals()"><button type="button" onclick="changeQty(this,1)" class="w-7 h-7 border border-gray-200 rounded-r text-gray-500 hover:bg-gray-50 font-bold">+</button></div><span class="text-gray-500 ml-1">Price</span><input type="number" name="item_price[]" value="${price}" min="0" step="1" class="w-20 h-7 border border-gray-200 rounded text-center text-sm item-price" oninput="calcTotals()"><span class="text-gray-500 ml-auto">Total</span><span class="item-line-total font-bold">${price.toFixed(2)}</span></div></div></div>`;
     c.appendChild(d);calcTotals();
