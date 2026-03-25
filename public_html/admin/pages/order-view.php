@@ -10,6 +10,14 @@ $isModal       = !empty($_GET['modal']);         // loaded inside edit modal ifr
 $isProcSession = !empty($_GET['proc_session']);   // part of a processing session
 $isLockCheck   = !empty($_GET['lock_check']);     // just checking lock status, no page load
 
+// Track which status tab to return to after save/update
+$_returnStatus = $_GET['return_status'] ?? '';
+if (!$_returnStatus && !empty($_SERVER['HTTP_REFERER'])) {
+    preg_match('/status=([a-z_]+)/', $_SERVER['HTTP_REFERER'], $_rm);
+    $_returnStatus = $_rm[1] ?? '';
+}
+$_returnQs = $_returnStatus ? "status={$_returnStatus}&" : '';
+
 // Resolve order_number to id if ?order= param used
 if (!$id && $orderNum) {
     $resolved = $db->fetch("SELECT id FROM orders WHERE order_number = ?", [$orderNum]);
@@ -113,16 +121,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // ── Reduce stock on confirmation (not on order placement) ──
             try {
-                $confirmItems = $db->fetchAll("SELECT oi.product_id, oi.quantity, oi.variant_id FROM order_items oi WHERE oi.order_id = ?", [$id]);
+                $confirmItems = $db->fetchAll("SELECT oi.product_id, oi.quantity, oi.variant_name FROM order_items oi WHERE oi.order_id = ?", [$id]);
                 foreach ($confirmItems as $ci) {
                     if (!$ci['product_id']) continue;
                     $prod = $db->fetch("SELECT manage_stock FROM products WHERE id = ?", [$ci['product_id']]);
                     if ($prod && intval($prod['manage_stock'] ?? 1)) {
                         $db->query("UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?", [intval($ci['quantity']), $ci['product_id']]);
                         $db->query("UPDATE products SET stock_status = CASE WHEN stock_quantity > 0 THEN 'in_stock' ELSE 'out_of_stock' END WHERE id = ? AND manage_stock = 1", [$ci['product_id']]);
-                        // Reduce variant stock if applicable
-                        if (!empty($ci['variant_id'])) {
-                            try { $db->query("UPDATE product_variants SET stock = stock - ? WHERE id = ?", [intval($ci['quantity']), $ci['variant_id']]); } catch (\Throwable $e) {}
+                        // Match variant by name (order_items doesn't have variant_id)
+                        if (!empty($ci['variant_name'])) {
+                            try {
+                                $variant = $db->fetch("SELECT id FROM product_variants WHERE product_id = ? AND CONCAT(variant_name, ': ', variant_value) = ? LIMIT 1", [$ci['product_id'], $ci['variant_name']]);
+                                if ($variant) {
+                                    $db->query("UPDATE product_variants SET stock = stock - ? WHERE id = ?", [intval($ci['quantity']), $variant['id']]);
+                                }
+                            } catch (\Throwable $e) {}
                         }
                     }
                 }
@@ -141,7 +154,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 echo json_encode(['success'=>true,'action'=>'confirmed','order_id'=>$id]);
                 exit;
             }
-            redirect(adminUrl("pages/order-management.php?status=confirmed&msg=confirmed"));
+            redirect(adminUrl("pages/order-management.php?{$_returnQs}msg=confirmed"));
         }
         if ($isProcSession) {
             while (ob_get_level()) ob_end_clean();
@@ -149,7 +162,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             echo json_encode(['success'=>true,'action'=>'saved','order_id'=>$id]);
             exit;
         }
-        redirect(adminUrl("pages/order-management.php?msg=updated&highlight={$id}"));
+        redirect(adminUrl("pages/order-management.php?{$_returnQs}msg=updated&highlight={$id}"));
     }
 
     if ($action === 'update_status') {
@@ -164,21 +177,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // ── Stock Management: restore stock on cancel/return ──
         $stockRestoreStatuses = ['cancelled', 'returned'];
-        $stockActiveStatuses = ['processing', 'pending', 'confirmed', 'ready_to_ship', 'shipped', 'delivered'];
-        if (in_array($newStatus, $stockRestoreStatuses) && in_array($oldStatus, $stockActiveStatuses)) {
-            // Restore stock for all items in this order
+        // Only restore if order was confirmed+ (stock was reduced at confirmation)
+        $stockConfirmedStatuses = ['confirmed', 'ready_to_ship', 'shipped', 'delivered'];
+        if (in_array($newStatus, $stockRestoreStatuses) && in_array($oldStatus, $stockConfirmedStatuses)) {
             try {
-                $orderItems = $db->fetchAll("SELECT oi.product_id, oi.quantity, oi.variant_id FROM order_items oi WHERE oi.order_id = ?", [$id]);
+                $orderItems = $db->fetchAll("SELECT oi.product_id, oi.quantity, oi.variant_name FROM order_items oi WHERE oi.order_id = ?", [$id]);
                 foreach ($orderItems as $oi) {
                     if (!$oi['product_id']) continue;
                     $prod = $db->fetch("SELECT manage_stock FROM products WHERE id = ?", [$oi['product_id']]);
                     if ($prod && intval($prod['manage_stock'] ?? 1)) {
                         $db->query("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?", [intval($oi['quantity']), $oi['product_id']]);
-                        // Update stock_status
                         $db->query("UPDATE products SET stock_status = CASE WHEN stock_quantity > 0 THEN 'in_stock' ELSE 'out_of_stock' END WHERE id = ? AND manage_stock = 1", [$oi['product_id']]);
-                        // Restore variant stock if applicable
-                        if (!empty($oi['variant_id'])) {
-                            try { $db->query("UPDATE product_variants SET stock = stock + ? WHERE id = ?", [intval($oi['quantity']), $oi['variant_id']]); } catch (\Throwable $e) {}
+                        if (!empty($oi['variant_name'])) {
+                            try {
+                                $variant = $db->fetch("SELECT id FROM product_variants WHERE product_id = ? AND CONCAT(variant_name, ': ', variant_value) = ? LIMIT 1", [$oi['product_id'], $oi['variant_name']]);
+                                if ($variant) { $db->query("UPDATE product_variants SET stock = stock + ? WHERE id = ?", [intval($oi['quantity']), $variant['id']]); }
+                            } catch (\Throwable $e) {}
                         }
                     }
                 }
@@ -193,7 +207,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             echo json_encode(['success'=>true,'action'=>'status_updated','new_status'=>$newStatus,'order_id'=>$id]);
             exit;
         }
-        redirect(adminUrl("pages/order-management.php?highlight={$id}&msg=status_updated"));
+        redirect(adminUrl("pages/order-management.php?{$_returnQs}highlight={$id}&msg=status_updated"));
     }
 
     if ($action === 'mark_fake') {
@@ -231,7 +245,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $db->update('orders', ['panel_notes'=>null, 'admin_notes'=>null], 'id = ?', [$id]);
         logActivity(getAdminId(), 'clear_notes', 'orders', $id, null, 'Panel notes cleared');
         if ($isAjax) { header('Content-Type: application/json'); echo json_encode(['ok'=>true]); exit; }
-        redirect(adminUrl("pages/order-management.php?msg=updated&highlight={$id}"));
+        redirect(adminUrl("pages/order-management.php?{$_returnQs}msg=updated&highlight={$id}"));
     }
 }
 

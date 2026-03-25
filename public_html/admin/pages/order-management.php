@@ -17,6 +17,36 @@ if (!function_exists('timeAgo')) {
 
 $db = Database::getInstance();
 
+// Helper: adjust stock for an order (reduce on confirm, restore on cancel/return)
+function _bulkStockAdjust($db, $orderId, $direction = 'reduce') {
+    $items = $db->fetchAll("SELECT oi.product_id, oi.quantity, oi.variant_name FROM order_items oi WHERE oi.order_id = ?", [$orderId]);
+    foreach ($items as $oi) {
+        if (!$oi['product_id']) continue;
+        $prod = $db->fetch("SELECT manage_stock FROM products WHERE id = ?", [$oi['product_id']]);
+        if (!$prod || !intval($prod['manage_stock'] ?? 1)) continue;
+        $qty = intval($oi['quantity']);
+        if ($direction === 'reduce') {
+            $db->query("UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?", [$qty, $oi['product_id']]);
+        } else {
+            $db->query("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?", [$qty, $oi['product_id']]);
+        }
+        $db->query("UPDATE products SET stock_status = CASE WHEN stock_quantity > 0 THEN 'in_stock' ELSE 'out_of_stock' END WHERE id = ? AND manage_stock = 1", [$oi['product_id']]);
+        // Match variant by name if variant_id not stored
+        if (!empty($oi['variant_name'])) {
+            try {
+                $variant = $db->fetch("SELECT id FROM product_variants WHERE product_id = ? AND CONCAT(variant_name, ': ', variant_value) = ? LIMIT 1", [$oi['product_id'], $oi['variant_name']]);
+                if ($variant) {
+                    if ($direction === 'reduce') {
+                        $db->query("UPDATE product_variants SET stock = stock - ? WHERE id = ?", [$qty, $variant['id']]);
+                    } else {
+                        $db->query("UPDATE product_variants SET stock = stock + ? WHERE id = ?", [$qty, $variant['id']]);
+                    }
+                }
+            } catch (\Throwable $e) {}
+        }
+    }
+}
+
 // ── POST Actions ──
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $action = $_POST['action'];
@@ -38,15 +68,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     
     if ($action === 'bulk_status') {
         $ids = $_POST['order_ids'] ?? []; $status = sanitize($_POST['bulk_status']);
-        foreach ($ids as $id) {
-            $db->update('orders', ['order_status' => $status, 'updated_at' => date('Y-m-d H:i:s')], 'id = ?', [intval($id)]);
-            try { $db->insert('order_status_history', ['order_id' => intval($id), 'status' => $status, 'changed_by' => getAdminId()]); } catch (Exception $e) {}
-            if ($status === 'delivered') { try { awardOrderCredits(intval($id)); } catch (\Throwable $e) {} try { $db->update('orders', ['delivered_at' => date('Y-m-d H:i:s')], 'id = ? AND delivered_at IS NULL', [intval($id)]); } catch (\Throwable $e) {} }
-            if (in_array($status, ['cancelled', 'returned'])) { try { refundOrderCreditsOnCancel(intval($id)); } catch (\Throwable $e) {} }
-            try { $db->query("DELETE FROM order_locks WHERE order_id = ?", [intval($id)]); } catch (\Throwable $e) {}
+        foreach ($ids as $oid) {
+            $oid = intval($oid);
+            $oldOrder = $db->fetch("SELECT order_status FROM orders WHERE id=?", [$oid]);
+            $oldStatus = $oldOrder['order_status'] ?? '';
+            $db->update('orders', ['order_status' => $status, 'updated_at' => date('Y-m-d H:i:s')], 'id = ?', [$oid]);
+            try { $db->insert('order_status_history', ['order_id' => $oid, 'status' => $status, 'changed_by' => getAdminId()]); } catch (Exception $e) {}
+            if ($status === 'delivered') { try { awardOrderCredits($oid); } catch (\Throwable $e) {} try { $db->update('orders', ['delivered_at' => date('Y-m-d H:i:s')], 'id = ? AND delivered_at IS NULL', [$oid]); } catch (\Throwable $e) {} }
+            if (in_array($status, ['cancelled', 'returned'])) { try { refundOrderCreditsOnCancel($oid); } catch (\Throwable $e) {} }
+            // Stock: reduce on confirm, restore on cancel/return
+            if ($status === 'confirmed' && in_array($oldStatus, ['processing', 'pending'])) {
+                try { _bulkStockAdjust($db, $oid, 'reduce'); } catch (\Throwable $e) {}
+            }
+            if (in_array($status, ['cancelled', 'returned']) && in_array($oldStatus, ['confirmed', 'ready_to_ship', 'shipped', 'delivered'])) {
+                try { _bulkStockAdjust($db, $oid, 'restore'); } catch (\Throwable $e) {}
+            }
+            try { $db->query("DELETE FROM order_locks WHERE order_id = ?", [$oid]); } catch (\Throwable $e) {}
         }
-        // Return JSON for AJAX requests, redirect for form submits
         if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) || !empty($_POST['_ajax'])) {
+            while (ob_get_level()) ob_end_clean();
             header('Content-Type: application/json'); echo json_encode(['success'=>true,'count'=>count($ids)]); exit;
         }
         redirect(adminUrl('pages/order-management.php?msg=bulk_updated'));
