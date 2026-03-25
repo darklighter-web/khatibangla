@@ -18,6 +18,12 @@ $db = Database::getInstance();
 
 // Page Builder settings
 $showHero       = getSetting('home_show_hero', '1') === '1';
+$bannerAutoplay = getSetting('banner_autoplay', '1') === '1';
+$bannerSpeed    = max(1000, intval(getSetting('banner_speed', '5000')));
+$bannerArrows   = getSetting('banner_show_arrows', '1') === '1';
+$bannerDots     = getSetting('banner_show_dots', '1') === '1';
+$bannerHeight   = getSetting('banner_height', 'clamp(160px, 30vw, 400px)');
+$bannerOverlay  = getSetting('banner_overlay', '1') === '1';
 $showCategories = getSetting('home_show_categories', '1') === '1';
 $showSale       = getSetting('home_show_sale', '1') === '1';
 $showFeatured   = getSetting('home_show_featured', '1') === '1';
@@ -55,7 +61,7 @@ $bannerCount  = count($banners);
     <?php if ($showHero && $bannerCount > 0): ?>
     <section class="relative overflow-hidden bg-gray-200" id="hero-slider">
         <!-- Fixed height container: responsive -->
-        <div class="relative w-full" style="height:clamp(160px, 30vw, 400px)">
+        <div class="relative w-full" style="height:<?= $bannerHeight ?>">
             <?php foreach ($banners as $bi => $banner): 
                 // Use imgSrc() which handles both "filename.jpg" and "banners/filename.jpg" via basename()
                 $imgUrl = imgSrc('banners', $banner['image']);
@@ -79,7 +85,7 @@ $bannerCount  = count($banners);
                          class="w-full h-full object-cover object-center">
                     <?php endif; ?>
                 </a>
-                <?php if ($overlayText || $overlaySubtitle): ?>
+                <?php if ($bannerOverlay && ($overlayText || $overlaySubtitle)): ?>
                 <div class="absolute inset-0 bg-gradient-to-r from-black/50 to-transparent flex items-center pointer-events-none">
                     <div class="pl-5 sm:pl-10 text-white max-w-lg">
                         <?php if ($overlayText): ?><h2 class="text-lg sm:text-2xl md:text-3xl font-bold mb-1 drop-shadow-lg banner-title"><?= htmlspecialchars($overlayText) ?></h2><?php endif; ?>
@@ -93,17 +99,21 @@ $bannerCount  = count($banners);
         </div>
 
         <?php if ($bannerCount > 1): ?>
+        <?php if ($bannerArrows): ?>
         <button onclick="slideHero(-1)" class="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white/80 shadow flex items-center justify-center hover:bg-white transition">
             <i class="fas fa-chevron-left text-xs sm:text-sm"></i>
         </button>
         <button onclick="slideHero(1)" class="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white/80 shadow flex items-center justify-center hover:bg-white transition">
             <i class="fas fa-chevron-right text-xs sm:text-sm"></i>
         </button>
+        <?php endif; ?>
+        <?php if ($bannerDots): ?>
         <div class="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5 z-20">
             <?php for ($i = 0; $i < $bannerCount; $i++): ?>
             <button class="sdot w-2 h-2 rounded-full transition-all <?= $i === 0 ? 'bg-white w-5' : 'bg-white/50' ?>" onclick="goToSlide(<?= $i ?>)"></button>
             <?php endfor; ?>
         </div>
+        <?php endif; ?>
         <?php endif; ?>
     </section>
     <script>
@@ -117,7 +127,7 @@ $bannerCount  = count($banners);
         }
         window.slideHero=function(d){show(cur+d);restart();};
         window.goToSlide=function(n){show(n);restart();};
-        function restart(){clearInterval(timer);if(total>1)timer=setInterval(function(){show(cur+1);},5000);}
+        function restart(){clearInterval(timer);if(total>1 && <?= $bannerAutoplay ? 'true' : 'false' ?>)timer=setInterval(function(){show(cur+1);},<?= $bannerSpeed ?>);}
         // Swipe
         var tx=0,sl=document.getElementById('hero-slider');
         if(sl){

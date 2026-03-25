@@ -150,6 +150,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         echo json_encode(['success' => true]);
         exit;
     }
+
+    if ($action === 'save_banner_settings') {
+        $bannerSettings = [
+            'home_show_hero'       => !empty($_POST['bs_show_hero']) ? '1' : '0',
+            'banner_autoplay'      => !empty($_POST['bs_autoplay']) ? '1' : '0',
+            'banner_speed'         => max(1000, intval($_POST['bs_speed'] ?? 5000)),
+            'banner_show_arrows'   => !empty($_POST['bs_arrows']) ? '1' : '0',
+            'banner_show_dots'     => !empty($_POST['bs_dots']) ? '1' : '0',
+            'banner_height'        => sanitize($_POST['bs_height'] ?? 'clamp(160px, 30vw, 400px)'),
+            'banner_overlay'       => !empty($_POST['bs_overlay']) ? '1' : '0',
+        ];
+        foreach ($bannerSettings as $k => $v) {
+            $ex = $db->fetch("SELECT id FROM site_settings WHERE setting_key = ?", [$k]);
+            if ($ex) { $db->query("UPDATE site_settings SET setting_value = ? WHERE setting_key = ?", [$v, $k]); }
+            else { $db->query("INSERT INTO site_settings (setting_key, setting_value, setting_group) VALUES (?, ?, 'banner')", [$k, $v]); }
+        }
+        redirect(adminUrl('pages/banners.php?msg=Banner+settings+saved'));
+    }
 }
 
 $banners = $db->fetchAll("SELECT * FROM banners ORDER BY position, sort_order, id");
@@ -373,6 +391,65 @@ require_once __DIR__ . '/../includes/header.php';
         <a href="?new=1" class="text-blue-600 text-sm hover:underline">Add your first banner</a>
     </div>
     <?php endif; ?>
+</div>
+
+<!-- ══════ Banner Display Settings ══════ -->
+<div class="bg-white rounded-xl border shadow-sm p-5 mt-6">
+    <h3 class="text-base font-bold text-gray-800 mb-1">⚙️ Banner Display Settings</h3>
+    <p class="text-xs text-gray-500 mb-4">Control how the homepage hero banner behaves.</p>
+    <?php
+    $bs = [
+        'show_hero' => getSetting('home_show_hero', '1'),
+        'autoplay' => getSetting('banner_autoplay', '1'),
+        'speed' => getSetting('banner_speed', '5000'),
+        'arrows' => getSetting('banner_show_arrows', '1'),
+        'dots' => getSetting('banner_show_dots', '1'),
+        'height' => getSetting('banner_height', 'clamp(160px, 30vw, 400px)'),
+        'overlay' => getSetting('banner_overlay', '1'),
+    ];
+    ?>
+    <form method="POST" class="space-y-4">
+        <input type="hidden" name="action" value="save_banner_settings">
+        <div class="grid sm:grid-cols-2 gap-4">
+            <label class="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+                <div><span class="text-sm font-medium text-gray-800">Show Hero Banner</span><p class="text-[10px] text-gray-400">Display slider on homepage</p></div>
+                <label class="relative inline-block w-11 h-6 cursor-pointer"><input type="hidden" name="bs_show_hero" value="0"><input type="checkbox" name="bs_show_hero" value="1" <?= $bs['show_hero']==='1'?'checked':'' ?> class="sr-only peer"><div class="w-11 h-6 bg-gray-300 peer-checked:bg-green-500 rounded-full after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:bg-white after:rounded-full after:transition-all peer-checked:after:translate-x-5"></div></label>
+            </label>
+            <label class="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+                <div><span class="text-sm font-medium text-gray-800">Autoplay</span><p class="text-[10px] text-gray-400">Auto-rotate slides</p></div>
+                <label class="relative inline-block w-11 h-6 cursor-pointer"><input type="hidden" name="bs_autoplay" value="0"><input type="checkbox" name="bs_autoplay" value="1" <?= $bs['autoplay']==='1'?'checked':'' ?> class="sr-only peer"><div class="w-11 h-6 bg-gray-300 peer-checked:bg-green-500 rounded-full after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:bg-white after:rounded-full after:transition-all peer-checked:after:translate-x-5"></div></label>
+            </label>
+            <label class="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+                <div><span class="text-sm font-medium text-gray-800">Show Arrows</span><p class="text-[10px] text-gray-400">Left/right navigation arrows</p></div>
+                <label class="relative inline-block w-11 h-6 cursor-pointer"><input type="hidden" name="bs_arrows" value="0"><input type="checkbox" name="bs_arrows" value="1" <?= $bs['arrows']==='1'?'checked':'' ?> class="sr-only peer"><div class="w-11 h-6 bg-gray-300 peer-checked:bg-green-500 rounded-full after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:bg-white after:rounded-full after:transition-all peer-checked:after:translate-x-5"></div></label>
+            </label>
+            <label class="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+                <div><span class="text-sm font-medium text-gray-800">Show Dots</span><p class="text-[10px] text-gray-400">Pagination dots below slider</p></div>
+                <label class="relative inline-block w-11 h-6 cursor-pointer"><input type="hidden" name="bs_dots" value="0"><input type="checkbox" name="bs_dots" value="1" <?= $bs['dots']==='1'?'checked':'' ?> class="sr-only peer"><div class="w-11 h-6 bg-gray-300 peer-checked:bg-green-500 rounded-full after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:bg-white after:rounded-full after:transition-all peer-checked:after:translate-x-5"></div></label>
+            </label>
+            <label class="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+                <div><span class="text-sm font-medium text-gray-800">Show Overlay Text</span><p class="text-[10px] text-gray-400">Title/subtitle overlay on banners</p></div>
+                <label class="relative inline-block w-11 h-6 cursor-pointer"><input type="hidden" name="bs_overlay" value="0"><input type="checkbox" name="bs_overlay" value="1" <?= $bs['overlay']==='1'?'checked':'' ?> class="sr-only peer"><div class="w-11 h-6 bg-gray-300 peer-checked:bg-green-500 rounded-full after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:bg-white after:rounded-full after:transition-all peer-checked:after:translate-x-5"></div></label>
+            </label>
+        </div>
+        <div class="grid sm:grid-cols-2 gap-4">
+            <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Autoplay Speed (ms)</label>
+                <input type="number" name="bs_speed" min="1000" max="20000" step="500" value="<?= intval($bs['speed']) ?>" class="w-full border rounded-lg px-3 py-2 text-sm">
+                <p class="text-[9px] text-gray-400 mt-0.5">Default: 5000 (5 seconds)</p>
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Banner Height (CSS)</label>
+                <select name="bs_height" class="w-full border rounded-lg px-3 py-2 text-sm">
+                    <option value="clamp(120px, 20vw, 280px)" <?= $bs['height']==='clamp(120px, 20vw, 280px)'?'selected':'' ?>>Small</option>
+                    <option value="clamp(160px, 30vw, 400px)" <?= $bs['height']==='clamp(160px, 30vw, 400px)'?'selected':'' ?>>Medium (Default)</option>
+                    <option value="clamp(200px, 40vw, 520px)" <?= $bs['height']==='clamp(200px, 40vw, 520px)'?'selected':'' ?>>Large</option>
+                    <option value="clamp(250px, 50vw, 640px)" <?= $bs['height']==='clamp(250px, 50vw, 640px)'?'selected':'' ?>>Extra Large</option>
+                </select>
+            </div>
+        </div>
+        <button type="submit" class="bg-blue-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700">Save Banner Settings</button>
+    </form>
 </div>
 
 <script>

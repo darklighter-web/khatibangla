@@ -100,6 +100,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         redirect(adminUrl("pages/customers.php?tab={$redirectTab}&msg=bulk_done&count=" . count($ids)));
     }
+
+    // Customer Tag Management
+    if ($action === 'add_customer_tag' && $custId) {
+        try { $db->query("CREATE TABLE IF NOT EXISTS customer_tags (id INT AUTO_INCREMENT PRIMARY KEY, customer_id INT NOT NULL, tag_name VARCHAR(50) NOT NULL, tag_color VARCHAR(20) DEFAULT 'gray', created_by INT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY idx_cust_tag(customer_id, tag_name)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"); } catch (\Throwable $e) {}
+        $tagName = strtoupper(trim(sanitize($_POST['tag_name'] ?? '')));
+        if ($tagName) {
+            try { $db->query("INSERT IGNORE INTO customer_tags (customer_id, tag_name, created_by) VALUES (?,?,?)", [$custId, $tagName, getAdminId()]); } catch (\Throwable $e) {}
+        }
+        redirect(adminUrl("pages/customers.php?tab={$redirectTab}&msg=tag_added"));
+    }
+    if ($action === 'remove_customer_tag') {
+        $db->query("DELETE FROM customer_tags WHERE id = ?", [intval($_POST['tag_id'])]);
+        redirect(adminUrl("pages/customers.php?tab={$redirectTab}&msg=tag_removed"));
+    }
+
+    // Manual Credit Adjustment
+    if ($action === 'adjust_credit' && $custId) {
+        $amount = floatval($_POST['credit_amount'] ?? 0);
+        $reason = sanitize($_POST['credit_reason'] ?? 'Manual adjustment');
+        if ($amount != 0) {
+            $db->query("UPDATE customers SET store_credit = GREATEST(0, store_credit + ?) WHERE id = ?", [$amount, $custId]);
+            try {
+                $newBal = floatval($db->fetch("SELECT store_credit FROM customers WHERE id = ?", [$custId])['store_credit'] ?? 0);
+                $db->query("INSERT INTO store_credit_transactions (customer_id, amount, type, description, balance_after, created_by) VALUES (?,?,?,?,?,?)", [
+                    $custId, $amount, $amount > 0 ? 'admin_adjust' : 'spend', $reason, $newBal, getAdminId()
+                ]);
+            } catch (\Throwable $e) {}
+        }
+        redirect(adminUrl("pages/customers.php?tab={$redirectTab}&msg=credit_adjusted"));
+    }
+}
+
+// Ensure customer_tags table
+try { $db->query("CREATE TABLE IF NOT EXISTS customer_tags (id INT AUTO_INCREMENT PRIMARY KEY, customer_id INT NOT NULL, tag_name VARCHAR(50) NOT NULL, tag_color VARCHAR(20) DEFAULT 'gray', created_by INT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY idx_cust_tag(customer_id, tag_name)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"); } catch (\Throwable $e) {}
+
+// AJAX: load customer tags
+if (!empty($_GET['_ajax_tags'])) {
+    $cid = intval($_GET['cid'] ?? 0);
+    $tags = []; $credit = 0;
+    try { $tags = $db->fetchAll("SELECT id, tag_name FROM customer_tags WHERE customer_id = ? ORDER BY tag_name", [$cid]); } catch (\Throwable $e) {}
+    try { $credit = floatval($db->fetch("SELECT store_credit FROM customers WHERE id = ?", [$cid])['store_credit'] ?? 0); } catch (\Throwable $e) {}
+    header('Content-Type: application/json');
+    echo json_encode(['tags' => $tags, 'credit' => number_format($credit)]);
+    exit;
 }
 
 // ─── Tab / Filters ───
@@ -370,6 +414,7 @@ require_once __DIR__ . '/../includes/header.php';
                         <div class="flex items-center justify-center gap-0.5">
                             <button onclick='openEdit(<?= $c["id"] ?>, <?= $safeJson ?>)' class="p-1.5 rounded hover:bg-blue-50" title="Edit"><i class="fas fa-pen text-xs text-blue-500"></i></button>
                             <a href="<?= adminUrl('pages/customer-view.php?id='.$c['id']) ?>" class="p-1.5 rounded hover:bg-gray-100" title="View"><i class="fas fa-eye text-xs text-gray-400"></i></a>
+                            <button onclick="openCustTagModal(<?= $c['id'] ?>,'<?= e($c['name']) ?>')" class="p-1.5 rounded hover:bg-yellow-50" title="Tags & Credit"><i class="fas fa-tag text-xs text-yellow-500"></i></button>
                             <form method="POST" class="inline"><input type="hidden" name="customer_id" value="<?= $c['id'] ?>"><input type="hidden" name="current_tab" value="<?= $tab ?>">
                                 <?php if ($c['is_blocked']): ?>
                                 <input type="hidden" name="action" value="unblock"><button class="p-1.5 rounded hover:bg-green-50" title="Unblock"><i class="fas fa-unlock text-xs text-green-500"></i></button>
@@ -512,6 +557,71 @@ function openEdit(id,d){
 function closeEdit(){document.getElementById('editMdl').classList.add('hidden')}
 function openAdd(){document.getElementById('addMdl').classList.remove('hidden')}
 function closeAdd(){document.getElementById('addMdl').classList.add('hidden')}
+
+function openCustTagModal(id, name) {
+    document.getElementById('ctm_id').value = id;
+    document.getElementById('ctm_cid').value = id;
+    document.getElementById('ctm_name').textContent = name;
+    // Load existing tags via AJAX
+    fetch('<?= adminUrl('pages/customers.php') ?>?_ajax_tags=1&cid=' + id)
+        .then(r => r.json()).then(d => {
+            var html = '';
+            (d.tags || []).forEach(function(t) {
+                html += '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-yellow-100 text-yellow-700">' +
+                    t.tag_name + ' <form method="POST" class="inline"><input type="hidden" name="action" value="remove_customer_tag"><input type="hidden" name="tag_id" value="' + t.id + '"><input type="hidden" name="current_tab" value="<?= $tab ?>"><button class="text-red-400 hover:text-red-600 ml-0.5">×</button></form></span>';
+            });
+            if (!d.tags || !d.tags.length) html = '<span class="text-xs text-gray-400">No tags</span>';
+            document.getElementById('ctm_tags').innerHTML = html;
+            document.getElementById('ctm_credit').textContent = '৳' + (d.credit || '0');
+        }).catch(function(){ document.getElementById('ctm_tags').innerHTML = '<span class="text-xs text-gray-400">Error loading tags</span>'; });
+    document.getElementById('custTagModal').classList.remove('hidden');
+}
 </script>
+
+<!-- Customer Tag & Credit Modal -->
+<div id="custTagModal" class="fixed inset-0 z-[9998] hidden bg-black/50 flex items-center justify-center" onclick="if(event.target===this)this.classList.add('hidden')">
+    <div class="bg-white rounded-2xl shadow-2xl w-[95vw] max-w-md overflow-hidden">
+        <div class="px-5 py-4 border-b bg-yellow-50">
+            <h3 class="font-bold text-gray-800 text-sm">🏷 Tags & Credit</h3>
+            <p class="text-[10px] text-gray-500 mt-0.5">Customer: <span id="ctm_name" class="font-medium text-gray-700"></span></p>
+        </div>
+        <div class="p-5 space-y-4">
+            <!-- Existing Tags -->
+            <div>
+                <p class="text-xs font-semibold text-gray-600 mb-2">Tags</p>
+                <div id="ctm_tags" class="flex flex-wrap gap-1 mb-2"><span class="text-xs text-gray-400">Loading...</span></div>
+                <form method="POST" class="flex gap-2">
+                    <input type="hidden" name="action" value="add_customer_tag">
+                    <input type="hidden" name="customer_id" id="ctm_id" value="">
+                    <input type="hidden" name="current_tab" value="<?= $tab ?>">
+                    <select name="tag_name" class="flex-1 border rounded-lg px-2.5 py-1.5 text-xs">
+                        <option value="">Select tag...</option>
+                        <?php foreach(['VIP','Repeat','Wholesale','Loyal','Suspicious','Blacklisted','Family','Business','Influencer','Student'] as $t): ?>
+                        <option value="<?= $t ?>"><?= $t ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <input type="text" name="tag_custom" placeholder="Or custom..." class="w-28 border rounded-lg px-2.5 py-1.5 text-xs" oninput="if(this.value)this.form.tag_name.value=this.value.toUpperCase()">
+                    <button type="submit" class="bg-yellow-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-yellow-600">+ Add</button>
+                </form>
+            </div>
+            <!-- Credit -->
+            <div>
+                <p class="text-xs font-semibold text-gray-600 mb-2">Store Credit: <span id="ctm_credit" class="text-yellow-600">৳0</span></p>
+                <form method="POST" class="flex gap-2">
+                    <input type="hidden" name="action" value="adjust_credit">
+                    <input type="hidden" name="customer_id" id="ctm_cid" value="">
+                    <input type="hidden" name="current_tab" value="<?= $tab ?>">
+                    <input type="number" name="credit_amount" step="0.01" required placeholder="Amount (+/-)" class="flex-1 border rounded-lg px-2.5 py-1.5 text-xs">
+                    <input type="text" name="credit_reason" placeholder="Reason" class="flex-1 border rounded-lg px-2.5 py-1.5 text-xs">
+                    <button type="submit" class="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-blue-700">Adjust</button>
+                </form>
+                <p class="text-[9px] text-gray-400 mt-1">Positive = add credit, Negative = deduct credit</p>
+            </div>
+        </div>
+        <div class="px-5 py-3 border-t bg-gray-50 flex justify-end">
+            <button type="button" onclick="document.getElementById('custTagModal').classList.add('hidden')" class="px-4 py-1.5 text-xs text-gray-500 hover:text-gray-700">Close</button>
+        </div>
+    </div>
+</div>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
