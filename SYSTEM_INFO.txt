@@ -1,0 +1,476 @@
+================================================================================
+KHATIBANGLA.COM - SYSTEM INFORMATION & DEVELOPER REFERENCE
+================================================================================
+Last Updated: 2026-03-25
+Maintained By: Claude AI Assistant (Anthropic)
+Repository: https://github.com/darklighter-web/khatibangla.git
+================================================================================
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                           PLATFORM OVERVIEW                                   ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+Platform Type      : Bengali E-Commerce Platform
+Domain             : https://khatibangla.com
+Framework          : Custom PHP (No framework - vanilla PHP)
+PHP Version        : 8.0.30
+Database           : MariaDB 10.11.13
+Hosting            : CyberPanel
+Server Path        : /home/khatibangla.com/public_html/
+Admin Panel        : English interface
+Storefront         : Bengali (bn-BD locale)
+
+Database Name      : khat_khatibangla
+Database User      : khat_khatiadmin
+Total Tables       : 103
+
+================================================================================
+                              DIRECTORY STRUCTURE
+================================================================================
+
+public_html/
+├── admin/                    # Admin Panel
+│   ├── api/                  # Admin-specific API endpoints
+│   │   ├── actions.php       # General admin actions
+│   │   ├── cart.php          # Cart management API
+│   │   ├── chat.php          # Live chat API
+│   │   ├── courier-lookup.php # Courier fraud check API
+│   │   ├── email-test.php    # Email testing
+│   │   ├── load-test-run.php # Load testing execution
+│   │   ├── picking-list.php  # Warehouse picking list
+│   │   ├── processing-queue.php # Order processing queue
+│   │   ├── search.php        # Global search API
+│   │   └── server-capacity.php # Server monitoring
+│   │
+│   ├── includes/
+│   │   ├── auth.php          # Admin authentication (22KB)
+│   │   ├── footer.php        # Footer + Page Guide System (524 lines)
+│   │   ├── header.php        # Sidebar nav + Dark theme CSS (63KB)
+│   │   ├── media-picker.php  # Media library picker widget
+│   │   └── phone-checker-widget.php # Fraud check widget
+│   │
+│   └── pages/                # Admin panel pages (see ADMIN PAGES section)
+│
+├── api/                      # Public API endpoints
+│   ├── cart.php              # Cart operations
+│   ├── chat.php              # Live chat
+│   ├── clerk-diag.php        # Clerk authentication diagnostics
+│   ├── clerk-sync.php        # Clerk user sync
+│   ├── coupon.php            # Coupon validation
+│   ├── courier-webhook.php   # Courier status webhooks
+│   ├── fraud-checker.php     # Fraud check (uses own orders table)
+│   ├── landing-pages.php     # Landing page API
+│   ├── order.php             # Order submission
+│   ├── pathao.php            # Pathao courier API
+│   ├── pathao-api.php        # Pathao API wrapper
+│   ├── redx.php              # RedX courier API
+│   ├── redx-actions.php      # RedX courier actions
+│   ├── redx-webhook.php      # RedX webhook handler
+│   ├── steadfast.php         # Steadfast courier API
+│   ├── steadfast-actions.php # Steadfast courier actions
+│   ├── security.php          # Security API
+│   ├── speed.php             # Speed optimization API
+│   └── track.php             # Order tracking API
+│
+├── assets/                   # Static assets (images, icons)
+├── cache/                    # Cached files
+├── config/
+│   └── database.php          # Database config + PDO wrapper
+│
+├── css/                      # Stylesheets
+├── js/                       # JavaScript files
+│
+├── includes/                 # Core PHP includes
+│   ├── clerk.php             # Clerk authentication (24KB)
+│   ├── fb-capi.php           # Facebook CAPI + GA4 tracking (12KB)
+│   ├── footer.php            # Frontend footer (145KB)
+│   ├── functions.php         # Core helper functions (73KB)
+│   ├── header.php            # Frontend header (55KB)
+│   ├── mailer.php            # Email sending
+│   ├── product-card.php      # Product card component
+│   ├── product-reviews.php   # Reviews component
+│   ├── queue.php             # Background job queue
+│   ├── security.php          # Security middleware (29KB)
+│   ├── seo.php               # SEO helpers
+│   ├── session.php           # Session management
+│   ├── shop.php              # Shop helpers
+│   └── tracker.php           # Visitor tracking
+│
+├── pages/                    # Frontend pages
+│   ├── home.php              # Homepage
+│   ├── shop.php              # Shop listing
+│   ├── product.php           # Product detail (83KB)
+│   ├── cart.php              # Shopping cart
+│   ├── account.php           # Customer account (54KB)
+│   ├── landing-page.php      # Landing page renderer (100KB)
+│   ├── track-order.php       # Order tracking
+│   └── blog.php / blog-single.php # Blog
+│
+├── uploads/                  # User uploads (products, banners, etc.)
+├── logs/                     # Application logs
+├── temp/                     # Temporary files
+│
+├── index.php                 # Main router
+└── maintenance.php           # Maintenance mode page
+
+================================================================================
+                              ADMIN PAGES
+================================================================================
+
+Page                          | File                              | Description
+------------------------------|-----------------------------------|---------------------------
+Dashboard                     | dashboard.php (48KB)              | Overview stats, charts
+Order Management              | order-management.php (132KB)      | All orders, bulk actions
+Order View/Edit               | order-view.php (157KB)            | Single order details
+Order Add (Manual)            | order-add.php (36KB)              | Create manual order
+Order Print                   | order-print.php (82KB)            | Invoice/sticker printing
+Incomplete Orders             | incomplete-orders.php (30KB)      | Abandoned carts
+Products                      | products.php (20KB)               | Product list
+Product Form                  | product-form.php (95KB)           | Add/edit product
+Categories                    | categories.php (10KB)             | Category management
+Inventory                     | inventory.php (46KB)              | Stock management
+Inventory Dashboard           | inventory-dashboard.php (23KB)    | Stock health overview
+Smart Restock                 | smart-restock.php (17KB)          | Restock suggestions
+Customers                     | customers.php (42KB)              | Customer list
+Customer View                 | customer-view.php (47KB)          | Customer profile
+Customer Retention            | customer-retention.php (60KB)     | RFM analysis, campaigns
+Courier                       | courier.php (164KB)               | Pathao/Steadfast/RedX
+Accounting                    | accounting.php (44KB)             | FIFO P&L, COGS
+Expenses                      | expenses.php (13KB)               | Expense tracking
+Liabilities                   | liabilities.php (16KB)            | Debt management
+Employees                     | employees.php (82KB)              | Staff management
+Landing Page Builder          | landing-page-builder.php (138KB)  | Visual LP builder
+Landing Pages                 | landing-pages.php (11KB)          | LP list
+Banners                       | banners.php (31KB)                | Homepage banners
+Blog                          | blog.php (67KB)                   | Blog management
+Reviews                       | reviews.php (29KB)                | Product reviews
+Coupons                       | coupons.php (12KB)                | Discount codes
+Settings                      | settings.php (243KB)              | All site settings
+Security                      | security.php (60KB)               | Firewall, IP blocking
+Reports                       | reports.php (12KB)                | Report hub
+Visitors                      | visitors.php (28KB)               | Visitor analytics
+API Health                    | api-health.php (20KB)             | API diagnostics
+Speed                         | speed.php (66KB)                  | Performance tools
+Scan to Update                | scan-to-update.php (21KB)         | Barcode scanning
+
+================================================================================
+                              DATABASE SCHEMA
+================================================================================
+
+CORE TABLES (103 total):
+------------------------
+
+── ORDERS & CUSTOMERS ──
+orders                 | Main orders table (17 statuses)
+order_items            | Line items for orders
+order_status_history   | Status change log
+order_tags             | Tags for orders
+order_locks            | Concurrent editing prevention
+customers              | Customer accounts (Clerk integration)
+customer_addresses     | Saved addresses
+customer_tags          | Customer tagging
+incomplete_orders      | Abandoned checkouts
+
+── PRODUCTS & INVENTORY ──
+products               | Product catalog
+product_variants       | Variants (addon/variation types)
+product_images         | Product gallery
+product_bundles        | Bundle products
+product_upsells        | Upsell relationships
+product_reviews        | Customer reviews
+product_questions      | Q&A
+product_answers        | Q&A answers
+product_documents      | Product docs/manuals
+stock_movements        | Stock in/out log
+stock_batches          | FIFO batch tracking
+stock_consumption      | FIFO consumption log
+stock_transfers        | Inter-warehouse transfers
+warehouses             | Warehouse locations
+warehouse_stock        | Per-warehouse inventory
+
+── COURIER & SHIPPING ──
+courier_providers      | Courier provider config
+courier_shipments      | Shipment records
+courier_uploads        | Bulk courier uploads
+courier_webhook_log    | Webhook payload log
+shipments              | Legacy shipments table
+
+── ACCOUNTING & FINANCE ──
+accounting_entries     | Journal entries
+expenses               | One-time expenses
+expense_categories     | Expense categories
+fixed_expenses         | Recurring expenses
+income                 | Income records
+liabilities            | Debts and loans
+liability_payments     | Debt repayments
+ad_expenses            | Advertising costs
+suppliers              | Supplier info
+supplier_products      | Supplier-product mapping
+supplier_transactions  | Purchase orders
+
+── EMPLOYEES & HRM ──
+admin_users            | Admin/employee accounts
+admin_roles            | Permission roles
+employee_sessions      | Clock in/out
+employee_attendance    | Attendance records
+employee_leaves        | Leave management
+employee_performance   | Performance metrics
+salary_deductions      | Salary adjustments
+
+── MARKETING & CONTENT ──
+landing_pages          | Landing page configs
+landing_page_events    | LP analytics events
+landing_page_orders    | LP conversions
+landing_page_templates | LP templates
+banners                | Homepage banners
+blog_posts             | Blog articles
+blog_categories        | Blog categories
+coupons                | Discount codes
+checkout_progress_bars | Trust badges for checkout
+menus                  | Navigation menus
+pages                  | CMS pages
+
+── CHAT & COMMUNICATION ──
+chat_conversations     | Chat sessions
+chat_messages          | Chat messages
+chat_auto_replies      | Auto-reply rules
+notifications          | System notifications
+
+── SECURITY & LOGGING ──
+security_ip_rules      | IP whitelist/blacklist
+security_login_attempts| Failed login tracking
+security_logs          | Security event log
+security_rate_limits   | Rate limiting
+blocked_ips            | Blocked IP addresses
+blocked_phones         | Blocked phone numbers
+fraud_logs             | Fraud detection log
+activity_logs          | Admin activity log
+visitor_logs           | Visitor tracking
+pathao_api_logs        | Pathao API logs
+
+── SETTINGS & CONFIG ──
+site_settings          | Key-value settings store
+  - setting_key        | Unique key
+  - setting_value      | Value (mediumtext)
+  - setting_type       | text/color/image/json/html/number/boolean
+  - setting_group      | general/checkout/shipping/etc.
+
+IMPORTANT COLUMN DETAILS:
+-------------------------
+
+orders.order_status ENUM:
+- pending, processing, confirmed, ready_to_ship, shipped, delivered
+- cancelled, returned, on_hold, no_response, good_but_no_response
+- advance_payment, incomplete, pending_return, pending_cancel
+- partial_delivered, lost
+
+orders.channel ENUM:
+- website, facebook, phone, whatsapp, instagram, other, landing_page
+
+orders.payment_method ENUM:
+- cod, bkash, nagad, bank, online
+
+product_variants.option_type ENUM:
+- addon (adds to base price)
+- variation (replaces base price via absolute_price)
+
+visitor_logs.device_type ENUM:
+- desktop, mobile, tablet, bot
+
+site_settings SECURITY KEYS (prefix: sec_):
+- sec_enable_firewall, sec_rate_limit_enabled
+- sec_brute_force_protection, sec_max_login_attempts
+- sec_lockout_duration, sec_whitelist_ips
+- sec_blacklist_ips, sec_enable_ip_blocking
+
+================================================================================
+                           COURIER INTEGRATIONS
+================================================================================
+
+1. PATHAO
+   - API: api/pathao.php, api/pathao-api.php
+   - Webhook: api/courier-webhook.php
+   - Settings: pathao_client_id, pathao_client_secret, pathao_username, etc.
+   - Features: Create parcel, get tracking, store management
+
+2. STEADFAST
+   - API: api/steadfast.php, api/steadfast-actions.php
+   - Settings: steadfast_api_key, steadfast_secret_key, steadfast_webhook_token
+   - Features: Create consignment, bulk upload, balance check
+
+3. REDX (In Progress)
+   - API: api/redx.php, api/redx-actions.php
+   - Webhook: api/redx-webhook.php
+   - Settings: redx_api_token, redx_environment, redx_webhook_token
+   - Features: Parcel creation, tracking, pickup stores
+
+FRAUD CHECKER:
+- File: api/fraud-checker.php
+- Data Source: Own orders table (grouped by courier_name/shipping_method)
+- Reason: External courier APIs proved unreliable (Pathao hides counts,
+          Steadfast blocks server requests)
+
+================================================================================
+                           AUTHENTICATION
+================================================================================
+
+CLERK INTEGRATION:
+- File: includes/clerk.php
+- Version: v6+ (using Clerk's own instance CDN, NOT jsdelivr)
+- CDN Issue: jsdelivr serves headless-only build in v6; MUST use Clerk CDN
+- Removed in v5+: afterSignInUrl, afterSignUpUrl
+- Use instead: routing:'virtual', routerPush, routerReplace
+
+Settings Keys:
+- clerk_enabled, clerk_publishable_key, clerk_secret_key
+- clerk_frontend_api, clerk_instance_id
+- clerk_google_enabled, clerk_facebook_enabled
+
+Social Login: Google, Facebook (configured in Clerk Dashboard)
+
+================================================================================
+                           TRACKING & ANALYTICS
+================================================================================
+
+FACEBOOK PIXEL + CAPI:
+- File: includes/fb-capi.php
+- Features: Server-side tracking, SHA-256 hashed user data, event deduplication
+- Advanced Matching: Phone, email, name, city, state, country, zip
+- Events: PageView, ViewContent, AddToCart, InitiateCheckout, Purchase
+
+GA4 ENHANCED CONVERSIONS:
+- Integrated with FB CAPI
+- Server-side event forwarding
+
+Settings Keys:
+- fb_pixel_id, fb_access_token, fb_test_event_code
+- ga4_measurement_id, ga4_api_secret
+
+================================================================================
+                           DEVELOPMENT GUIDELINES
+================================================================================
+
+1. MARIADB 10.11 STRICT MODE:
+   - Aggregate aliases CANNOT be referenced in ORDER BY
+   - MUST repeat full expressions: ORDER BY SUM(x) instead of ORDER BY alias
+   - Use COALESCE() for null safety in SQL
+
+2. PHP 8.0 SAFETY AUDIT (every file):
+   - Use ?? operator for undefined array keys
+   - Use intval() for numeric inputs
+   - Use COALESCE() in SQL
+   - Check for null dereference
+
+3. FILE DELIVERY PROTOCOL:
+   ✅ ALWAYS provide BOTH:
+   - Git push to origin main
+   - ZIP file structured for public_html/ extraction
+   
+   ✅ SQL migrations: SEPARATE files (never inside ZIP)
+   
+   ✅ Update this SYSTEM_INFO.txt for any feature changes
+
+4. PAGE GUIDE SYSTEM:
+   - Location: admin/includes/footer.php
+   - JS object 'guides' keyed by page basename
+   - ALWAYS update guides when modifying admin pages
+
+5. ADMIN BUILDER FILE:
+   - Correct: admin/pages/landing-page-builder.php
+   - NOT: admin/pages/page-builder.php (different file)
+
+6. FRAUDCHECKER API:
+   - Full integration was built then ROLLED BACK
+   - Uses own orders table as data source
+   - Do NOT re-implement unless explicitly requested
+
+================================================================================
+                           KEY HELPER FUNCTIONS
+================================================================================
+
+includes/functions.php:
+- e($value)           - HTML escape
+- getSetting($key)    - Get site setting (cached)
+- updateSetting($k,$v)- Update site setting
+- url($path)          - Full site URL
+- adminUrl($path)     - Admin URL
+- imgSrc($folder,$val)- Safe image URL (prevents double-path bug)
+- redirect($url)      - Header redirect
+- safeRedirect($url)  - Same-domain redirect only
+- sanitize($data)     - Recursive sanitization
+- generateCSRFToken() - CSRF protection
+- verifyCSRFToken()   - CSRF validation
+- generateOrderNumber()- Order number with prefix
+
+config/database.php:
+- Database::getInstance()           - Singleton PDO
+- $db->query($sql, $params)         - Execute query
+- $db->fetch($sql, $params)         - Fetch one row
+- $db->fetchAll($sql, $params)      - Fetch all rows
+- $db->insert($table, $data)        - Insert row
+- $db->update($table, $data, $where)- Update row
+- $db->delete($table, $where)       - Delete row
+- $db->count($table, $where)        - Count rows
+
+================================================================================
+                           IMPORTANT SETTINGS KEYS
+================================================================================
+
+GENERAL:
+- site_name, site_tagline, site_email, site_phone, site_whatsapp
+
+CHECKOUT:
+- shipping_inside_dhaka, shipping_outside_dhaka
+- cod_enabled, bkash_enabled, nagad_enabled
+- checkout_guest_enabled, checkout_register_required
+
+ORDER:
+- order_number_format (numeric/prefix_numeric/prefix_sequential)
+- order_prefix (e.g., "KB")
+- order_number_digits (4-8)
+
+COURIER:
+- pathao_*, steadfast_*, redx_* (see COURIER INTEGRATIONS)
+
+TRACKING:
+- fb_pixel_id, fb_access_token, fb_test_event_code
+- ga4_measurement_id, ga4_api_secret
+
+SECURITY (sec_ prefix):
+- sec_enable_firewall, sec_rate_limit_enabled
+- sec_brute_force_protection, sec_max_login_attempts
+
+================================================================================
+                           VERSION HISTORY
+================================================================================
+
+2026-03-25 | Initial SYSTEM_INFO.txt created
+           | 103 database tables documented
+           | All admin pages cataloged
+           | Courier integrations documented (Pathao, Steadfast, RedX)
+           | Clerk v6 CDN fix documented
+           | Development guidelines established
+
+================================================================================
+                           NOTES FOR FUTURE DEVELOPMENT
+================================================================================
+
+1. When adding new admin pages:
+   - Add page guide entry in admin/includes/footer.php
+   - Update this SYSTEM_INFO.txt
+
+2. When modifying database:
+   - Provide separate migration SQL file
+   - Update schema section in this file
+
+3. When adding new settings:
+   - Document in IMPORTANT SETTINGS KEYS section
+   - Use appropriate setting_group
+
+4. For courier integrations:
+   - Follow existing patterns (Steadfast structure)
+   - Use own orders table for fraud checking
+
+================================================================================
+                              END OF DOCUMENT
+================================================================================
