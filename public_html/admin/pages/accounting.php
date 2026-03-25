@@ -73,8 +73,8 @@ try {
         $startDate = $fe['start_date'];
         $endDate = $fe['end_date'] ?: date('Y-m-d');
         $freq = $fe['frequency'];
+        $isSalary = ($fe['expense_type'] ?? 'fixed') === 'salary';
 
-        // Generate for each period that has passed
         $current = new DateTime($startDate);
         $now = new DateTime();
         $interval = $freq === 'yearly' ? 'P1Y' : ($freq === 'quarterly' ? 'P3M' : 'P1M');
@@ -82,18 +82,31 @@ try {
         while ($current <= $now) {
             $genDate = $current->format('Y-m') . '-' . str_pad(min($fe['day_of_month'], intval($current->format('t'))), 2, '0', STR_PAD_LEFT);
             if ($genDate <= date('Y-m-d') && $genDate >= $fe['start_date'] && (!$fe['end_date'] || $genDate <= $fe['end_date'])) {
-                // Check if already generated for this period
                 $exists = $db->fetch("SELECT id FROM expenses WHERE reference = ? AND expense_date = ?", ['fixed:'.$fe['id'], $genDate]);
+
+                // Calculate amount (subtract active deductions for salary)
+                $amount = floatval($fe['amount']);
+                if ($isSalary && !empty($fe['admin_user_id'])) {
+                    $genMonth = $current->format('Y-m');
+                    try {
+                        $dedTotal = $db->fetch("SELECT COALESCE(SUM(deduction_amount),0) as t FROM salary_deductions WHERE admin_user_id=? AND month=? AND is_compromised=0", [intval($fe['admin_user_id']), $genMonth]);
+                        $amount = max(0, $amount - floatval($dedTotal['t'] ?? 0));
+                    } catch (\Throwable $e2) {}
+                }
+
                 if (!$exists) {
                     $db->query("INSERT INTO expenses (category_id, title, amount, expense_date, payment_method, reference, notes, created_by) VALUES (?,?,?,?,'auto',?,?,?)", [
                         $fe['category_id'] ?? null,
                         $fe['title'],
-                        $fe['amount'],
+                        $amount,
                         $genDate,
                         'fixed:'.$fe['id'],
-                        'Auto-generated fixed expense' . ($fe['notes'] ? ': '.$fe['notes'] : ''),
+                        'Auto-generated' . ($isSalary ? ' salary' : ' fixed expense') . ($fe['notes'] ? ': '.$fe['notes'] : ''),
                         $fe['created_by']
                     ]);
+                } elseif ($isSalary) {
+                    // Update existing salary expense if deductions changed
+                    $db->query("UPDATE expenses SET amount=? WHERE id=?", [$amount, $exists['id']]);
                 }
             }
             $current->add(new DateInterval($interval));

@@ -225,20 +225,7 @@ if (!empty($orderIds)) {
 }
 
 // ── Courier counts (for sub-tabs under each status) ──
-// Build dynamic courier list from actual orders
-// ── Courier counts — normalize names, use courier_name OR shipping_method ──
-// Normalize courier names: "Pathao Courier" → "Pathao", "Steadfast Courier" → "Steadfast", etc.
-function normalizeCourierName($raw) {
-    $raw = trim($raw ?? '');
-    if (!$raw) return '';
-    // Strip trailing "Courier", "Express", "Delivery" for grouping
-    $norm = preg_replace('/\s+(Courier|Express|Delivery|Logistics)$/i', '', $raw);
-    $norm = trim($norm);
-    // Capitalize first letter of each word
-    return $norm ?: $raw;
-}
-
-$_courierExpr = "COALESCE(NULLIF(courier_name,''), shipping_method)";
+// ── Courier counts — normalize names, use courier_name OR shipping_method ──$_courierExpr = "COALESCE(NULLIF(courier_name,''), shipping_method)";
 $_dbCouriers = [];
 try {
     $_dbCouriers = $db->fetchAll("SELECT DISTINCT {$_courierExpr} as cname FROM orders WHERE {$_courierExpr} IS NOT NULL AND {$_courierExpr} != '' AND {$_courierExpr} != 'Unassigned' ORDER BY cname");

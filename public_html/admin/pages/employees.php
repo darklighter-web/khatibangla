@@ -227,6 +227,168 @@ if ($tab === 'performance') {
 $rolesPermsMap = [];
 foreach ($roles as $r) { $rolesPermsMap[$r['id']] = json_decode($r['permissions'] ?? '[]', true) ?: []; }
 
+// ── Salary & Attendance POST Handlers (must be before header output) ──
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($tab, ['salary', 'attendance'])) {
+    $sa = $_POST['action'] ?? '';
+
+    // Ensure tables exist
+    try { $db->query("SELECT 1 FROM fixed_expenses LIMIT 1"); } catch (\Throwable $e) {
+        $db->query("CREATE TABLE IF NOT EXISTS fixed_expenses (id INT AUTO_INCREMENT PRIMARY KEY, title VARCHAR(200) NOT NULL, amount DECIMAL(12,2) NOT NULL, category_id INT DEFAULT NULL, expense_type ENUM('fixed','salary') DEFAULT 'fixed', employee_name VARCHAR(200) DEFAULT NULL, employee_role VARCHAR(100) DEFAULT NULL, frequency ENUM('monthly','quarterly','yearly') DEFAULT 'monthly', start_date DATE NOT NULL, end_date DATE DEFAULT NULL, day_of_month TINYINT DEFAULT 28, is_active TINYINT(1) DEFAULT 1, notes TEXT, created_by INT, admin_user_id INT DEFAULT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
+    try { $db->query("ALTER TABLE fixed_expenses ADD COLUMN admin_user_id INT DEFAULT NULL"); } catch (\Throwable $e) {}
+    try { $db->query("ALTER TABLE fixed_expenses ADD COLUMN expense_type ENUM('fixed','salary') DEFAULT 'fixed'"); } catch (\Throwable $e) {}
+    try { $db->query("ALTER TABLE fixed_expenses ADD COLUMN employee_name VARCHAR(200) DEFAULT NULL"); } catch (\Throwable $e) {}
+    try { $db->query("ALTER TABLE fixed_expenses ADD COLUMN employee_role VARCHAR(100) DEFAULT NULL"); } catch (\Throwable $e) {}
+    try { $db->query("SELECT 1 FROM salary_deductions LIMIT 1"); } catch (\Throwable $e) {
+        $db->query("CREATE TABLE IF NOT EXISTS salary_deductions (id INT AUTO_INCREMENT PRIMARY KEY, admin_user_id INT NOT NULL, fixed_expense_id INT DEFAULT NULL, month VARCHAR(7) NOT NULL, deduction_amount DECIMAL(12,2) NOT NULL DEFAULT 0, reason VARCHAR(500), is_compromised TINYINT(1) DEFAULT 0, compromised_by INT DEFAULT NULL, compromised_at DATETIME DEFAULT NULL, compromise_note VARCHAR(500) DEFAULT NULL, created_by INT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, KEY idx_user_month(admin_user_id, month)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
+    try { $db->query("SELECT 1 FROM employee_attendance LIMIT 1"); } catch (\Throwable $e) {
+        $db->query("CREATE TABLE IF NOT EXISTS employee_attendance (id INT AUTO_INCREMENT PRIMARY KEY, admin_user_id INT NOT NULL, attendance_date DATE NOT NULL, status ENUM('present','absent','late','half_day','leave') DEFAULT 'present', check_in TIME DEFAULT NULL, check_out TIME DEFAULT NULL, notes VARCHAR(500), created_by INT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY idx_user_date(admin_user_id, attendance_date)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
+
+    if ($sa === 'set_salary') {
+        $empId = intval($_POST['emp_id']);
+        $emp = $db->fetch("SELECT full_name FROM admin_users WHERE id=?", [$empId]);
+        if ($emp) {
+            $existing = $db->fetch("SELECT id FROM fixed_expenses WHERE expense_type='salary' AND admin_user_id=? AND is_active=1", [$empId]);
+            if ($existing) {
+                $db->query("UPDATE fixed_expenses SET amount=?, employee_role=?, day_of_month=?, notes=? WHERE id=?", [
+                    floatval($_POST['salary_amount']), sanitize($_POST['salary_role'] ?? ''),
+                    min(28, max(1, intval($_POST['salary_day'] ?? 28))),
+                    sanitize($_POST['salary_notes'] ?? ''), $existing['id']
+                ]);
+            } else {
+                $db->query("INSERT INTO fixed_expenses (title, amount, expense_type, employee_name, employee_role, frequency, start_date, day_of_month, notes, created_by, admin_user_id, is_active) VALUES (?,?,'salary',?,?,'monthly',?,?,?,?,?,1)", [
+                    'Salary: ' . $emp['full_name'], floatval($_POST['salary_amount']),
+                    $emp['full_name'], sanitize($_POST['salary_role'] ?? ''), date('Y-m-01'),
+                    min(28, max(1, intval($_POST['salary_day'] ?? 28))),
+                    sanitize($_POST['salary_notes'] ?? ''), getAdminId(), $empId
+                ]);
+            }
+        }
+        redirect(adminUrl('pages/employees.php?tab=salary&msg=Salary+saved'));
+    }
+    if ($sa === 'remove_salary') {
+        $db->query("UPDATE fixed_expenses SET is_active=0 WHERE id=? AND expense_type='salary'", [intval($_POST['fe_id'])]);
+        redirect(adminUrl('pages/employees.php?tab=salary&msg=Salary+deactivated'));
+    }
+    $attMonth = $_GET['att_month'] ?? date('Y-m');
+    if ($sa === 'mark_attendance') {
+        $aDate = $_POST['att_date'] ?? date('Y-m-d');
+        foreach ($_POST['status'] ?? [] as $uid => $st) {
+            $uid = intval($uid);
+            $st = in_array($st, ['present','absent','late','half_day','leave']) ? $st : 'present';
+            try { $db->query("INSERT INTO employee_attendance (admin_user_id, attendance_date, status, notes, created_by) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE status=VALUES(status), notes=VALUES(notes)", [$uid, $aDate, $st, sanitize($_POST['att_note'][$uid] ?? ''), getAdminId()]); } catch (\Throwable $e) {}
+        }
+        redirect(adminUrl("pages/employees.php?tab=attendance&att_month={$attMonth}&msg=Attendance+saved"));
+    }
+    if ($sa === 'add_deduction') {
+        $db->query("INSERT INTO salary_deductions (admin_user_id, fixed_expense_id, month, deduction_amount, reason, created_by) VALUES (?,?,?,?,?,?)", [
+            intval($_POST['ded_emp']), intval($_POST['ded_fe'] ?? 0) ?: null,
+            $_POST['ded_month'] ?? date('Y-m'), floatval($_POST['ded_amount']),
+            sanitize($_POST['ded_reason'] ?? ''), getAdminId()
+        ]);
+        redirect(adminUrl("pages/employees.php?tab=attendance&att_month={$attMonth}&msg=Deduction+added"));
+    }
+    if ($sa === 'compromise_deduction') {
+        $db->query("UPDATE salary_deductions SET is_compromised=1, compromised_by=?, compromised_at=NOW(), compromise_note=? WHERE id=?", [
+            getAdminId(), sanitize($_POST['comp_note'] ?? ''), intval($_POST['ded_id'])
+        ]);
+        redirect(adminUrl("pages/employees.php?tab=attendance&att_month={$attMonth}&msg=Deduction+waived"));
+    }
+    if ($sa === 'save_penalty_settings') {
+        $penaltyData = [
+            'type' => in_array($_POST['pen_type'] ?? '', ['percentage','fixed']) ? $_POST['pen_type'] : 'fixed',
+            'absent_amount' => floatval($_POST['pen_absent'] ?? 0),
+            'late_amount' => floatval($_POST['pen_late'] ?? 0),
+            'half_day_amount' => floatval($_POST['pen_halfday'] ?? 0),
+            'leave_deduct' => !empty($_POST['pen_leave_deduct']) ? 1 : 0,
+            'leave_amount' => floatval($_POST['pen_leave'] ?? 0),
+            'auto_generate' => !empty($_POST['pen_auto']) ? 1 : 0,
+        ];
+        try {
+            $existing = $db->fetch("SELECT id FROM site_settings WHERE setting_key = 'attendance_penalty'");
+            if ($existing) { $db->query("UPDATE site_settings SET setting_value = ? WHERE setting_key = 'attendance_penalty'", [json_encode($penaltyData)]); }
+            else { $db->query("INSERT INTO site_settings (setting_key, setting_value, setting_group) VALUES ('attendance_penalty', ?, 'hrm')", [json_encode($penaltyData)]); }
+        } catch (\Throwable $e) {}
+        redirect(adminUrl("pages/employees.php?tab=attendance&att_month={$attMonth}&msg=Penalty+settings+saved"));
+    }
+    if ($sa === 'auto_calculate_penalties') {
+        $penMonth = $_POST['pen_month'] ?? date('Y-m');
+        $penSettings = json_decode(getSetting('attendance_penalty', '{}'), true) ?: [];
+        $penType = $penSettings['type'] ?? 'fixed';
+        $penAbsent = floatval($penSettings['absent_amount'] ?? 0);
+        $penLate = floatval($penSettings['late_amount'] ?? 0);
+        $penHalfDay = floatval($penSettings['half_day_amount'] ?? 0);
+        $penLeaveDeduct = intval($penSettings['leave_deduct'] ?? 0);
+        $penLeaveAmt = floatval($penSettings['leave_amount'] ?? 0);
+
+        // Get all employees with salary
+        $salEmps = $db->fetchAll("SELECT fe.id as fe_id, fe.admin_user_id, fe.amount FROM fixed_expenses fe WHERE fe.expense_type='salary' AND fe.is_active=1");
+        $mStart = $penMonth . '-01';
+        $mEnd = date('Y-m-t', strtotime($mStart));
+        $workingDays = 0;
+        $d = new DateTime($mStart);
+        while ($d->format('Y-m-d') <= $mEnd) { if (!in_array($d->format('N'), ['5','6'])) $workingDays++; $d->modify('+1 day'); } // Exclude Fri+Sat (BD weekend)
+
+        foreach ($salEmps as $se) {
+            $uid = intval($se['admin_user_id']);
+            $salary = floatval($se['amount']);
+            $perDay = $workingDays > 0 ? $salary / $workingDays : 0;
+
+            // Count attendance issues
+            $attSummary = $db->fetch("SELECT
+                SUM(CASE WHEN status='absent' THEN 1 ELSE 0 END) as absents,
+                SUM(CASE WHEN status='late' THEN 1 ELSE 0 END) as lates,
+                SUM(CASE WHEN status='half_day' THEN 1 ELSE 0 END) as half_days,
+                SUM(CASE WHEN status='leave' THEN 1 ELSE 0 END) as leaves
+                FROM employee_attendance WHERE admin_user_id=? AND attendance_date BETWEEN ? AND ?", [$uid, $mStart, $mEnd]);
+
+            $absents = intval($attSummary['absents'] ?? 0);
+            $lates = intval($attSummary['lates'] ?? 0);
+            $halfDays = intval($attSummary['half_days'] ?? 0);
+            $leaves = intval($attSummary['leaves'] ?? 0);
+
+            $deduction = 0;
+            $reasons = [];
+            if ($absents > 0) {
+                $amt = $penType === 'percentage' ? round($perDay * ($penAbsent / 100) * $absents, 2) : $penAbsent * $absents;
+                $deduction += $amt;
+                $reasons[] = "{$absents} absent (-৳" . number_format($amt) . ")";
+            }
+            if ($lates > 0) {
+                $amt = $penType === 'percentage' ? round($perDay * ($penLate / 100) * $lates, 2) : $penLate * $lates;
+                $deduction += $amt;
+                $reasons[] = "{$lates} late (-৳" . number_format($amt) . ")";
+            }
+            if ($halfDays > 0) {
+                $amt = $penType === 'percentage' ? round($perDay * ($penHalfDay / 100) * $halfDays, 2) : $penHalfDay * $halfDays;
+                $deduction += $amt;
+                $reasons[] = "{$halfDays} half-day (-৳" . number_format($amt) . ")";
+            }
+            if ($penLeaveDeduct && $leaves > 0) {
+                $amt = $penType === 'percentage' ? round($perDay * ($penLeaveAmt / 100) * $leaves, 2) : $penLeaveAmt * $leaves;
+                $deduction += $amt;
+                $reasons[] = "{$leaves} leave (-৳" . number_format($amt) . ")";
+            }
+
+            if ($deduction > 0) {
+                // Check if auto-deduction already exists for this month
+                $existingDed = $db->fetch("SELECT id FROM salary_deductions WHERE admin_user_id=? AND month=? AND reason LIKE 'Auto:%'", [$uid, $penMonth]);
+                $reason = 'Auto: ' . implode(', ', $reasons);
+                if ($existingDed) {
+                    $db->query("UPDATE salary_deductions SET deduction_amount=?, reason=?, is_compromised=0 WHERE id=?", [$deduction, $reason, $existingDed['id']]);
+                } else {
+                    $db->query("INSERT INTO salary_deductions (admin_user_id, fixed_expense_id, month, deduction_amount, reason, created_by) VALUES (?,?,?,?,?,?)", [
+                        $uid, $se['fe_id'], $penMonth, $deduction, $reason, getAdminId()
+                    ]);
+                }
+            }
+        }
+        redirect(adminUrl("pages/employees.php?tab=attendance&att_month={$penMonth}&msg=Penalties+auto-calculated"));
+    }
+}
+
 include __DIR__ . '/../includes/header.php';
 ?>
 
@@ -710,52 +872,7 @@ elseif ($tab === 'performance'): ?>
 
 <?php if ($tab === 'salary'): ?>
 <?php
-// ── Salary Management ──
-// Ensure tables
-try { $db->query("SELECT 1 FROM fixed_expenses LIMIT 1"); } catch (\Throwable $e) {
-    $db->query("CREATE TABLE IF NOT EXISTS fixed_expenses (id INT AUTO_INCREMENT PRIMARY KEY, title VARCHAR(200) NOT NULL, amount DECIMAL(12,2) NOT NULL, category_id INT DEFAULT NULL, expense_type ENUM('fixed','salary') DEFAULT 'fixed', employee_name VARCHAR(200) DEFAULT NULL, employee_role VARCHAR(100) DEFAULT NULL, frequency ENUM('monthly','quarterly','yearly') DEFAULT 'monthly', start_date DATE NOT NULL, end_date DATE DEFAULT NULL, day_of_month TINYINT DEFAULT 28, is_active TINYINT(1) DEFAULT 1, notes TEXT, created_by INT, admin_user_id INT DEFAULT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-}
-try { $db->query("ALTER TABLE fixed_expenses ADD COLUMN admin_user_id INT DEFAULT NULL AFTER created_by"); } catch (\Throwable $e) {}
-try { $db->query("ALTER TABLE fixed_expenses ADD COLUMN expense_type ENUM('fixed','salary') DEFAULT 'fixed' AFTER category_id"); } catch (\Throwable $e) {}
-try { $db->query("ALTER TABLE fixed_expenses ADD COLUMN employee_name VARCHAR(200) DEFAULT NULL AFTER expense_type"); } catch (\Throwable $e) {}
-try { $db->query("ALTER TABLE fixed_expenses ADD COLUMN employee_role VARCHAR(100) DEFAULT NULL AFTER employee_name"); } catch (\Throwable $e) {}
-
-// Ensure salary_deductions table
-try { $db->query("SELECT 1 FROM salary_deductions LIMIT 1"); } catch (\Throwable $e) {
-    $db->query("CREATE TABLE IF NOT EXISTS salary_deductions (id INT AUTO_INCREMENT PRIMARY KEY, admin_user_id INT NOT NULL, fixed_expense_id INT DEFAULT NULL, month VARCHAR(7) NOT NULL, deduction_amount DECIMAL(12,2) NOT NULL DEFAULT 0, reason VARCHAR(500), is_compromised TINYINT(1) DEFAULT 0, compromised_by INT DEFAULT NULL, compromised_at DATETIME DEFAULT NULL, compromise_note VARCHAR(500) DEFAULT NULL, created_by INT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, KEY idx_user_month(admin_user_id, month)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-}
-
-// POST handlers
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $sa = $_POST['action'] ?? '';
-    if ($sa === 'set_salary') {
-        $empId = intval($_POST['emp_id']);
-        $emp = $db->fetch("SELECT full_name, phone FROM admin_users WHERE id=?", [$empId]);
-        if ($emp) {
-            // Check if salary already exists for this employee
-            $existing = $db->fetch("SELECT id FROM fixed_expenses WHERE expense_type='salary' AND admin_user_id=? AND is_active=1", [$empId]);
-            if ($existing) {
-                $db->query("UPDATE fixed_expenses SET amount=?, employee_role=?, day_of_month=?, notes=? WHERE id=?", [
-                    floatval($_POST['salary_amount']), sanitize($_POST['salary_role'] ?? ''),
-                    min(28, max(1, intval($_POST['salary_day'] ?? 28))),
-                    sanitize($_POST['salary_notes'] ?? ''), $existing['id']
-                ]);
-            } else {
-                $db->query("INSERT INTO fixed_expenses (title, amount, expense_type, employee_name, employee_role, frequency, start_date, day_of_month, notes, created_by, admin_user_id, is_active) VALUES (?,?,'salary',?,?,'monthly',?,?,?,?,?,1)", [
-                    'Salary: ' . $emp['full_name'], floatval($_POST['salary_amount']),
-                    $emp['full_name'], sanitize($_POST['salary_role'] ?? ''), date('Y-m-01'),
-                    min(28, max(1, intval($_POST['salary_day'] ?? 28))),
-                    sanitize($_POST['salary_notes'] ?? ''), getAdminId(), $empId
-                ]);
-            }
-        }
-        redirect(adminUrl('pages/employees.php?tab=salary&msg=Salary saved'));
-    }
-    if ($sa === 'remove_salary') {
-        $db->query("UPDATE fixed_expenses SET is_active=0 WHERE id=? AND expense_type='salary'", [intval($_POST['fe_id'])]);
-        redirect(adminUrl('pages/employees.php?tab=salary&msg=Salary deactivated'));
-    }
-}
+// ── Salary Management ── (tables ensured by pre-header handler)
 
 // Load salary data
 $salaries = $db->fetchAll("SELECT fe.*, au.full_name, au.is_active as emp_active FROM fixed_expenses fe LEFT JOIN admin_users au ON au.id = fe.admin_user_id WHERE fe.expense_type = 'salary' ORDER BY fe.is_active DESC, au.full_name") ?: [];
@@ -880,51 +997,10 @@ $deductions = $db->fetchAll("SELECT sd.*, au.full_name FROM salary_deductions sd
 
 <?php if ($tab === 'attendance'): ?>
 <?php
-// ── Attendance & Deduction System ──
-try { $db->query("SELECT 1 FROM salary_deductions LIMIT 1"); } catch (\Throwable $e) {
-    $db->query("CREATE TABLE IF NOT EXISTS salary_deductions (id INT AUTO_INCREMENT PRIMARY KEY, admin_user_id INT NOT NULL, fixed_expense_id INT DEFAULT NULL, month VARCHAR(7) NOT NULL, deduction_amount DECIMAL(12,2) NOT NULL DEFAULT 0, reason VARCHAR(500), is_compromised TINYINT(1) DEFAULT 0, compromised_by INT DEFAULT NULL, compromised_at DATETIME DEFAULT NULL, compromise_note VARCHAR(500) DEFAULT NULL, created_by INT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, KEY idx_user_month(admin_user_id, month)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-}
-try { $db->query("SELECT 1 FROM employee_attendance LIMIT 1"); } catch (\Throwable $e) {
-    $db->query("CREATE TABLE IF NOT EXISTS employee_attendance (id INT AUTO_INCREMENT PRIMARY KEY, admin_user_id INT NOT NULL, attendance_date DATE NOT NULL, status ENUM('present','absent','late','half_day','leave') DEFAULT 'present', check_in TIME DEFAULT NULL, check_out TIME DEFAULT NULL, notes VARCHAR(500), created_by INT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY idx_user_date(admin_user_id, attendance_date)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-}
+// Tables ensured by pre-header handler
 
 $attMonth = $_GET['att_month'] ?? date('Y-m');
 $attEmpId = intval($_GET['att_emp'] ?? 0);
-
-// POST handlers
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $sa = $_POST['action'] ?? '';
-    if ($sa === 'mark_attendance') {
-        $aDate = $_POST['att_date'] ?? date('Y-m-d');
-        foreach ($_POST['status'] ?? [] as $uid => $st) {
-            $uid = intval($uid);
-            $st = in_array($st, ['present','absent','late','half_day','leave']) ? $st : 'present';
-            try {
-                $db->query("INSERT INTO employee_attendance (admin_user_id, attendance_date, status, notes, created_by) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE status=VALUES(status), notes=VALUES(notes)", [
-                    $uid, $aDate, $st, sanitize($_POST['att_note'][$uid] ?? ''), getAdminId()
-                ]);
-            } catch (\Throwable $e) {}
-        }
-        redirect(adminUrl("pages/employees.php?tab=attendance&att_month={$attMonth}&msg=Attendance saved"));
-    }
-    if ($sa === 'add_deduction') {
-        $db->query("INSERT INTO salary_deductions (admin_user_id, fixed_expense_id, month, deduction_amount, reason, created_by) VALUES (?,?,?,?,?,?)", [
-            intval($_POST['ded_emp']),
-            intval($_POST['ded_fe'] ?? 0) ?: null,
-            $_POST['ded_month'] ?? date('Y-m'),
-            floatval($_POST['ded_amount']),
-            sanitize($_POST['ded_reason'] ?? ''),
-            getAdminId()
-        ]);
-        redirect(adminUrl("pages/employees.php?tab=attendance&att_month={$attMonth}&msg=Deduction added"));
-    }
-    if ($sa === 'compromise_deduction') {
-        $db->query("UPDATE salary_deductions SET is_compromised=1, compromised_by=?, compromised_at=NOW(), compromise_note=? WHERE id=?", [
-            getAdminId(), sanitize($_POST['comp_note'] ?? ''), intval($_POST['ded_id'])
-        ]);
-        redirect(adminUrl("pages/employees.php?tab=attendance&att_month={$attMonth}&msg=Deduction compromised"));
-    }
-}
 
 // Load attendance data
 $monthStart = $attMonth . '-01';
@@ -1020,9 +1096,73 @@ $empSalaries = $db->fetchAll("SELECT fe.id, fe.admin_user_id, fe.amount, au.full
         </div>
     </div>
 
-    <!-- Deductions -->
+    <!-- Deductions & Penalty -->
     <div class="space-y-4">
-        <!-- Add Deduction -->
+        <!-- Penalty Settings -->
+        <?php
+        $penSettings = json_decode(getSetting('attendance_penalty', '{}'), true) ?: [];
+        $penType = $penSettings['type'] ?? 'fixed';
+        $penAbsent = $penSettings['absent_amount'] ?? 0;
+        $penLate = $penSettings['late_amount'] ?? 0;
+        $penHalfDay = $penSettings['half_day_amount'] ?? 0;
+        $penLeaveDeduct = $penSettings['leave_deduct'] ?? 0;
+        $penLeaveAmt = $penSettings['leave_amount'] ?? 0;
+        $penAuto = $penSettings['auto_generate'] ?? 0;
+        ?>
+        <div class="bg-white rounded-xl border shadow-sm p-5">
+            <h4 class="font-semibold text-gray-800 mb-3">⚙️ Penalty Settings</h4>
+            <form method="POST" class="space-y-2.5">
+                <input type="hidden" name="action" value="save_penalty_settings">
+                <div>
+                    <label class="block text-[10px] font-medium text-gray-500 mb-1">Penalty Type</label>
+                    <select name="pen_type" class="w-full border rounded-lg px-2.5 py-2 text-xs">
+                        <option value="fixed" <?= $penType === 'fixed' ? 'selected' : '' ?>>Fixed Amount (৳ per day)</option>
+                        <option value="percentage" <?= $penType === 'percentage' ? 'selected' : '' ?>>% of Daily Salary</option>
+                    </select>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-[10px] font-medium text-gray-500 mb-1">Absent <?= $penType === 'percentage' ? '(%)' : '(৳)' ?></label>
+                        <input type="number" name="pen_absent" step="0.01" value="<?= $penAbsent ?>" class="w-full border rounded-lg px-2.5 py-1.5 text-xs">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-medium text-gray-500 mb-1">Late <?= $penType === 'percentage' ? '(%)' : '(৳)' ?></label>
+                        <input type="number" name="pen_late" step="0.01" value="<?= $penLate ?>" class="w-full border rounded-lg px-2.5 py-1.5 text-xs">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-[10px] font-medium text-gray-500 mb-1">Half Day <?= $penType === 'percentage' ? '(%)' : '(৳)' ?></label>
+                        <input type="number" name="pen_halfday" step="0.01" value="<?= $penHalfDay ?>" class="w-full border rounded-lg px-2.5 py-1.5 text-xs">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-medium text-gray-500 mb-1">Leave <?= $penType === 'percentage' ? '(%)' : '(৳)' ?></label>
+                        <input type="number" name="pen_leave" step="0.01" value="<?= $penLeaveAmt ?>" class="w-full border rounded-lg px-2.5 py-1.5 text-xs">
+                        <label class="flex items-center gap-1 mt-1"><input type="checkbox" name="pen_leave_deduct" <?= $penLeaveDeduct ? 'checked' : '' ?> class="rounded text-xs"> <span class="text-[9px] text-gray-500">Deduct for leave</span></label>
+                    </div>
+                </div>
+                <label class="flex items-center gap-2 p-2 bg-blue-50 rounded-lg border border-blue-200">
+                    <input type="checkbox" name="pen_auto" <?= $penAuto ? 'checked' : '' ?> class="rounded text-blue-600">
+                    <span class="text-[10px] text-blue-700 font-medium">Auto-calculate penalties on salary day</span>
+                </label>
+                <button type="submit" class="w-full bg-gray-800 text-white py-2 rounded-lg text-xs font-medium hover:bg-gray-900">Save Penalty Settings</button>
+            </form>
+        </div>
+
+        <!-- Auto Calculate Button -->
+        <div class="bg-white rounded-xl border shadow-sm p-5">
+            <h4 class="font-semibold text-gray-800 mb-2">🔄 Auto-Calculate Penalties</h4>
+            <p class="text-[10px] text-gray-500 mb-3">Calculate penalties based on attendance records for <?= $monthLabel ?>. Existing auto-penalties will be updated.</p>
+            <form method="POST">
+                <input type="hidden" name="action" value="auto_calculate_penalties">
+                <input type="hidden" name="pen_month" value="<?= e($attMonth) ?>">
+                <button type="submit" class="w-full bg-red-600 text-white py-2 rounded-lg text-xs font-medium hover:bg-red-700" onclick="return confirm('Auto-calculate penalties for <?= $monthLabel ?>? This will create/update deductions based on attendance.')">
+                    ⚡ Calculate <?= $monthLabel ?> Penalties
+                </button>
+            </form>
+        </div>
+
+        <!-- Manual Deduction -->
         <div class="bg-white rounded-xl border shadow-sm p-5">
             <h4 class="font-semibold text-gray-800 mb-3">Add Salary Deduction</h4>
             <form method="POST" class="space-y-3">
@@ -1042,35 +1182,80 @@ $empSalaries = $db->fetchAll("SELECT fe.id, fe.admin_user_id, fe.amount, au.full
             <script>document.querySelector('[name="ded_emp"]').onchange=function(){var o=this.options[this.selectedIndex];document.getElementById('dedFeId').value=o.dataset.fe||'';}</script>
         </div>
 
-        <!-- Deduction List -->
+        <!-- Deduction List + Net Salary -->
         <div class="bg-white rounded-xl border shadow-sm p-5">
             <h4 class="font-semibold text-gray-800 mb-3"><?= $monthLabel ?> Deductions</h4>
+            <?php
+            // Calculate net salary per employee
+            $activeDedTotal = 0;
+            foreach ($monthDeductions as $ded) { if (!$ded['is_compromised']) $activeDedTotal += floatval($ded['deduction_amount']); }
+            $salaryMap = [];
+            foreach ($empSalaries as $es) { $salaryMap[$es['admin_user_id']] = floatval($es['amount']); }
+            ?>
+            <?php if ($activeDedTotal > 0): ?>
+            <div class="bg-red-50 rounded-lg p-2 mb-3 text-center">
+                <p class="text-[10px] text-red-500">Total Active Deductions</p>
+                <p class="text-lg font-bold text-red-600">-৳<?= number_format($activeDedTotal) ?></p>
+            </div>
+            <?php endif; ?>
             <?php if (empty($monthDeductions)): ?>
             <p class="text-xs text-gray-400 text-center py-4">No deductions this month</p>
             <?php else: ?>
-            <div class="space-y-2">
-                <?php foreach ($monthDeductions as $ded): ?>
+            <div class="space-y-2 max-h-[300px] overflow-y-auto">
+                <?php foreach ($monthDeductions as $ded):
+                    $isAuto = str_starts_with($ded['reason'] ?? '', 'Auto:');
+                ?>
                 <div class="p-2.5 rounded-lg border <?= $ded['is_compromised'] ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200' ?>">
                     <div class="flex items-center justify-between mb-1">
-                        <span class="text-xs font-medium text-gray-800"><?= e($ded['full_name']) ?></span>
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-xs font-medium text-gray-800"><?= e($ded['full_name']) ?></span>
+                            <?php if ($isAuto): ?><span class="text-[8px] bg-blue-100 text-blue-600 px-1 py-0.5 rounded">Auto</span><?php endif; ?>
+                        </div>
                         <span class="text-xs font-bold <?= $ded['is_compromised'] ? 'text-green-600 line-through' : 'text-red-600' ?>">-৳<?= number_format($ded['deduction_amount']) ?></span>
                     </div>
                     <p class="text-[10px] text-gray-500"><?= e($ded['reason'] ?? '—') ?></p>
                     <?php if ($ded['is_compromised']): ?>
-                    <p class="text-[10px] text-green-600 mt-1">✅ Compromised: <?= e($ded['compromise_note'] ?? '') ?></p>
+                    <p class="text-[10px] text-green-600 mt-1">✅ Waived: <?= e($ded['compromise_note'] ?? '') ?></p>
                     <?php else: ?>
                     <form method="POST" class="mt-1.5 flex gap-1">
                         <input type="hidden" name="action" value="compromise_deduction">
                         <input type="hidden" name="ded_id" value="<?= $ded['id'] ?>">
                         <input type="text" name="comp_note" placeholder="Reason to waive..." class="flex-1 border rounded px-2 py-1 text-[10px]">
-                        <button type="submit" class="text-[10px] bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700" onclick="return confirm('Compromise this deduction?')">Waive</button>
+                        <button type="submit" class="text-[10px] bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700" onclick="return confirm('Waive this deduction?')">Waive</button>
                     </form>
                     <?php endif; ?>
                 </div>
                 <?php endforeach; ?>
             </div>
             <?php endif; ?>
-            <p class="text-[9px] text-gray-400 mt-3">Deductions are subtracted from next month's salary. Compromised deductions are waived by the HRM manager.</p>
+
+            <!-- Net Salary Summary -->
+            <?php if (!empty($empSalaries)): ?>
+            <div class="mt-3 pt-3 border-t">
+                <h5 class="text-[10px] font-semibold text-gray-600 mb-2 uppercase">Net Salary This Month</h5>
+                <?php
+                // Group deductions by employee
+                $dedByEmp = [];
+                foreach ($monthDeductions as $d) {
+                    if (!$d['is_compromised']) {
+                        $dedByEmp[$d['admin_user_id']] = ($dedByEmp[$d['admin_user_id']] ?? 0) + floatval($d['deduction_amount']);
+                    }
+                }
+                foreach ($empSalaries as $es):
+                    $ded = $dedByEmp[$es['admin_user_id']] ?? 0;
+                    $net = floatval($es['amount']) - $ded;
+                ?>
+                <div class="flex items-center justify-between py-1 text-xs">
+                    <span class="text-gray-600"><?= e($es['full_name']) ?></span>
+                    <div class="flex items-center gap-2">
+                        <?php if ($ded > 0): ?><span class="text-red-400 text-[10px]">-৳<?= number_format($ded) ?></span><?php endif; ?>
+                        <span class="font-bold <?= $ded > 0 ? 'text-amber-600' : 'text-green-600' ?>">৳<?= number_format(max(0, $net)) ?></span>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+            <p class="text-[9px] text-gray-400 mt-2">Active deductions reduce the salary expense auto-generated on pay day. Waived deductions are excluded.</p>
         </div>
     </div>
 </div>
