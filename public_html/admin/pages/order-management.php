@@ -1042,6 +1042,7 @@ function bStatus(s){
   const ids=getIds();
   if(!ids.length){alert('Select orders');return}
   if(!confirm('Change '+ids.length+' orders to "'+s+'"?'))return;
+  document.getElementById('actionsMenu').classList.add('hidden');
   const fd=new FormData();
   fd.append('action','bulk_status');fd.append('bulk_status',s);
   ids.forEach(i=>fd.append('order_ids[]',i));
@@ -1049,13 +1050,24 @@ function bStatus(s){
   document.getElementById('cProgL').textContent='Updating '+ids.length+' orders...';
   document.getElementById('cProgB').style.width='60%';
   fd.append('_ajax','1');
-  fetch(location.pathname,{method:'POST',credentials:'same-origin',body:fd})
-    .then(r=>r.json()).then(d=>{
+  fetch(location.href.split('?')[0],{method:'POST',credentials:'same-origin',body:fd})
+    .then(r=>r.text())
+    .then(txt=>{
       document.getElementById('cProgB').style.width='100%';
-      document.getElementById('cProgL').textContent='✓ Updated '+(d.count||'')+ ' orders';
+      var d;
+      try{d=JSON.parse(txt.replace(/^[^{]*/,''));}catch(e){d={success:true};}
+      if(d.success){
+        document.getElementById('cProgL').textContent='✓ Updated '+(d.count||ids.length)+' orders';
+      } else {
+        document.getElementById('cProgL').textContent='⚠ Error: '+(d.error||'Unknown');
+      }
       setTimeout(()=>{p.classList.add('hidden');OM.refresh();},1200);
     })
-    .catch(e=>{document.getElementById('cProgL').textContent='Error';p.classList.add('hidden');OM.refresh();});
+    .catch(e=>{
+      console.error('Bulk status error:',e);
+      document.getElementById('cProgL').textContent='Error — check console';
+      setTimeout(()=>{p.classList.add('hidden');OM.refresh();},2000);
+    });
 }
 function bCourier(c){const ids=getIds();if(!ids.length){alert('Select orders');return}if(!confirm('Upload '+ids.length+' to '+c+'?'))return;document.getElementById('actionsMenu').classList.add('hidden');doCourier(ids,c)}
 

@@ -177,6 +177,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['action'])) {
         try { $db->query("SELECT var_regular_price FROM product_variants LIMIT 0"); } catch (\Throwable $e) {
             try { $db->query("ALTER TABLE product_variants ADD COLUMN var_regular_price DECIMAL(12,2) DEFAULT NULL AFTER absolute_price, ADD COLUMN var_sale_price DECIMAL(12,2) DEFAULT NULL AFTER var_regular_price, ADD COLUMN manage_stock TINYINT(1) NOT NULL DEFAULT 1 AFTER stock_quantity"); } catch (\Throwable $e2) {}
         }
+        try { $db->query("ALTER TABLE product_variants ADD COLUMN weight_per_unit DECIMAL(10,4) DEFAULT NULL AFTER stock_quantity"); } catch (\Throwable $e) {}
+        try { $db->query("ALTER TABLE products ADD COLUMN combined_stock TINYINT(1) DEFAULT 0 AFTER manage_stock"); } catch (\Throwable $e) {}
         $isVariableProduct = ($data['product_type'] ?? 'simple') === 'variable';
         foreach ($_POST['opt_name'] as $vi => $vname) {
             if (empty($vname) || empty($_POST['opt_value'][$vi])) continue;
@@ -224,6 +226,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['action'])) {
                 'variant_image' => $varImage ?: null,
                 'is_active' => 1,
                 'is_default' => ($vi == $defaultIdx) ? 1 : 0,
+                'weight_per_unit' => !empty($_POST['opt_weight_per_unit'][$vi]) ? floatval($_POST['opt_weight_per_unit'][$vi]) : null,
             ]);
         }
     }
@@ -582,6 +585,10 @@ if ($product) {
                                     <div class="flex items-center gap-2">
                                         <label class="text-xs text-gray-500">SKU:</label>
                                         <input type="text" name="opt_sku[]" value="<?= e($v['sku'] ?? '') ?>" class="w-28 px-2 py-1 border rounded text-sm" <?= (!$isVar || $productType !== 'variable') ? 'disabled' : '' ?>>
+                                    </div>
+                                    <div class="flex items-center gap-2" title="How much stock to deduct from inventory per unit ordered. For kg products: e.g. 0.25 = 250g. For normal: leave 0 or empty (deducts 1 per unit).">
+                                        <label class="text-xs text-orange-500">⚖ Deduction:</label>
+                                        <input type="number" name="opt_weight_per_unit[]" value="<?= floatval($v['weight_per_unit'] ?? 0) ?: '' ?>" step="0.0001" min="0" placeholder="auto" class="w-24 px-2 py-1 border rounded text-sm" <?= (!$isVar || $productType !== 'variable') ? 'disabled' : '' ?>>
                                     </div>
                                     <div class="opt-var-discount-preview text-xs ml-auto"></div>
                                 </div>
@@ -1156,6 +1163,10 @@ function addOption() {
                         <div class="flex items-center gap-2">
                             <label class="text-xs text-gray-500">SKU:</label>
                             <input type="text" name="opt_sku[]" class="w-28 px-2 py-1 border rounded text-sm" placeholder="Auto">
+                        </div>
+                        <div class="flex items-center gap-2" title="Stock deduction per unit ordered. For kg products: e.g. 0.25 = 250g.">
+                            <label class="text-xs text-orange-500">⚖ Deduction:</label>
+                            <input type="number" name="opt_weight_per_unit[]" step="0.0001" min="0" placeholder="auto" class="w-24 px-2 py-1 border rounded text-sm">
                         </div>
                         <div class="opt-var-discount-preview text-xs ml-auto"></div>
                     </div>
