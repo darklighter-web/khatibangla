@@ -275,6 +275,12 @@ if ($msg && isset($messages[$msg])): $mc = $messages[$msg][1]; ?>
     <a href="?tab=performance" class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 rounded-t-lg <?=$tab==='performance'?'active':'border-transparent text-gray-500 hover:text-gray-700'?>">
         <i class="fas fa-chart-line mr-1.5"></i>Performance
     </a>
+    <a href="?tab=salary" class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 rounded-t-lg <?=$tab==='salary'?'active':'border-transparent text-gray-500 hover:text-gray-700'?>">
+        <i class="fas fa-money-bill-wave mr-1.5"></i>Salary
+    </a>
+    <a href="?tab=attendance" class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 rounded-t-lg <?=$tab==='attendance'?'active':'border-transparent text-gray-500 hover:text-gray-700'?>">
+        <i class="fas fa-calendar-check mr-1.5"></i>Attendance
+    </a>
 </div>
 
 
@@ -699,6 +705,381 @@ elseif ($tab === 'performance'): ?>
         </div>
     </div>
 </div>
+
+<?php endif; ?>
+
+<?php if ($tab === 'salary'): ?>
+<?php
+// ── Salary Management ──
+// Ensure tables
+try { $db->query("SELECT 1 FROM fixed_expenses LIMIT 1"); } catch (\Throwable $e) {
+    $db->query("CREATE TABLE IF NOT EXISTS fixed_expenses (id INT AUTO_INCREMENT PRIMARY KEY, title VARCHAR(200) NOT NULL, amount DECIMAL(12,2) NOT NULL, category_id INT DEFAULT NULL, expense_type ENUM('fixed','salary') DEFAULT 'fixed', employee_name VARCHAR(200) DEFAULT NULL, employee_role VARCHAR(100) DEFAULT NULL, frequency ENUM('monthly','quarterly','yearly') DEFAULT 'monthly', start_date DATE NOT NULL, end_date DATE DEFAULT NULL, day_of_month TINYINT DEFAULT 28, is_active TINYINT(1) DEFAULT 1, notes TEXT, created_by INT, admin_user_id INT DEFAULT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+try { $db->query("ALTER TABLE fixed_expenses ADD COLUMN admin_user_id INT DEFAULT NULL AFTER created_by"); } catch (\Throwable $e) {}
+try { $db->query("ALTER TABLE fixed_expenses ADD COLUMN expense_type ENUM('fixed','salary') DEFAULT 'fixed' AFTER category_id"); } catch (\Throwable $e) {}
+try { $db->query("ALTER TABLE fixed_expenses ADD COLUMN employee_name VARCHAR(200) DEFAULT NULL AFTER expense_type"); } catch (\Throwable $e) {}
+try { $db->query("ALTER TABLE fixed_expenses ADD COLUMN employee_role VARCHAR(100) DEFAULT NULL AFTER employee_name"); } catch (\Throwable $e) {}
+
+// Ensure salary_deductions table
+try { $db->query("SELECT 1 FROM salary_deductions LIMIT 1"); } catch (\Throwable $e) {
+    $db->query("CREATE TABLE IF NOT EXISTS salary_deductions (id INT AUTO_INCREMENT PRIMARY KEY, admin_user_id INT NOT NULL, fixed_expense_id INT DEFAULT NULL, month VARCHAR(7) NOT NULL, deduction_amount DECIMAL(12,2) NOT NULL DEFAULT 0, reason VARCHAR(500), is_compromised TINYINT(1) DEFAULT 0, compromised_by INT DEFAULT NULL, compromised_at DATETIME DEFAULT NULL, compromise_note VARCHAR(500) DEFAULT NULL, created_by INT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, KEY idx_user_month(admin_user_id, month)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
+// POST handlers
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $sa = $_POST['action'] ?? '';
+    if ($sa === 'set_salary') {
+        $empId = intval($_POST['emp_id']);
+        $emp = $db->fetch("SELECT full_name, phone FROM admin_users WHERE id=?", [$empId]);
+        if ($emp) {
+            // Check if salary already exists for this employee
+            $existing = $db->fetch("SELECT id FROM fixed_expenses WHERE expense_type='salary' AND admin_user_id=? AND is_active=1", [$empId]);
+            if ($existing) {
+                $db->query("UPDATE fixed_expenses SET amount=?, employee_role=?, day_of_month=?, notes=? WHERE id=?", [
+                    floatval($_POST['salary_amount']), sanitize($_POST['salary_role'] ?? ''),
+                    min(28, max(1, intval($_POST['salary_day'] ?? 28))),
+                    sanitize($_POST['salary_notes'] ?? ''), $existing['id']
+                ]);
+            } else {
+                $db->query("INSERT INTO fixed_expenses (title, amount, expense_type, employee_name, employee_role, frequency, start_date, day_of_month, notes, created_by, admin_user_id, is_active) VALUES (?,?,'salary',?,?,'monthly',?,?,?,?,?,1)", [
+                    'Salary: ' . $emp['full_name'], floatval($_POST['salary_amount']),
+                    $emp['full_name'], sanitize($_POST['salary_role'] ?? ''), date('Y-m-01'),
+                    min(28, max(1, intval($_POST['salary_day'] ?? 28))),
+                    sanitize($_POST['salary_notes'] ?? ''), getAdminId(), $empId
+                ]);
+            }
+        }
+        redirect(adminUrl('pages/employees.php?tab=salary&msg=Salary saved'));
+    }
+    if ($sa === 'remove_salary') {
+        $db->query("UPDATE fixed_expenses SET is_active=0 WHERE id=? AND expense_type='salary'", [intval($_POST['fe_id'])]);
+        redirect(adminUrl('pages/employees.php?tab=salary&msg=Salary deactivated'));
+    }
+}
+
+// Load salary data
+$salaries = $db->fetchAll("SELECT fe.*, au.full_name, au.is_active as emp_active FROM fixed_expenses fe LEFT JOIN admin_users au ON au.id = fe.admin_user_id WHERE fe.expense_type = 'salary' ORDER BY fe.is_active DESC, au.full_name") ?: [];
+$totalMonthly = 0;
+foreach ($salaries as $s) { if ($s['is_active']) $totalMonthly += floatval($s['amount']); }
+
+// Employees without salary
+$empWithSalary = array_column(array_filter($salaries, function($s){ return $s['is_active']; }), 'admin_user_id');
+$empWithoutSalary = array_filter($employees, function($e) use ($empWithSalary) { return !in_array($e['id'], $empWithSalary); });
+
+// Deductions for current month
+$currentMonth = date('Y-m');
+$deductions = $db->fetchAll("SELECT sd.*, au.full_name FROM salary_deductions sd LEFT JOIN admin_users au ON au.id = sd.admin_user_id WHERE sd.month = ? ORDER BY sd.created_at DESC", [$currentMonth]) ?: [];
+?>
+
+<?php if (!empty($_GET['msg'])): ?><div class="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm">✓ <?= e($_GET['msg']) ?></div><?php endif; ?>
+
+<!-- Salary Summary -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white rounded-xl border p-4">
+        <p class="text-[10px] text-gray-400 uppercase">Total Monthly Salary</p>
+        <p class="text-2xl font-bold text-purple-600">৳<?= number_format($totalMonthly) ?></p>
+    </div>
+    <div class="bg-white rounded-xl border p-4">
+        <p class="text-[10px] text-gray-400 uppercase">Active Employees</p>
+        <p class="text-2xl font-bold text-blue-600"><?= count(array_filter($salaries, function($s){ return $s['is_active']; })) ?></p>
+    </div>
+    <div class="bg-white rounded-xl border p-4">
+        <p class="text-[10px] text-gray-400 uppercase">This Month Deductions</p>
+        <p class="text-2xl font-bold text-red-500">৳<?= number_format(array_sum(array_map(function($d){ return $d['is_compromised'] ? 0 : floatval($d['deduction_amount']); }, $deductions))) ?></p>
+    </div>
+    <div class="bg-white rounded-xl border p-4">
+        <p class="text-[10px] text-gray-400 uppercase">No Salary Set</p>
+        <p class="text-2xl font-bold text-gray-500"><?= count($empWithoutSalary) ?></p>
+    </div>
+</div>
+
+<div class="grid lg:grid-cols-3 gap-5">
+    <!-- Salary List -->
+    <div class="lg:col-span-2">
+        <div class="bg-white rounded-xl border shadow-sm">
+            <div class="px-5 py-3 border-b"><h3 class="text-sm font-semibold text-gray-800">Employee Salaries</h3></div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50"><tr>
+                        <th class="text-left px-4 py-3 font-medium text-gray-600">Employee</th>
+                        <th class="text-left px-4 py-3 font-medium text-gray-600">Role</th>
+                        <th class="text-right px-4 py-3 font-medium text-gray-600">Salary</th>
+                        <th class="text-center px-4 py-3 font-medium text-gray-600">Pay Day</th>
+                        <th class="text-center px-4 py-3 font-medium text-gray-600">Status</th>
+                        <th class="text-right px-4 py-3 font-medium text-gray-600">Actions</th>
+                    </tr></thead>
+                    <tbody class="divide-y">
+                        <?php foreach ($salaries as $s): ?>
+                        <tr class="hover:bg-gray-50 <?= $s['is_active'] ? '' : 'opacity-50' ?>">
+                            <td class="px-4 py-3 font-medium text-gray-800"><?= e($s['full_name'] ?? $s['employee_name']) ?></td>
+                            <td class="px-4 py-3 text-gray-500"><?= e($s['employee_role'] ?? '—') ?></td>
+                            <td class="px-4 py-3 text-right font-bold text-purple-600">৳<?= number_format($s['amount']) ?></td>
+                            <td class="px-4 py-3 text-center text-gray-500"><?= $s['day_of_month'] ?></td>
+                            <td class="px-4 py-3 text-center">
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-medium <?= $s['is_active'] ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500' ?>"><?= $s['is_active'] ? 'Active' : 'Inactive' ?></span>
+                            </td>
+                            <td class="px-4 py-3 text-right">
+                                <?php if ($s['is_active']): ?>
+                                <form method="POST" class="inline" onsubmit="return confirm('Deactivate salary?')"><input type="hidden" name="action" value="remove_salary"><input type="hidden" name="fe_id" value="<?= $s['id'] ?>">
+                                    <button class="text-xs text-red-500 hover:text-red-700">Deactivate</button>
+                                </form>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                        <?php if (empty($salaries)): ?>
+                        <tr><td colspan="6" class="px-4 py-8 text-center text-gray-400">No salaries configured. Use the form to add employee salaries.</td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add/Edit Salary -->
+    <div class="space-y-4">
+        <div class="bg-white rounded-xl border shadow-sm p-5">
+            <h4 class="font-semibold text-gray-800 mb-3">Set Employee Salary</h4>
+            <form method="POST" class="space-y-3">
+                <input type="hidden" name="action" value="set_salary">
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">Employee *</label>
+                    <select name="emp_id" required class="w-full border rounded-lg px-3 py-2 text-sm">
+                        <option value="">Select employee...</option>
+                        <?php foreach ($employees as $e): ?>
+                        <option value="<?= $e['id'] ?>"><?= e($e['full_name']) ?> (<?= e($e['username']) ?>)</option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">Monthly Salary (৳) *</label>
+                    <input type="number" name="salary_amount" step="0.01" min="0" required class="w-full border rounded-lg px-3 py-2 text-sm">
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Role/Position</label>
+                        <input type="text" name="salary_role" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g., Manager">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Pay Day (1-28)</label>
+                        <input type="number" name="salary_day" min="1" max="28" value="28" class="w-full border rounded-lg px-3 py-2 text-sm">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">Notes</label>
+                    <input type="text" name="salary_notes" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Bank account, payment method...">
+                </div>
+                <button type="submit" class="w-full bg-purple-600 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-purple-700">Save Salary</button>
+            </form>
+            <p class="text-[9px] text-gray-400 mt-2">Salary auto-generates as an expense on pay day each month. Shows in Accounting → Fixed Expenses.</p>
+        </div>
+    </div>
+</div>
+
+<?php endif; ?>
+
+<?php if ($tab === 'attendance'): ?>
+<?php
+// ── Attendance & Deduction System ──
+try { $db->query("SELECT 1 FROM salary_deductions LIMIT 1"); } catch (\Throwable $e) {
+    $db->query("CREATE TABLE IF NOT EXISTS salary_deductions (id INT AUTO_INCREMENT PRIMARY KEY, admin_user_id INT NOT NULL, fixed_expense_id INT DEFAULT NULL, month VARCHAR(7) NOT NULL, deduction_amount DECIMAL(12,2) NOT NULL DEFAULT 0, reason VARCHAR(500), is_compromised TINYINT(1) DEFAULT 0, compromised_by INT DEFAULT NULL, compromised_at DATETIME DEFAULT NULL, compromise_note VARCHAR(500) DEFAULT NULL, created_by INT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, KEY idx_user_month(admin_user_id, month)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+try { $db->query("SELECT 1 FROM employee_attendance LIMIT 1"); } catch (\Throwable $e) {
+    $db->query("CREATE TABLE IF NOT EXISTS employee_attendance (id INT AUTO_INCREMENT PRIMARY KEY, admin_user_id INT NOT NULL, attendance_date DATE NOT NULL, status ENUM('present','absent','late','half_day','leave') DEFAULT 'present', check_in TIME DEFAULT NULL, check_out TIME DEFAULT NULL, notes VARCHAR(500), created_by INT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY idx_user_date(admin_user_id, attendance_date)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
+$attMonth = $_GET['att_month'] ?? date('Y-m');
+$attEmpId = intval($_GET['att_emp'] ?? 0);
+
+// POST handlers
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $sa = $_POST['action'] ?? '';
+    if ($sa === 'mark_attendance') {
+        $aDate = $_POST['att_date'] ?? date('Y-m-d');
+        foreach ($_POST['status'] ?? [] as $uid => $st) {
+            $uid = intval($uid);
+            $st = in_array($st, ['present','absent','late','half_day','leave']) ? $st : 'present';
+            try {
+                $db->query("INSERT INTO employee_attendance (admin_user_id, attendance_date, status, notes, created_by) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE status=VALUES(status), notes=VALUES(notes)", [
+                    $uid, $aDate, $st, sanitize($_POST['att_note'][$uid] ?? ''), getAdminId()
+                ]);
+            } catch (\Throwable $e) {}
+        }
+        redirect(adminUrl("pages/employees.php?tab=attendance&att_month={$attMonth}&msg=Attendance saved"));
+    }
+    if ($sa === 'add_deduction') {
+        $db->query("INSERT INTO salary_deductions (admin_user_id, fixed_expense_id, month, deduction_amount, reason, created_by) VALUES (?,?,?,?,?,?)", [
+            intval($_POST['ded_emp']),
+            intval($_POST['ded_fe'] ?? 0) ?: null,
+            $_POST['ded_month'] ?? date('Y-m'),
+            floatval($_POST['ded_amount']),
+            sanitize($_POST['ded_reason'] ?? ''),
+            getAdminId()
+        ]);
+        redirect(adminUrl("pages/employees.php?tab=attendance&att_month={$attMonth}&msg=Deduction added"));
+    }
+    if ($sa === 'compromise_deduction') {
+        $db->query("UPDATE salary_deductions SET is_compromised=1, compromised_by=?, compromised_at=NOW(), compromise_note=? WHERE id=?", [
+            getAdminId(), sanitize($_POST['comp_note'] ?? ''), intval($_POST['ded_id'])
+        ]);
+        redirect(adminUrl("pages/employees.php?tab=attendance&att_month={$attMonth}&msg=Deduction compromised"));
+    }
+}
+
+// Load attendance data
+$monthStart = $attMonth . '-01';
+$monthEnd = date('Y-m-t', strtotime($monthStart));
+$daysInMonth = intval(date('t', strtotime($monthStart)));
+$monthLabel = date('F Y', strtotime($monthStart));
+
+// Get all active employees
+$activeEmps = $db->fetchAll("SELECT id, full_name, username FROM admin_users WHERE is_active=1 ORDER BY full_name");
+
+// Get attendance records for the month
+$attRecords = [];
+try {
+    $rows = $db->fetchAll("SELECT * FROM employee_attendance WHERE attendance_date BETWEEN ? AND ?", [$monthStart, $monthEnd]);
+    foreach ($rows as $r) { $attRecords[$r['admin_user_id']][$r['attendance_date']] = $r; }
+} catch (\Throwable $e) {}
+
+// Get deductions for the month
+$monthDeductions = $db->fetchAll("SELECT sd.*, au.full_name FROM salary_deductions sd LEFT JOIN admin_users au ON au.id=sd.admin_user_id WHERE sd.month=? ORDER BY sd.created_at DESC", [$attMonth]) ?: [];
+
+// Get salaries for deduction form
+$empSalaries = $db->fetchAll("SELECT fe.id, fe.admin_user_id, fe.amount, au.full_name FROM fixed_expenses fe JOIN admin_users au ON au.id=fe.admin_user_id WHERE fe.expense_type='salary' AND fe.is_active=1") ?: [];
+?>
+
+<?php if (!empty($_GET['msg'])): ?><div class="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm">✓ <?= e($_GET['msg']) ?></div><?php endif; ?>
+
+<!-- Month Navigator -->
+<div class="flex items-center gap-3 mb-5">
+    <a href="?tab=attendance&att_month=<?= date('Y-m', strtotime($attMonth . ' -1 month')) ?>" class="px-3 py-1.5 bg-gray-100 rounded-lg text-sm hover:bg-gray-200">← Prev</a>
+    <h3 class="text-lg font-bold text-gray-800"><?= $monthLabel ?></h3>
+    <a href="?tab=attendance&att_month=<?= date('Y-m', strtotime($attMonth . ' +1 month')) ?>" class="px-3 py-1.5 bg-gray-100 rounded-lg text-sm hover:bg-gray-200">Next →</a>
+    <?php if ($attMonth !== date('Y-m')): ?>
+    <a href="?tab=attendance" class="text-xs text-blue-600">Today</a>
+    <?php endif; ?>
+</div>
+
+<div class="grid lg:grid-cols-3 gap-5">
+    <!-- Mark Attendance -->
+    <div class="lg:col-span-2">
+        <div class="bg-white rounded-xl border shadow-sm">
+            <div class="px-5 py-3 border-b flex items-center justify-between">
+                <h3 class="text-sm font-semibold text-gray-800">Daily Attendance</h3>
+                <form class="flex items-center gap-2" onsubmit="return false">
+                    <input type="date" id="attDatePicker" value="<?= date('Y-m-d') ?>" min="<?= $monthStart ?>" max="<?= $monthEnd ?>" class="border rounded-lg px-2.5 py-1.5 text-xs">
+                </form>
+            </div>
+            <form method="POST">
+                <input type="hidden" name="action" value="mark_attendance">
+                <input type="hidden" name="att_date" id="attDateHidden" value="<?= date('Y-m-d') ?>">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-gray-50"><tr>
+                            <th class="text-left px-4 py-2 font-medium text-gray-600">Employee</th>
+                            <th class="text-center px-2 py-2 font-medium text-gray-600">Status</th>
+                            <th class="text-left px-2 py-2 font-medium text-gray-600">Note</th>
+                            <th class="text-center px-2 py-2 font-medium text-gray-600">This Month</th>
+                        </tr></thead>
+                        <tbody class="divide-y">
+                            <?php foreach ($activeEmps as $ae):
+                                $todayAtt = $attRecords[$ae['id']][date('Y-m-d')] ?? null;
+                                $monthPresent = 0; $monthAbsent = 0; $monthLate = 0;
+                                foreach ($attRecords[$ae['id']] ?? [] as $ar) {
+                                    if ($ar['status'] === 'present') $monthPresent++;
+                                    elseif ($ar['status'] === 'absent') $monthAbsent++;
+                                    elseif ($ar['status'] === 'late') $monthLate++;
+                                    elseif ($ar['status'] === 'half_day') $monthPresent += 0.5;
+                                }
+                            ?>
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-4 py-2.5 font-medium text-gray-800"><?= e($ae['full_name']) ?></td>
+                                <td class="px-2 py-2.5 text-center">
+                                    <select name="status[<?= $ae['id'] ?>]" class="border rounded px-2 py-1 text-xs">
+                                        <?php foreach(['present'=>'✅ Present','absent'=>'❌ Absent','late'=>'⏰ Late','half_day'=>'½ Half Day','leave'=>'🏖 Leave'] as $sk=>$sl): ?>
+                                        <option value="<?= $sk ?>" <?= ($todayAtt['status'] ?? '') === $sk ? 'selected' : '' ?>><?= $sl ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </td>
+                                <td class="px-2 py-2.5"><input type="text" name="att_note[<?= $ae['id'] ?>]" value="<?= e($todayAtt['notes'] ?? '') ?>" class="border rounded px-2 py-1 text-xs w-full" placeholder="Note"></td>
+                                <td class="px-2 py-2.5 text-center text-xs">
+                                    <span class="text-green-600 font-medium"><?= $monthPresent ?>P</span>
+                                    <?php if ($monthAbsent): ?><span class="text-red-500 ml-1"><?= $monthAbsent ?>A</span><?php endif; ?>
+                                    <?php if ($monthLate): ?><span class="text-amber-500 ml-1"><?= $monthLate ?>L</span><?php endif; ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="px-5 py-3 border-t">
+                    <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">Save Attendance</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Deductions -->
+    <div class="space-y-4">
+        <!-- Add Deduction -->
+        <div class="bg-white rounded-xl border shadow-sm p-5">
+            <h4 class="font-semibold text-gray-800 mb-3">Add Salary Deduction</h4>
+            <form method="POST" class="space-y-3">
+                <input type="hidden" name="action" value="add_deduction">
+                <input type="hidden" name="ded_month" value="<?= e($attMonth) ?>">
+                <select name="ded_emp" required class="w-full border rounded-lg px-3 py-2 text-sm">
+                    <option value="">Select employee...</option>
+                    <?php foreach ($empSalaries as $es): ?>
+                    <option value="<?= $es['admin_user_id'] ?>" data-fe="<?= $es['id'] ?>"><?= e($es['full_name']) ?> (৳<?= number_format($es['amount']) ?>)</option>
+                    <?php endforeach; ?>
+                </select>
+                <input type="hidden" name="ded_fe" id="dedFeId" value="">
+                <input type="number" name="ded_amount" step="0.01" min="0" required placeholder="Deduction amount (৳)" class="w-full border rounded-lg px-3 py-2 text-sm">
+                <input type="text" name="ded_reason" placeholder="Reason (e.g., 3 days absent)" class="w-full border rounded-lg px-3 py-2 text-sm">
+                <button type="submit" class="w-full bg-red-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-red-700">Add Deduction</button>
+            </form>
+            <script>document.querySelector('[name="ded_emp"]').onchange=function(){var o=this.options[this.selectedIndex];document.getElementById('dedFeId').value=o.dataset.fe||'';}</script>
+        </div>
+
+        <!-- Deduction List -->
+        <div class="bg-white rounded-xl border shadow-sm p-5">
+            <h4 class="font-semibold text-gray-800 mb-3"><?= $monthLabel ?> Deductions</h4>
+            <?php if (empty($monthDeductions)): ?>
+            <p class="text-xs text-gray-400 text-center py-4">No deductions this month</p>
+            <?php else: ?>
+            <div class="space-y-2">
+                <?php foreach ($monthDeductions as $ded): ?>
+                <div class="p-2.5 rounded-lg border <?= $ded['is_compromised'] ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200' ?>">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-xs font-medium text-gray-800"><?= e($ded['full_name']) ?></span>
+                        <span class="text-xs font-bold <?= $ded['is_compromised'] ? 'text-green-600 line-through' : 'text-red-600' ?>">-৳<?= number_format($ded['deduction_amount']) ?></span>
+                    </div>
+                    <p class="text-[10px] text-gray-500"><?= e($ded['reason'] ?? '—') ?></p>
+                    <?php if ($ded['is_compromised']): ?>
+                    <p class="text-[10px] text-green-600 mt-1">✅ Compromised: <?= e($ded['compromise_note'] ?? '') ?></p>
+                    <?php else: ?>
+                    <form method="POST" class="mt-1.5 flex gap-1">
+                        <input type="hidden" name="action" value="compromise_deduction">
+                        <input type="hidden" name="ded_id" value="<?= $ded['id'] ?>">
+                        <input type="text" name="comp_note" placeholder="Reason to waive..." class="flex-1 border rounded px-2 py-1 text-[10px]">
+                        <button type="submit" class="text-[10px] bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700" onclick="return confirm('Compromise this deduction?')">Waive</button>
+                    </form>
+                    <?php endif; ?>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+            <p class="text-[9px] text-gray-400 mt-3">Deductions are subtracted from next month's salary. Compromised deductions are waived by the HRM manager.</p>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('attDatePicker').onchange = function() {
+    document.getElementById('attDateHidden').value = this.value;
+};
+</script>
 
 <?php endif; ?>
 

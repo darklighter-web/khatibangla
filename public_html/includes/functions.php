@@ -1239,6 +1239,51 @@ function getFlash() {
     return null;
 }
 
+// ============================================================
+// DELIVERY METHODS & COURIER NORMALIZATION
+// ============================================================
+
+/**
+ * Normalize courier name: "Pathao Courier" → "Pathao", "Steadfast Courier" → "Steadfast"
+ */
+function normalizeCourierName($raw) {
+    $raw = trim($raw ?? '');
+    if (!$raw) return '';
+    return preg_replace('/\s+(Courier|Express|Delivery|Logistics)$/i', '', $raw);
+}
+
+/**
+ * Get active delivery methods from site_settings
+ * Returns array of ['name'=>'Pathao', 'enabled'=>true, ...]
+ */
+function getDeliveryMethods() {
+    $db = Database::getInstance();
+    // Ensure the setting exists with defaults
+    $raw = getSetting('delivery_methods', '');
+    if (!$raw) {
+        $defaults = [
+            ['name' => 'Pathao', 'enabled' => true],
+            ['name' => 'Steadfast', 'enabled' => true],
+            ['name' => 'RedX', 'enabled' => true],
+            ['name' => 'CarryBee', 'enabled' => false],
+            ['name' => 'SA Paribahan', 'enabled' => false],
+            ['name' => 'Sundarban', 'enabled' => false],
+            ['name' => 'Self Delivery', 'enabled' => true],
+            ['name' => 'Store Pickup', 'enabled' => false],
+        ];
+        try { $db->query("INSERT INTO site_settings (setting_key, setting_value, setting_group) VALUES ('delivery_methods', ?, 'shipping') ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)", [json_encode($defaults)]); } catch (\Throwable $e) {}
+        return $defaults;
+    }
+    return json_decode($raw, true) ?: [];
+}
+
+/**
+ * Get only enabled delivery method names
+ */
+function getEnabledDeliveryMethods() {
+    return array_column(array_filter(getDeliveryMethods(), function($m) { return !empty($m['enabled']); }), 'name');
+}
+
 function renderFlash() {
     $flash = getFlash();
     if (!$flash) return '';

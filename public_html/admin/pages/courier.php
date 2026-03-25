@@ -104,12 +104,73 @@ require_once __DIR__ . '/../includes/header.php';
 
 <!-- TABS -->
 <div class="flex flex-wrap gap-2 mb-6">
-    <?php foreach(['pathao'=>'🚀 Pathao API','steadfast'=>'📦 Steadfast','redx'=>'🔴 RedX','carrybee'=>'🐝 CarryBee','webhooks'=>'🔗 Webhooks','customer_check'=>'🔍 Customer Verify','area_map'=>'📊 Area Analytics','providers'=>'📦 Providers','shipments'=>'🚚 Shipments'] as $k=>$v): ?>
+    <?php foreach(['methods'=>'🚚 Delivery Methods','pathao'=>'🚀 Pathao API','steadfast'=>'📦 Steadfast','redx'=>'🔴 RedX','carrybee'=>'🐝 CarryBee','webhooks'=>'🔗 Webhooks','customer_check'=>'🔍 Customer Verify','area_map'=>'📊 Area Analytics','providers'=>'📦 Providers','shipments'=>'🚚 Shipments'] as $k=>$v): ?>
     <a href="?tab=<?=$k?>" class="px-4 py-2 rounded-lg text-sm font-medium <?=$tab===$k?'tab-on':'bg-gray-100 text-gray-600 hover:bg-gray-200'?>"><?=$v?></a>
     <?php endforeach; ?>
 </div>
 
-<?php if ($tab === 'pathao'): ?>
+<?php if ($tab === 'methods'): ?>
+<!-- Delivery Methods Management -->
+<?php
+$__allMethods = getDeliveryMethods();
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['toggle_method'])) {
+    $tIdx = intval($_GET['toggle_method']);
+    if (isset($__allMethods[$tIdx])) {
+        $__allMethods[$tIdx]['enabled'] = !$__allMethods[$tIdx]['enabled'];
+        $db->query("UPDATE site_settings SET setting_value = ? WHERE setting_key = 'delivery_methods'", [json_encode($__allMethods)]);
+        redirect(adminUrl('pages/courier.php?tab=methods&msg=updated'));
+    }
+}
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_method') {
+    $newName = trim(sanitize($_POST['method_name'] ?? ''));
+    if ($newName) {
+        $__allMethods[] = ['name' => $newName, 'enabled' => true];
+        $db->query("UPDATE site_settings SET setting_value = ? WHERE setting_key = 'delivery_methods'", [json_encode($__allMethods)]);
+    }
+    redirect(adminUrl('pages/courier.php?tab=methods&msg=added'));
+}
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'remove_method') {
+    $rIdx = intval($_POST['method_idx'] ?? -1);
+    if (isset($__allMethods[$rIdx])) {
+        array_splice($__allMethods, $rIdx, 1);
+        $db->query("UPDATE site_settings SET setting_value = ? WHERE setting_key = 'delivery_methods'", [json_encode($__allMethods)]);
+    }
+    redirect(adminUrl('pages/courier.php?tab=methods&msg=removed'));
+}
+?>
+<div class="max-w-2xl">
+    <div class="bg-white rounded-xl border shadow-sm p-6">
+        <h3 class="text-base font-semibold text-gray-800 mb-1">Delivery Methods</h3>
+        <p class="text-xs text-gray-500 mb-4">Enable or disable delivery methods. These appear in order-view delivery dropdown, courier filters, and new order page.</p>
+
+        <div class="space-y-2 mb-5">
+            <?php foreach ($__allMethods as $idx => $m): ?>
+            <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+                <div class="flex items-center gap-3">
+                    <a href="?tab=methods&toggle_method=<?= $idx ?>" class="w-10 h-5 rounded-full relative cursor-pointer transition-colors <?= !empty($m['enabled']) ? 'bg-green-500' : 'bg-gray-300' ?>">
+                        <span class="absolute top-0.5 <?= !empty($m['enabled']) ? 'left-5' : 'left-0.5' ?> w-4 h-4 bg-white rounded-full shadow transition-all"></span>
+                    </a>
+                    <span class="text-sm font-medium text-gray-800"><?= e($m['name']) ?></span>
+                    <?php if (!empty($m['enabled'])): ?><span class="text-[9px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">Active</span><?php endif; ?>
+                </div>
+                <form method="POST" class="inline" onsubmit="return confirm('Remove this delivery method?')">
+                    <input type="hidden" name="action" value="remove_method">
+                    <input type="hidden" name="method_idx" value="<?= $idx ?>">
+                    <button class="text-xs text-red-400 hover:text-red-600">Remove</button>
+                </form>
+            </div>
+            <?php endforeach; ?>
+        </div>
+
+        <form method="POST" class="flex gap-2">
+            <input type="hidden" name="action" value="add_method">
+            <input type="text" name="method_name" required placeholder="New delivery method name..." class="flex-1 border rounded-lg px-3 py-2 text-sm">
+            <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">+ Add</button>
+        </form>
+    </div>
+</div>
+
+<?php elseif ($tab === 'pathao'): ?>
 <!-- ========================================= -->
 <!-- PATHAO API CONNECTION -->
 <!-- ========================================= -->

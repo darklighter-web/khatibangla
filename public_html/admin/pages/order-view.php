@@ -59,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $address      = sanitize($_POST['customer_address'] ?? $order['customer_address']);
         $shippingNote = sanitize($_POST['shipping_note']    ?? '');
         $orderNote    = sanitize($_POST['order_note']       ?? '');
-        $deliveryMethod = sanitize($_POST['delivery_method'] ?? 'Pathao Courier');
+        $deliveryMethod = sanitize($_POST['delivery_method'] ?? 'Pathao');
         $channel      = sanitize($_POST['channel']  ?? $order['channel']  ?? 'website');
         $isPreorder   = !empty($_POST['is_preorder']) ? 1 : 0;
         $preorderDate = !empty($_POST['preorder_date']) ? $_POST['preorder_date'] : null;
@@ -644,8 +644,13 @@ exit; endif; /* end lockBlocked */ ?>
                 <div>
                     <label class="block text-sm font-semibold text-gray-800 mb-1.5">Delivery Method</label>
                     <select name="delivery_method" id="deliveryMethodSelect" onchange="updateUploadBtn()" class="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none">
-                        <?php foreach(['Pathao Courier','Steadfast','CarryBee','RedX','SA Paribahan','Sundarban','Self Delivery','Store Pickup'] as $dm): ?>
-                        <option value="<?= $dm ?>" <?= ($order['shipping_method']??$order['courier_name']??'')===$dm?'selected':'' ?>><?= $dm ?></option>
+                        <?php
+                        $__deliveryMethods = getDeliveryMethods();
+                        $__currentDm = normalizeCourierName($order['shipping_method'] ?? $order['courier_name'] ?? '');
+                        foreach ($__deliveryMethods as $dm):
+                            if (empty($dm['enabled']) && $dm['name'] !== $__currentDm) continue;
+                        ?>
+                        <option value="<?= e($dm['name']) ?>" <?= normalizeCourierName($dm['name']) === $__currentDm || $dm['name'] === ($order['shipping_method'] ?? '') ? 'selected' : '' ?>><?= e($dm['name']) ?></option>
                         <?php endforeach; ?>
                     </select>
                     <?php if (!empty($order['courier_status'])): ?><div class="text-[10px] text-indigo-600 mt-1">📡 <?= e($order['courier_status']) ?></div><?php endif; ?>
