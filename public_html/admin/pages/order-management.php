@@ -225,16 +225,25 @@ if (!empty($orderIds)) {
 }
 
 // ── Courier counts (for sub-tabs under each status) ──
-// ── Courier counts — normalize names, use courier_name OR shipping_method ──
+// ── Courier counts — merge enabled delivery methods + actual DB couriers ──
 $_courierExpr = "COALESCE(NULLIF(courier_name,''), shipping_method)";
 $_dbCouriers = [];
 try {
     $_dbCouriers = $db->fetchAll("SELECT DISTINCT {$_courierExpr} as cname FROM orders WHERE {$_courierExpr} IS NOT NULL AND {$_courierExpr} != '' AND {$_courierExpr} != 'Unassigned' ORDER BY cname");
 } catch (\Throwable $e) {}
 
-// Build normalized list (merge "Pathao" + "Pathao Courier" → "Pathao")
+// Start with all enabled delivery methods from settings
 $courierList = [];
-$_courierRawMap = []; // normalized → [raw1, raw2, ...]
+try {
+    $enabledMethods = getEnabledDeliveryMethods();
+    foreach ($enabledMethods as $m) {
+        $norm = normalizeCourierName($m);
+        if ($norm && !in_array($norm, $courierList)) $courierList[] = $norm;
+    }
+} catch (\Throwable $e) {}
+
+// Add any DB couriers not already in the list
+$_courierRawMap = [];
 foreach ($_dbCouriers as $_dc) {
     $raw = trim($_dc['cname'] ?? '');
     if (!$raw) continue;
