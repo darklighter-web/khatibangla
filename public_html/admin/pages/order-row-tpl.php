@@ -133,9 +133,11 @@
     
     <!-- Actions -->
     <td class="om-action-cell">
+        <?php $__isProc = in_array($order['order_status'], ['processing','pending']); ?>
         <a href="<?= adminUrl('pages/order-view.php?order='.urlencode($order['order_number'])) ?>" 
            class="order-open-link om-btn om-btn-open"
-           data-oid="<?= $order['id'] ?>">Open</a>
+           data-oid="<?= $order['id'] ?>"
+           <?= !$__isProc ? 'onclick="return openOrderModal(this.href,event)"' : '' ?>>Open</a>
         <span class="lock-indicator hidden text-[10px] text-pink-600 font-medium ml-1" data-lock-oid="<?= $order['id'] ?>"></span>
     </td>
 </tr>

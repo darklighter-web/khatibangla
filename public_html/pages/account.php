@@ -44,6 +44,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect(url('account?tab=addresses&msg=saved'));
     }
     if ($action === 'delete_address') { $db->delete('customer_addresses', 'id = ? AND customer_id = ?', [(int)$_POST['addr_id'], $customer['id']]); redirect(url('account?tab=addresses&msg=deleted')); }
+    if ($action === 'set_default_address') {
+        $addrId = (int)$_POST['addr_id'];
+        $db->query("UPDATE customer_addresses SET is_default = 0 WHERE customer_id = ?", [$customer['id']]);
+        $db->query("UPDATE customer_addresses SET is_default = 1 WHERE id = ? AND customer_id = ?", [$addrId, $customer['id']]);
+        // Also update the customer's main address from this default
+        $defAddr = $db->fetch("SELECT * FROM customer_addresses WHERE id = ? AND customer_id = ?", [$addrId, $customer['id']]);
+        if ($defAddr) {
+            $db->update('customers', [
+                'address' => $defAddr['address'],
+                'city' => $defAddr['city'] ?? '',
+            ], 'id = ?', [$customer['id']]);
+        }
+        redirect(url('account?tab=addresses&msg=default_set'));
+    }
     if ($action === 'delete_account') {
         $password = $_POST['confirm_delete_password'] ?? '';
         if (empty($password) || !verifyPassword($password, $customer['password'])) { redirect(url('account?tab=profile&msg=wrong_delete_password')); }
@@ -461,6 +475,9 @@ if ($tab === 'overview'):
     <p class="text-sm text-gray-500 mt-1"><?= e($addr['address']) ?></p>
     <p class="text-sm text-gray-500"><?= e($addr['area']) ?>, <?= e($addr['city']) ?></p>
     <div class="mt-3 flex gap-3 pt-3 border-t">
+        <?php if (!$addr['is_default']): ?>
+        <form method="POST" class="inline"><input type="hidden" name="action" value="set_default_address"><input type="hidden" name="addr_id" value="<?= $addr['id'] ?>"><button class="text-xs text-green-600 font-medium"><i class="fas fa-check-circle mr-1"></i>ডিফল্ট</button></form>
+        <?php endif; ?>
         <button onclick='editAddress(<?= json_encode($addr) ?>)' class="text-xs text-blue-600 font-medium"><i class="fas fa-pen mr-1"></i>এডিট</button>
         <form method="POST" class="inline"><input type="hidden" name="action" value="delete_address"><input type="hidden" name="addr_id" value="<?= $addr['id'] ?>"><button onclick="return confirm('মুছে ফেলতে চান?')" class="text-xs text-red-400"><i class="fas fa-trash-alt mr-1"></i>মুছুন</button></form>
     </div>

@@ -124,20 +124,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $confirmItems = $db->fetchAll("SELECT oi.product_id, oi.quantity, oi.variant_name FROM order_items oi WHERE oi.order_id = ?", [$id]);
                 foreach ($confirmItems as $ci) {
                     if (!$ci['product_id']) continue;
-                    $prod = $db->fetch("SELECT manage_stock FROM products WHERE id = ?", [$ci['product_id']]);
-                    if ($prod && intval($prod['manage_stock'] ?? 1)) {
-                        $db->query("UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?", [intval($ci['quantity']), $ci['product_id']]);
-                        $db->query("UPDATE products SET stock_status = CASE WHEN stock_quantity > 0 THEN 'in_stock' ELSE 'out_of_stock' END WHERE id = ? AND manage_stock = 1", [$ci['product_id']]);
-                        // Match variant by name (order_items doesn't have variant_id)
+                    $prod = $db->fetch("SELECT manage_stock, combined_stock, stock_quantity FROM products WHERE id = ?", [$ci['product_id']]);
+                    if (!$prod || !intval($prod['manage_stock'] ?? 1)) continue;
+                    $qty = intval($ci['quantity']);
+
+                    if (intval($prod['combined_stock'] ?? 0) && !empty($ci['variant_name'])) {
+                        // Combined stock mode: deduct weight_per_unit × qty from parent stock_quantity (in kg)
+                        $variant = $db->fetch("SELECT id, weight_per_unit FROM product_variants WHERE product_id = ? AND CONCAT(variant_name, ': ', variant_value) = ? LIMIT 1", [$ci['product_id'], $ci['variant_name']]);
+                        if ($variant) {
+                            $weight = floatval($variant['weight_per_unit'] ?? 0);
+                            if ($weight > 0) {
+                                $db->query("UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?", [$weight * $qty, $ci['product_id']]);
+                            }
+                        }
+                    } else {
+                        // Normal mode: deduct quantity from parent product
+                        $db->query("UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?", [$qty, $ci['product_id']]);
+                        // Also deduct from variant if matched
                         if (!empty($ci['variant_name'])) {
                             try {
                                 $variant = $db->fetch("SELECT id FROM product_variants WHERE product_id = ? AND CONCAT(variant_name, ': ', variant_value) = ? LIMIT 1", [$ci['product_id'], $ci['variant_name']]);
                                 if ($variant) {
-                                    $db->query("UPDATE product_variants SET stock = stock - ? WHERE id = ?", [intval($ci['quantity']), $variant['id']]);
+                                    $db->query("UPDATE product_variants SET stock_quantity = stock_quantity - ? WHERE id = ?", [$qty, $variant['id']]);
                                 }
                             } catch (\Throwable $e) {}
                         }
                     }
+                    $db->query("UPDATE products SET stock_status = CASE WHEN stock_quantity > 0 THEN 'in_stock' ELSE 'out_of_stock' END WHERE id = ? AND manage_stock = 1", [$ci['product_id']]);
                 }
             } catch (\Throwable $e) { error_log("Stock reduce on confirm failed for order {$id}: " . $e->getMessage()); }
         }
@@ -177,24 +190,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // ── Stock Management: restore stock on cancel/return ──
         $stockRestoreStatuses = ['cancelled', 'returned'];
-        // Only restore if order was confirmed+ (stock was reduced at confirmation)
         $stockConfirmedStatuses = ['confirmed', 'ready_to_ship', 'shipped', 'delivered'];
         if (in_array($newStatus, $stockRestoreStatuses) && in_array($oldStatus, $stockConfirmedStatuses)) {
             try {
                 $orderItems = $db->fetchAll("SELECT oi.product_id, oi.quantity, oi.variant_name FROM order_items oi WHERE oi.order_id = ?", [$id]);
                 foreach ($orderItems as $oi) {
                     if (!$oi['product_id']) continue;
-                    $prod = $db->fetch("SELECT manage_stock FROM products WHERE id = ?", [$oi['product_id']]);
-                    if ($prod && intval($prod['manage_stock'] ?? 1)) {
-                        $db->query("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?", [intval($oi['quantity']), $oi['product_id']]);
-                        $db->query("UPDATE products SET stock_status = CASE WHEN stock_quantity > 0 THEN 'in_stock' ELSE 'out_of_stock' END WHERE id = ? AND manage_stock = 1", [$oi['product_id']]);
+                    $prod = $db->fetch("SELECT manage_stock, combined_stock FROM products WHERE id = ?", [$oi['product_id']]);
+                    if (!$prod || !intval($prod['manage_stock'] ?? 1)) continue;
+                    $qty = intval($oi['quantity']);
+
+                    if (intval($prod['combined_stock'] ?? 0) && !empty($oi['variant_name'])) {
+                        $variant = $db->fetch("SELECT id, weight_per_unit FROM product_variants WHERE product_id = ? AND CONCAT(variant_name, ': ', variant_value) = ? LIMIT 1", [$oi['product_id'], $oi['variant_name']]);
+                        if ($variant) {
+                            $weight = floatval($variant['weight_per_unit'] ?? 0);
+                            if ($weight > 0) {
+                                $db->query("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?", [$weight * $qty, $oi['product_id']]);
+                            }
+                        }
+                    } else {
+                        $db->query("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?", [$qty, $oi['product_id']]);
                         if (!empty($oi['variant_name'])) {
                             try {
                                 $variant = $db->fetch("SELECT id FROM product_variants WHERE product_id = ? AND CONCAT(variant_name, ': ', variant_value) = ? LIMIT 1", [$oi['product_id'], $oi['variant_name']]);
-                                if ($variant) { $db->query("UPDATE product_variants SET stock = stock + ? WHERE id = ?", [intval($oi['quantity']), $variant['id']]); }
+                                if ($variant) { $db->query("UPDATE product_variants SET stock_quantity = stock_quantity + ? WHERE id = ?", [$qty, $variant['id']]); }
                             } catch (\Throwable $e) {}
                         }
                     }
+                    $db->query("UPDATE products SET stock_status = CASE WHEN stock_quantity > 0 THEN 'in_stock' ELSE 'out_of_stock' END WHERE id = ? AND manage_stock = 1", [$oi['product_id']]);
                 }
             } catch (\Throwable $e) { error_log("Stock restore failed for order {$id}: " . $e->getMessage()); }
         }

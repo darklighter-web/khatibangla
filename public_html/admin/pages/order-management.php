@@ -20,30 +20,32 @@ $db = Database::getInstance();
 // Helper: adjust stock for an order (reduce on confirm, restore on cancel/return)
 function _bulkStockAdjust($db, $orderId, $direction = 'reduce') {
     $items = $db->fetchAll("SELECT oi.product_id, oi.quantity, oi.variant_name FROM order_items oi WHERE oi.order_id = ?", [$orderId]);
+    $sign = $direction === 'reduce' ? -1 : 1;
     foreach ($items as $oi) {
         if (!$oi['product_id']) continue;
-        $prod = $db->fetch("SELECT manage_stock FROM products WHERE id = ?", [$oi['product_id']]);
+        $prod = $db->fetch("SELECT manage_stock, combined_stock FROM products WHERE id = ?", [$oi['product_id']]);
         if (!$prod || !intval($prod['manage_stock'] ?? 1)) continue;
         $qty = intval($oi['quantity']);
-        if ($direction === 'reduce') {
-            $db->query("UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?", [$qty, $oi['product_id']]);
+
+        if (intval($prod['combined_stock'] ?? 0) && !empty($oi['variant_name'])) {
+            // Combined kg stock: adjust by weight_per_unit
+            $variant = $db->fetch("SELECT id, weight_per_unit FROM product_variants WHERE product_id = ? AND CONCAT(variant_name, ': ', variant_value) = ? LIMIT 1", [$oi['product_id'], $oi['variant_name']]);
+            if ($variant && floatval($variant['weight_per_unit'] ?? 0) > 0) {
+                $db->query("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?", [$sign * floatval($variant['weight_per_unit']) * $qty, $oi['product_id']]);
+            }
         } else {
-            $db->query("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?", [$qty, $oi['product_id']]);
+            // Normal stock: adjust by quantity
+            $db->query("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?", [$sign * $qty, $oi['product_id']]);
+            if (!empty($oi['variant_name'])) {
+                try {
+                    $variant = $db->fetch("SELECT id FROM product_variants WHERE product_id = ? AND CONCAT(variant_name, ': ', variant_value) = ? LIMIT 1", [$oi['product_id'], $oi['variant_name']]);
+                    if ($variant) {
+                        $db->query("UPDATE product_variants SET stock_quantity = stock_quantity + ? WHERE id = ?", [$sign * $qty, $variant['id']]);
+                    }
+                } catch (\Throwable $e) {}
+            }
         }
         $db->query("UPDATE products SET stock_status = CASE WHEN stock_quantity > 0 THEN 'in_stock' ELSE 'out_of_stock' END WHERE id = ? AND manage_stock = 1", [$oi['product_id']]);
-        // Match variant by name if variant_id not stored
-        if (!empty($oi['variant_name'])) {
-            try {
-                $variant = $db->fetch("SELECT id FROM product_variants WHERE product_id = ? AND CONCAT(variant_name, ': ', variant_value) = ? LIMIT 1", [$oi['product_id'], $oi['variant_name']]);
-                if ($variant) {
-                    if ($direction === 'reduce') {
-                        $db->query("UPDATE product_variants SET stock = stock - ? WHERE id = ?", [$qty, $variant['id']]);
-                    } else {
-                        $db->query("UPDATE product_variants SET stock = stock + ? WHERE id = ?", [$qty, $variant['id']]);
-                    }
-                }
-            } catch (\Throwable $e) {}
-        }
     }
 }
 
@@ -823,9 +825,11 @@ $_courierBarHidden = !$status || !in_array($status, $_courierVisibleStatuses);
     
     <!-- Actions -->
     <td class="om-action-cell">
+        <?php $__isProc = in_array($order['order_status'], ['processing','pending']); ?>
         <a href="<?= adminUrl('pages/order-view.php?order='.urlencode($order['order_number'])) ?>" 
            class="order-open-link om-btn om-btn-open"
-           data-oid="<?= $order['id'] ?>">Open</a>
+           data-oid="<?= $order['id'] ?>"
+           <?= !$__isProc ? 'onclick="return openOrderModal(this.href,event)"' : '' ?>>Open</a>
         <span class="lock-indicator hidden text-[10px] text-pink-600 font-medium ml-1" data-lock-oid="<?= $order['id'] ?>"></span>
     </td>
 </tr>
@@ -1918,6 +1922,31 @@ function confirmBulkStatus(status, label) {
     document.getElementById('bulkStatusModal').classList.add('hidden');
     bStatus(status);
 }
+
+function openOrderModal(url, e) {
+    if (e) e.preventDefault();
+    var modal = document.getElementById('orderEditModal');
+    var iframe = document.getElementById('orderEditFrame');
+    iframe.src = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'modal=1';
+    modal.classList.remove('hidden');
+    return false;
+}
+function closeOrderModal() {
+    document.getElementById('orderEditModal').classList.add('hidden');
+    document.getElementById('orderEditFrame').src = 'about:blank';
+    OM.refresh();
+}
 </script>
+
+<!-- Order Edit Modal (iframe) -->
+<div id="orderEditModal" class="fixed inset-0 z-[9997] hidden bg-black/40 flex items-center justify-center p-4" onclick="if(event.target===this)closeOrderModal()">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[90vh] flex flex-col overflow-hidden">
+        <div class="flex items-center justify-between px-5 py-3 border-b bg-gray-50">
+            <h3 class="text-sm font-bold text-gray-800">📝 Order Details</h3>
+            <button onclick="closeOrderModal()" class="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-600 text-sm font-bold">✕</button>
+        </div>
+        <iframe id="orderEditFrame" src="about:blank" class="flex-1 w-full border-0"></iframe>
+    </div>
+</div>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

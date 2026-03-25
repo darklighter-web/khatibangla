@@ -5,6 +5,17 @@ require_once __DIR__ . '/../includes/auth.php';
 
 $db = Database::getInstance();
 
+// Ensure combined_stock columns exist
+try { $db->query("ALTER TABLE products ADD COLUMN combined_stock TINYINT(1) DEFAULT 0 AFTER manage_stock"); } catch (\Throwable $e) {}
+try { $db->query("ALTER TABLE product_variants ADD COLUMN weight_per_unit DECIMAL(10,4) DEFAULT NULL AFTER stock_quantity"); } catch (\Throwable $e) {}
+
+// Toggle combined_stock
+if (!empty($_GET['toggle_combined_stock'])) {
+    $pid = intval($_GET['toggle_combined_stock']);
+    $db->query("UPDATE products SET combined_stock = NOT combined_stock WHERE id = ?", [$pid]);
+    redirect(adminUrl('pages/products.php?' . http_build_query(array_diff_key($_GET, ['toggle_combined_stock' => '']))));
+}
+
 // Handle delete
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if ($_POST['action'] === 'delete' && hasPermission('products')) {
@@ -210,6 +221,15 @@ require_once __DIR__ . '/../includes/header.php';
                             <?php endif; ?>
                         <?php else: ?>
                         <span class="text-xs text-gray-400">Not tracked</span>
+                        <?php endif; ?>
+                        <?php if ($p['manage_stock'] && ($p['product_type'] ?? 'simple') === 'variable'): ?>
+                        <div class="mt-1">
+                            <a href="?toggle_combined_stock=<?= $p['id'] ?>&<?= http_build_query(array_intersect_key($_GET, array_flip(['cat','search','stock','sort','page']))) ?>" 
+                               class="text-[9px] px-1.5 py-0.5 rounded <?= intval($p['combined_stock'] ?? 0) ? 'bg-orange-100 text-orange-700 font-medium' : 'bg-gray-100 text-gray-400 hover:text-gray-600' ?>"
+                               title="<?= intval($p['combined_stock'] ?? 0) ? 'Combined kg stock ON — click to disable' : 'Click to enable combined kg stock (food items)' ?>">
+                                <?= intval($p['combined_stock'] ?? 0) ? '⚖ Combined kg' : '⚖ kg mode' ?>
+                            </a>
+                        </div>
                         <?php endif; ?>
                     </td>
                     <td class="px-4 py-3 text-gray-600"><?= $p['sales_count'] ?></td>
