@@ -473,8 +473,14 @@ document.addEventListener('click',e=>{
         return _show(msg, _detectType(msg));
     };
 
+    // Save native confirm for emergency use: window.__nativeConfirm('...')
+    window.__nativeConfirm = window.confirm.bind(window);
+
     // For synchronous usage (onsubmit="return confirm(...)"),
     // we override confirm() to show the modal and submit the form after OK.
+    // IMPORTANT: Code using `if(confirm(...)){action}` patterns MUST be
+    // converted to use `_confirmAsync()` with await. This override cannot
+    // make synchronous code async — it always returns false.
     window.confirm = function (msg) {
         // Find the currently active form submit or button click event
         // by hooking into the event loop

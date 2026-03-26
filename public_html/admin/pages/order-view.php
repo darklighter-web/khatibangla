@@ -1586,8 +1586,9 @@ function addPanelNote(){
     }).catch(()=>alert('Network error'))
     .finally(()=>{btn.disabled=false;btn.innerHTML='<i class="fas fa-plus mr-1"></i>Add Note';});
 }
-function clearPanelNotes(){
-    if(!confirm('Clear all panel notes?'))return;
+async function clearPanelNotes(){
+    const ok = await window._confirmAsync('Clear all panel notes?');
+    if(!ok)return;
     const fd=new FormData();
     fd.append('action','clear_panel_notes');
     fd.append('ajax','1');
@@ -1601,7 +1602,7 @@ function clearPanelNotes(){
     }).catch(()=>alert('Network error'));
 }
 function escHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
-function sendSMS(type){const ph='<?=e($order['customer_phone'])?>';if(!confirm('Send '+type+' SMS to '+ph+'?'))return;fetch('<?=adminUrl("api/actions.php")?>',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'action=send_sms&type='+type+'&order_id=<?=$id?>&phone='+encodeURIComponent(ph)}).then(r=>r.json()).then(d=>{alert(d.success?'SMS sent!':(d.error||'Failed'));if(d.success)location.reload();}).catch(e=>alert(e.message));}
+async function sendSMS(type){const ph='<?=e($order['customer_phone'])?>';const ok=await window._confirmAsync('Send '+type+' SMS to '+ph+'?');if(!ok)return;fetch('<?=adminUrl("api/actions.php")?>',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'action=send_sms&type='+type+'&order_id=<?=$id?>&phone='+encodeURIComponent(ph)}).then(r=>r.json()).then(d=>{alert(d.success?'SMS sent!':(d.error||'Failed'));if(d.success)location.reload();}).catch(e=>alert(e.message));}
 async function addTagPrompt(){
     const t = await window._promptAsync('Tag name:', '', 'Add Tag');
     if (!t) return;
@@ -1972,8 +1973,9 @@ function uploadToCourier(orderId) {
     }
 }
 
-function uploadToSteadfast(orderId, btn) {
-    if (!confirm('Upload this order to Steadfast?')) return;
+async function uploadToSteadfast(orderId, btn) {
+    const ok = await window._confirmAsync('Upload this order to Steadfast?');
+    if (!ok) return;
     if(btn){btn.disabled=true;btn.textContent='⏳ Uploading...';}
     fetch(COURIER_API, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:'upload_order', order_id:orderId})})
     .then(function(r){return r.json()}).then(function(d) {
@@ -1982,8 +1984,9 @@ function uploadToSteadfast(orderId, btn) {
     }).catch(function(e) { alert('Error: ' + e.message); if(btn){btn.disabled=false;btn.textContent='🚀 Upload to Steadfast';} });
 }
 
-function uploadToRedX(orderId, btn) {
-    if (!confirm('Upload this order to RedX?')) return;
+async function uploadToRedX(orderId, btn) {
+    const ok = await window._confirmAsync('Upload this order to RedX?');
+    if (!ok) return;
     if(btn){btn.disabled=true;btn.textContent='⏳ Uploading to RedX...';}
     var REDX_API = '<?=SITE_URL?>/api/redx-actions.php';
     fetch(REDX_API, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:'upload_order', order_id:orderId})})
@@ -1993,7 +1996,7 @@ function uploadToRedX(orderId, btn) {
     }).catch(function(e) { alert('Error: ' + e.message); if(btn){btn.disabled=false;btn.textContent='🚀 Upload to RedX';} });
 }
 
-function uploadToPathao(orderId, btn) {
+async function uploadToPathao(orderId, btn) {
     var cs=document.getElementById('pCityId'), zs=document.getElementById('pZoneId'), as2=document.getElementById('pAreaId');
     var cityId = cs?.value || 0;
     var zoneId = zs?.value || 0;
@@ -2006,7 +2009,8 @@ function uploadToPathao(orderId, btn) {
     var zoneName = zs?.selectedOptions[0]?.textContent?.trim() || '';
     var areaName = as2?.selectedOptions[0]?.textContent?.trim() || '';
     if(cityName==='Select City')cityName=''; if(zoneName==='Select Zone')zoneName=''; if(areaName==='Select Area')areaName='';
-    if (!confirm('Upload this order to Pathao Courier?')) return;
+    const ok = await window._confirmAsync('Upload this order to Pathao Courier?');
+    if (!ok) return;
     if(btn){btn.disabled=true;btn.textContent='⏳ Uploading to Pathao...';}
     fetch(PATHAO_API, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({
         action:'upload_pathao_order',
@@ -2178,8 +2182,9 @@ function showNoteTpl(targetField, tplKey) {
     }
     
     // Force clear a stale/corrupt lock (when locker is Unknown)
-    window.forceClearLock = function() {
-        if (!confirm('Force clear this stale lock and access the order?')) return;
+    window.forceClearLock = async function() {
+        const ok = await window._confirmAsync('Force clear this stale lock and access the order?');
+        if (!ok) return;
         fetch(LOCK_API, {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},

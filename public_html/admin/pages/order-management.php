@@ -1086,10 +1086,11 @@ function updateBulk(){const n=document.querySelectorAll('.order-check:checked').
 function getIds(){return Array.from(document.querySelectorAll('.order-check:checked')).map(c=>c.value)}
 
 // Print functions — see invPrint/stkPrint modals at bottom of page
-function bStatus(s){
+async function bStatus(s){
     const ids = getIds();
     if (!ids.length) { alert('Select orders first'); return; }
-    if (!confirm('Change ' + ids.length + ' order(s) to "' + s + '"?')) return;
+    const ok = await window._confirmAsync('Change ' + ids.length + ' order(s) to "' + s + '"?');
+    if (!ok) return;
     
     document.getElementById('actionsMenu').classList.add('hidden');
     
@@ -1167,124 +1168,308 @@ function openCourierUploadModal(ids, courier) {
         m = document.createElement('div');
         m.id = 'courierUploadModal';
         m.innerHTML = `
-            <div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)closeCourierModal()">
-                <div style="background:#fff;border-radius:16px;max-width:600px;width:100%;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 25px 60px rgba(0,0,0,.25)" onclick="event.stopPropagation()">
+            <div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(2px)" onclick="if(event.target===this&&!window.__courierUploading)closeCourierModal()">
+                <div style="background:#fff;border-radius:16px;max-width:640px;width:100%;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 25px 60px rgba(0,0,0,.3);animation:cumFadeIn .2s ease" onclick="event.stopPropagation()">
                     <div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
                         <div>
-                            <h3 id="cumTitle" style="font-size:14px;font-weight:700;color:#111827;margin:0">🚀 Uploading to Courier</h3>
+                            <h3 id="cumTitle" style="font-size:15px;font-weight:700;color:#111827;margin:0">🚀 Uploading to Courier</h3>
                             <p id="cumSubtitle" style="font-size:11px;color:#6b7280;margin:4px 0 0"></p>
                         </div>
-                        <button onclick="closeCourierModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;line-height:1">&times;</button>
-                    </div>
-                    <div id="cumProgress" style="padding:16px 20px;border-bottom:1px solid #e5e7eb;flex-shrink:0">
-                        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-                            <span id="cumStatus" style="font-size:12px;font-weight:500;color:#374151">Preparing...</span>
-                            <span id="cumCounter" style="font-size:11px;color:#6b7280">0 / 0</span>
-                        </div>
-                        <div style="background:#e5e7eb;border-radius:8px;height:8px;overflow:hidden">
-                            <div id="cumBar" style="background:linear-gradient(90deg,#3b82f6,#2563eb);height:100%;width:0%;transition:width .3s"></div>
+                        <div style="display:flex;align-items:center;gap:8px">
+                            <span id="cumBadge" style="display:none;font-size:10px;font-weight:600;padding:3px 10px;border-radius:12px;background:#dbeafe;color:#2563eb"></span>
+                            <button id="cumCloseX" onclick="closeCourierModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af;line-height:1;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:6px;transition:all .15s" onmouseover="this.style.background='#f3f4f6';this.style.color='#374151'" onmouseout="this.style.background='none';this.style.color='#9ca3af'">&times;</button>
                         </div>
                     </div>
-                    <div id="cumResults" style="flex:1;overflow-y:auto;padding:12px 20px;min-height:200px;max-height:400px">
+                    <div id="cumProgress" style="padding:16px 20px;border-bottom:1px solid #f3f4f6;flex-shrink:0">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                            <span id="cumStatus" style="font-size:12px;font-weight:600;color:#374151">Preparing...</span>
+                            <div style="display:flex;align-items:center;gap:12px">
+                                <span id="cumTimer" style="font-size:10px;color:#9ca3af;display:none"></span>
+                                <span id="cumCounter" style="font-size:11px;font-weight:600;color:#6b7280;background:#f3f4f6;padding:2px 8px;border-radius:6px">0 / 0</span>
+                            </div>
+                        </div>
+                        <div style="background:#e5e7eb;border-radius:10px;height:10px;overflow:hidden;position:relative">
+                            <div id="cumBar" style="background:linear-gradient(90deg,#3b82f6,#6366f1);height:100%;width:0%;transition:width .4s ease;border-radius:10px;position:relative;overflow:hidden">
+                                <div style="position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.3),transparent);animation:cumShimmer 1.5s infinite"></div>
+                            </div>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;margin-top:6px">
+                            <span id="cumPercent" style="font-size:11px;font-weight:600;color:#4b5563">0%</span>
+                            <div style="display:flex;gap:12px">
+                                <span id="cumSuccess" style="font-size:10px;font-weight:600;color:#16a34a">✓ 0</span>
+                                <span id="cumFailed" style="font-size:10px;font-weight:600;color:#dc2626">✗ 0</span>
+                            </div>
+                        </div>
+                        <div id="cumCooldown" style="display:none;margin-top:8px;background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;text-align:center">
+                            <div style="font-size:11px;font-weight:600;color:#92400e">⏸ Rate Limit Cooldown</div>
+                            <div id="cumCooldownTimer" style="font-size:20px;font-weight:700;color:#d97706;margin:4px 0">30s</div>
+                            <div style="font-size:10px;color:#a16207">Respecting courier API limits — resuming automatically</div>
+                        </div>
+                    </div>
+                    <div id="cumResults" style="flex:1;overflow-y:auto;padding:12px 16px;min-height:180px;max-height:380px">
                         <div style="text-align:center;padding:40px 20px;color:#9ca3af">
-                            <div style="font-size:32px;margin-bottom:8px">📦</div>
-                            <div style="font-size:12px">Waiting to start...</div>
+                            <div style="font-size:36px;margin-bottom:8px;animation:cumBounce 1s infinite">📦</div>
+                            <div style="font-size:12px">Preparing orders for upload...</div>
                         </div>
                     </div>
-                    <div id="cumFooter" style="padding:12px 20px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
+                    <div id="cumFooter" style="padding:12px 20px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:#fafafa;border-radius:0 0 16px 16px">
                         <div id="cumSummary" style="font-size:11px;color:#6b7280"></div>
                         <div style="display:flex;gap:8px">
-                            <button id="cumCloseBtn" onclick="closeCourierModal()" style="padding:8px 16px;border-radius:8px;border:1px solid #d1d5db;background:#fff;font-size:12px;cursor:pointer">Close</button>
-                            <button id="cumRefreshBtn" onclick="closeCourierModal();OM.refresh()" style="padding:8px 16px;border-radius:8px;border:none;background:#3b82f6;color:#fff;font-size:12px;font-weight:600;cursor:pointer;display:none">Refresh List</button>
+                            <button id="cumPauseBtn" onclick="toggleCourierPause()" style="display:none;padding:8px 14px;border-radius:8px;border:1px solid #d1d5db;background:#fff;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background='#fff'">⏸ Pause</button>
+                            <button id="cumCloseBtn" onclick="closeCourierModal()" style="padding:8px 14px;border-radius:8px;border:1px solid #d1d5db;background:#fff;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background='#fff'">Close</button>
+                            <button id="cumRefreshBtn" onclick="closeCourierModal();OM.refresh()" style="padding:8px 14px;border-radius:8px;border:none;background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;font-size:11px;font-weight:600;cursor:pointer;display:none;transition:all .15s;box-shadow:0 2px 6px rgba(59,130,246,.3)" onmouseover="this.style.transform='translateY(-1px)'" onmouseout="this.style.transform='none'">✓ Refresh List</button>
                         </div>
                     </div>
                 </div>
             </div>
+            <style>
+                @keyframes cumFadeIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+                @keyframes cumShimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+                @keyframes cumBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+                @keyframes cumSlideIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
+                @keyframes cumPulse{0%,100%{opacity:1}50%{opacity:.6}}
+                .cum-row{animation:cumSlideIn .25s ease}
+                .cum-row-uploading{animation:cumPulse 1s infinite}
+            </style>
         `;
         document.body.appendChild(m);
     }
     
     m.style.display = 'block';
-    document.getElementById('cumTitle').textContent = '🚀 Uploading to ' + courier;
-    document.getElementById('cumSubtitle').textContent = ids.length + ' order(s) selected';
-    document.getElementById('cumStatus').textContent = 'Starting upload...';
-    document.getElementById('cumCounter').textContent = '0 / ' + ids.length;
-    document.getElementById('cumBar').style.width = '5%';
-    document.getElementById('cumBar').style.background = 'linear-gradient(90deg,#3b82f6,#2563eb)';
-    document.getElementById('cumResults').innerHTML = '<div style="text-align:center;padding:40px 20px;color:#9ca3af"><div style="font-size:32px;margin-bottom:8px">⏳</div><div style="font-size:12px">Uploading orders...</div></div>';
-    document.getElementById('cumSummary').textContent = '';
-    document.getElementById('cumRefreshBtn').style.display = 'none';
+    window.__courierUploading = true;
+    window.__courierPaused = false;
     
-    // Call the bulk upload API
-    fetch('<?= SITE_URL ?>/api/courier-bulk-upload.php', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        credentials: 'same-origin',
-        body: JSON.stringify({
-            courier: courier.toLowerCase(),
-            order_ids: ids
-        })
-    })
-    .then(r => r.json())
-    .then(data => {
-        document.getElementById('cumBar').style.width = '100%';
-        document.getElementById('cumStatus').textContent = data.success !== false ? '✓ Upload Complete' : '⚠ Upload Finished with Errors';
-        document.getElementById('cumCounter').textContent = (data.uploaded || 0) + ' / ' + (data.total || ids.length);
-        document.getElementById('cumRefreshBtn').style.display = 'inline-block';
-        
-        // Build results HTML
-        let html = '<div style="display:flex;flex-direction:column;gap:8px">';
-        
-        if (data.orders && data.orders.length) {
-            data.orders.forEach(o => {
-                const bg = o.success ? '#f0fdf4' : '#fef2f2';
-                const border = o.success ? '#86efac' : '#fecaca';
-                const icon = o.success ? '✓' : '✗';
-                const iconColor = o.success ? '#16a34a' : '#dc2626';
-                
-                html += '<div style="background:' + bg + ';border:1px solid ' + border + ';border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:10px">';
-                html += '<span style="color:' + iconColor + ';font-weight:700;font-size:14px;flex-shrink:0">' + icon + '</span>';
-                html += '<div style="flex:1;min-width:0">';
-                html += '<div style="font-size:12px;font-weight:600;color:#111827">#' + (o.order_number || o.order_id) + '</div>';
-                html += '<div style="font-size:10px;color:#6b7280;margin-top:2px">' + (o.message || '') + '</div>';
-                html += '</div>';
-                
-                if (o.success && o.consignment_id) {
-                    html += '<div style="text-align:right;flex-shrink:0">';
-                    html += '<div style="font-size:10px;color:#6b7280">Consignment ID</div>';
-                    html += '<div style="font-size:11px;font-weight:600;color:#2563eb;font-family:monospace">' + o.consignment_id + '</div>';
-                    html += '</div>';
-                }
-                
-                html += '</div>';
-            });
-        } else if (data.error) {
-            html += '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px;text-align:center">';
-            html += '<div style="color:#dc2626;font-weight:600;margin-bottom:4px">Error</div>';
-            html += '<div style="font-size:11px;color:#991b1b">' + data.error + '</div>';
-            html += '</div>';
-        }
-        
+    const el = (id) => document.getElementById(id);
+    el('cumTitle').textContent = '🚀 Uploading to ' + courier;
+    el('cumSubtitle').textContent = ids.length + ' order(s) · Sequential upload with rate limiting';
+    el('cumStatus').textContent = 'Starting upload...';
+    el('cumBadge').style.display = 'inline-block';
+    el('cumBadge').textContent = 'Processing (0/' + ids.length + ')';
+    el('cumBadge').style.background = '#dbeafe'; el('cumBadge').style.color = '#2563eb';
+    el('cumCounter').textContent = '0 / ' + ids.length;
+    el('cumBar').style.width = '2%';
+    el('cumPercent').textContent = '0%';
+    el('cumSuccess').textContent = '✓ 0';
+    el('cumFailed').textContent = '✗ 0';
+    el('cumCooldown').style.display = 'none';
+    el('cumTimer').style.display = 'inline';
+    el('cumTimer').textContent = '';
+    el('cumRefreshBtn').style.display = 'none';
+    el('cumPauseBtn').style.display = 'inline-block';
+    el('cumPauseBtn').textContent = '⏸ Pause';
+    el('cumCloseX').onclick = function(){ if(!window.__courierUploading) closeCourierModal(); else toggleCourierPause(); };
+    el('cumSummary').textContent = '';
+    
+    // Build initial results list with all orders as "pending"
+    let html = '<div id="cumOrderList" style="display:flex;flex-direction:column;gap:6px">';
+    ids.forEach((id, i) => {
+        html += '<div id="cumRow_' + id + '" class="cum-row" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:10px;transition:all .25s">';
+        html += '<div id="cumIcon_' + id + '" style="width:28px;height:28px;border-radius:50%;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;font-weight:700;color:#9ca3af">' + (i+1) + '</div>';
+        html += '<div style="flex:1;min-width:0">';
+        html += '<div style="display:flex;align-items:center;gap:6px">';
+        html += '<span id="cumOrdNum_' + id + '" style="font-size:12px;font-weight:600;color:#374151">Order #' + id + '</span>';
+        html += '<span id="cumOrdBadge_' + id + '" style="font-size:9px;font-weight:600;padding:2px 7px;border-radius:6px;background:#f3f4f6;color:#9ca3af">PENDING</span>';
         html += '</div>';
-        document.getElementById('cumResults').innerHTML = html;
-        
-        // Summary
-        const uploaded = data.uploaded || 0;
-        const failed = data.failed || 0;
-        const successColor = uploaded > 0 ? '#16a34a' : '#6b7280';
-        const failColor = failed > 0 ? '#dc2626' : '#6b7280';
-        document.getElementById('cumSummary').innerHTML = '<span style="color:' + successColor + '">✓ ' + uploaded + ' uploaded</span> &nbsp;·&nbsp; <span style="color:' + failColor + '">✗ ' + failed + ' failed</span>';
-    })
-    .catch(e => {
-        document.getElementById('cumBar').style.width = '100%';
-        document.getElementById('cumBar').style.background = '#ef4444';
-        document.getElementById('cumStatus').textContent = '❌ Error';
-        document.getElementById('cumResults').innerHTML = '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px;text-align:center"><div style="color:#dc2626;font-weight:600;margin-bottom:4px">Upload Failed</div><div style="font-size:11px;color:#991b1b">' + e.message + '</div></div>';
-        document.getElementById('cumRefreshBtn').style.display = 'inline-block';
+        html += '<div id="cumOrdMsg_' + id + '" style="font-size:10px;color:#9ca3af;margin-top:2px">Waiting in queue...</div>';
+        html += '</div>';
+        html += '<div id="cumOrdCid_' + id + '" style="text-align:right;flex-shrink:0;display:none">';
+        html += '<div style="font-size:9px;color:#6b7280">Consignment ID</div>';
+        html += '<div id="cumOrdCidVal_' + id + '" style="font-size:11px;font-weight:700;color:#2563eb;font-family:ui-monospace,monospace;letter-spacing:.5px"></div>';
+        html += '</div>';
+        html += '<div id="cumOrdTime_' + id + '" style="font-size:10px;color:#9ca3af;flex-shrink:0;min-width:35px;text-align:right">—</div>';
+        html += '</div>';
     });
+    html += '</div>';
+    el('cumResults').innerHTML = html;
+    
+    // Start sequential upload
+    _sequentialCourierUpload(ids, courier);
 }
 
-function closeCourierModal() {
+// ── Sequential Upload Engine with Rate Limiting ──
+async function _sequentialCourierUpload(ids, courier) {
+    const el = (id) => document.getElementById(id);
+    const UPLOAD_INTERVAL_MS = 1000;     // 1 upload per second
+    const COOLDOWN_AFTER = 18;            // cooldown after 18 continuous uploads
+    const COOLDOWN_SECONDS = 30;          // 30 second cooldown
+    
+    let uploaded = 0, failed = 0, consecutiveUploads = 0;
+    const startTime = Date.now();
+    
+    for (let i = 0; i < ids.length; i++) {
+        // Check pause
+        while (window.__courierPaused) {
+            await new Promise(r => setTimeout(r, 200));
+            if (!document.getElementById('courierUploadModal') || document.getElementById('courierUploadModal').style.display === 'none') return;
+        }
+        
+        const orderId = ids[i];
+        const rowEl = el('cumRow_' + orderId);
+        const iconEl = el('cumIcon_' + orderId);
+        const badgeEl = el('cumOrdBadge_' + orderId);
+        const msgEl = el('cumOrdMsg_' + orderId);
+        const cidEl = el('cumOrdCid_' + orderId);
+        const cidValEl = el('cumOrdCidVal_' + orderId);
+        const timeEl = el('cumOrdTime_' + orderId);
+        
+        // Cooldown check — after 18 continuous uploads, pause 30s
+        if (consecutiveUploads > 0 && consecutiveUploads % COOLDOWN_AFTER === 0) {
+            el('cumCooldown').style.display = 'block';
+            el('cumStatus').textContent = '⏸ Cooldown — Respecting API rate limits';
+            el('cumBadge').textContent = 'Cooldown';
+            el('cumBadge').style.background = '#fef3c7'; el('cumBadge').style.color = '#92400e';
+            
+            for (let s = COOLDOWN_SECONDS; s > 0; s--) {
+                if (!window.__courierUploading) return;
+                el('cumCooldownTimer').textContent = s + 's';
+                await new Promise(r => setTimeout(r, 1000));
+            }
+            
+            el('cumCooldown').style.display = 'none';
+            el('cumBadge').style.background = '#dbeafe'; el('cumBadge').style.color = '#2563eb';
+        }
+        
+        // Mark as uploading
+        if (rowEl) {
+            rowEl.style.background = '#eff6ff';
+            rowEl.style.borderColor = '#93c5fd';
+            rowEl.classList.add('cum-row-uploading');
+            rowEl.scrollIntoView({behavior:'smooth', block:'nearest'});
+        }
+        if (iconEl) { iconEl.style.background = '#dbeafe'; iconEl.style.color = '#2563eb'; iconEl.innerHTML = '<span style="animation:cumPulse .8s infinite">⏳</span>'; }
+        if (badgeEl) { badgeEl.textContent = 'UPLOADING'; badgeEl.style.background = '#dbeafe'; badgeEl.style.color = '#2563eb'; }
+        if (msgEl) msgEl.textContent = 'Sending to ' + courier + '...';
+        
+        el('cumStatus').textContent = 'Uploading ' + (i+1) + ' of ' + ids.length + '...';
+        el('cumBadge').textContent = 'Processing (' + (i+1) + '/' + ids.length + ')';
+        
+        // Calculate ETA
+        const elapsed = (Date.now() - startTime) / 1000;
+        const avgTime = i > 0 ? elapsed / i : 1;
+        const remaining = Math.ceil(avgTime * (ids.length - i));
+        el('cumTimer').textContent = 'Est. ' + (remaining > 60 ? Math.ceil(remaining/60) + 'm' : remaining + 's') + ' remaining';
+        
+        // Perform upload
+        const uploadStart = Date.now();
+        try {
+            const resp = await fetch('<?= SITE_URL ?>/api/courier-bulk-upload.php', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                credentials: 'same-origin',
+                body: JSON.stringify({ courier: courier.toLowerCase(), order_ids: [orderId] })
+            });
+            const data = await resp.json();
+            const uploadTime = ((Date.now() - uploadStart) / 1000).toFixed(1);
+            
+            if (data.orders && data.orders[0]) {
+                const o = data.orders[0];
+                if (o.success) {
+                    uploaded++;
+                    consecutiveUploads++;
+                    if (rowEl) { rowEl.style.background = '#f0fdf4'; rowEl.style.borderColor = '#86efac'; rowEl.classList.remove('cum-row-uploading'); }
+                    if (iconEl) { iconEl.style.background = '#dcfce7'; iconEl.style.color = '#16a34a'; iconEl.innerHTML = '✓'; }
+                    if (badgeEl) { badgeEl.textContent = 'SUCCESS'; badgeEl.style.background = '#dcfce7'; badgeEl.style.color = '#16a34a'; }
+                    if (msgEl) msgEl.textContent = o.message || 'Upload successful';
+                    if (timeEl) timeEl.textContent = uploadTime + 's';
+                    
+                    // Show consignment ID
+                    if (o.consignment_id && cidEl && cidValEl) {
+                        cidEl.style.display = 'block';
+                        cidValEl.textContent = o.consignment_id;
+                    }
+                    // Update order number if available
+                    const numEl = el('cumOrdNum_' + orderId);
+                    if (numEl && o.order_number) numEl.textContent = '#' + o.order_number;
+                } else {
+                    failed++;
+                    if (rowEl) { rowEl.style.background = '#fef2f2'; rowEl.style.borderColor = '#fecaca'; rowEl.classList.remove('cum-row-uploading'); }
+                    if (iconEl) { iconEl.style.background = '#fee2e2'; iconEl.style.color = '#dc2626'; iconEl.innerHTML = '✗'; }
+                    if (badgeEl) { badgeEl.textContent = 'ERROR'; badgeEl.style.background = '#fee2e2'; badgeEl.style.color = '#dc2626'; }
+                    if (msgEl) { msgEl.textContent = o.message || 'Upload failed'; msgEl.style.color = '#dc2626'; }
+                    if (timeEl) timeEl.textContent = uploadTime + 's';
+                }
+            } else if (data.error) {
+                throw new Error(data.error);
+            }
+        } catch (e) {
+            failed++;
+            const uploadTime = ((Date.now() - uploadStart) / 1000).toFixed(1);
+            if (rowEl) { rowEl.style.background = '#fef2f2'; rowEl.style.borderColor = '#fecaca'; rowEl.classList.remove('cum-row-uploading'); }
+            if (iconEl) { iconEl.style.background = '#fee2e2'; iconEl.style.color = '#dc2626'; iconEl.innerHTML = '✗'; }
+            if (badgeEl) { badgeEl.textContent = 'ERROR'; badgeEl.style.background = '#fee2e2'; badgeEl.style.color = '#dc2626'; }
+            if (msgEl) { msgEl.textContent = e.message || 'Network error'; msgEl.style.color = '#dc2626'; }
+            if (timeEl) timeEl.textContent = uploadTime + 's';
+        }
+        
+        // Update progress
+        const pct = Math.round(((i + 1) / ids.length) * 100);
+        el('cumBar').style.width = pct + '%';
+        el('cumPercent').textContent = pct + '%';
+        el('cumCounter').textContent = (i + 1) + ' / ' + ids.length;
+        el('cumSuccess').textContent = '✓ ' + uploaded;
+        el('cumFailed').textContent = '✗ ' + failed;
+        
+        // Wait between uploads (1 second interval)
+        if (i < ids.length - 1) {
+            const waitTime = Math.max(0, UPLOAD_INTERVAL_MS - (Date.now() - uploadStart));
+            if (waitTime > 0) await new Promise(r => setTimeout(r, waitTime));
+        }
+    }
+    
+    // Done
+    window.__courierUploading = false;
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+    
+    el('cumBar').style.width = '100%';
+    if (failed === 0) {
+        el('cumBar').style.background = 'linear-gradient(90deg,#22c55e,#16a34a)';
+        el('cumStatus').textContent = '✓ All uploads complete!';
+        el('cumBadge').textContent = 'Complete';
+        el('cumBadge').style.background = '#dcfce7'; el('cumBadge').style.color = '#16a34a';
+    } else if (uploaded === 0) {
+        el('cumBar').style.background = '#ef4444';
+        el('cumStatus').textContent = '✗ All uploads failed';
+        el('cumBadge').textContent = 'Failed';
+        el('cumBadge').style.background = '#fee2e2'; el('cumBadge').style.color = '#dc2626';
+    } else {
+        el('cumBar').style.background = 'linear-gradient(90deg,#f59e0b,#d97706)';
+        el('cumStatus').textContent = '⚠ Completed with errors';
+        el('cumBadge').textContent = 'Partial';
+        el('cumBadge').style.background = '#fef3c7'; el('cumBadge').style.color = '#92400e';
+    }
+    
+    el('cumTimer').textContent = 'Total: ' + totalTime + 's';
+    el('cumPauseBtn').style.display = 'none';
+    el('cumRefreshBtn').style.display = 'inline-block';
+    el('cumSummary').innerHTML = '<span style="color:#16a34a;font-weight:600">✓ ' + uploaded + ' uploaded</span> · <span style="color:#dc2626;font-weight:600">✗ ' + failed + ' failed</span> · ' + totalTime + 's total';
+    el('cumCloseX').onclick = function(){ closeCourierModal(); };
+}
+
+function toggleCourierPause() {
+    window.__courierPaused = !window.__courierPaused;
+    const btn = document.getElementById('cumPauseBtn');
+    if (window.__courierPaused) {
+        btn.textContent = '▶ Resume';
+        btn.style.background = '#dcfce7'; btn.style.borderColor = '#86efac';
+        document.getElementById('cumStatus').textContent = '⏸ Paused — Click Resume to continue';
+        document.getElementById('cumBadge').textContent = 'Paused';
+        document.getElementById('cumBadge').style.background = '#fef3c7';
+        document.getElementById('cumBadge').style.color = '#92400e';
+    } else {
+        btn.textContent = '⏸ Pause';
+        btn.style.background = '#fff'; btn.style.borderColor = '#d1d5db';
+        document.getElementById('cumStatus').textContent = 'Resuming...';
+        document.getElementById('cumBadge').style.background = '#dbeafe';
+        document.getElementById('cumBadge').style.color = '#2563eb';
+    }
+}
+
+async function closeCourierModal() {
+    if (window.__courierUploading) {
+        const ok = await window._confirmAsync('Upload is still in progress. Stop uploading and close?');
+        if (!ok) return;
+        window.__courierUploading = false;
+    }
     const m = document.getElementById('courierUploadModal');
     if (m) m.style.display = 'none';
 }
@@ -1335,7 +1520,9 @@ function toggleRowMenu(el, orderId, orderNum) {
     }
     ['Confirm','Ship','Deliver','Cancel'].forEach(a => {
         const btn = document.getElementById('rm'+a);
-        btn.onclick = () => { if(confirm(a+' this order?')){
+        btn.onclick = async () => {
+            const ok = await window._confirmAsync(a+' this order?');
+            if(ok){
             const fd=new FormData();fd.append('action','update_status');fd.append('order_id',orderId);fd.append('status',{Confirm:'confirmed',Ship:'shipped',Deliver:'delivered',Cancel:'cancelled'}[a]);
             fd.append('_ajax','1');
             fetch(location.pathname,{method:'POST',credentials:'same-origin',body:fd}).then(r=>{try{r.json().then(()=>OM.refresh());}catch(e){OM.refresh();}}).catch(()=>OM.refresh());

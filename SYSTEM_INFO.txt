@@ -472,5 +472,46 @@ SECURITY (sec_ prefix):
    - Use own orders table for fraud checking
 
 ================================================================================
+                          CHANGELOG — 2026-03-27
+================================================================================
+
+FIX #1 — ORDER STATUS NOT CHANGING
+  Root Cause: The global window.confirm() override in admin/includes/header.php
+  always returns `false` synchronously. Any code using `if(confirm(…)){action}`
+  never executes the action block. This broke:
+    • Inline row-menu status buttons (Confirm/Ship/Deliver/Cancel) in order-management.php
+    • Bulk status change in order-management.php
+    • Single-order courier uploads (Pathao/Steadfast/RedX) in order-view.php
+    • Panel note clearing, SMS sending, lock force-clear in order-view.php
+  Fix: Converted ALL `if(confirm(…))` and `if(!confirm(…))` patterns to use
+  `await window._confirmAsync(…)` (the async Promise-based styled modal).
+  Functions changed to `async function` where needed.
+  Files changed: order-management.php, order-view.php, header.php
+
+FIX #2 — COURIER UPLOAD RATE LIMITING + INTERACTIVE PROGRESS
+  Old behavior: All selected orders uploaded in a single bulk POST request.
+    No per-order progress, no rate limiting, no cooldown.
+  New behavior:
+    • Sequential upload: 1 order per second (1s minimum interval)
+    • After 18 continuous uploads: 30-second cooldown with visible countdown
+    • Per-order live progress: each row shows PENDING → UPLOADING → SUCCESS/ERROR
+    • Consignment ID shown inline per order on success
+    • Pause/Resume button during upload
+    • ETA and elapsed time display
+    • Cannot accidentally close modal during upload (prompts confirmation)
+    • Animated progress bar with shimmer effect
+    • Auto-scroll to currently uploading order
+  File changed: order-management.php (openCourierUploadModal, _sequentialCourierUpload)
+
+FIX #3 — CONSIGNMENT ID DISPLAY AFTER UPLOAD
+  The courier_consignment_id was already stored in the `orders` table by both
+  pathao-api.php and courier-bulk-upload.php. The order-management.php list
+  already renders it in the "Upload" column when present. The fix ensures:
+    • New sequential upload modal shows CID per-order in real time
+    • "Refresh List" button reloads order table after upload completes
+    • The order row in order-management.php displays CID with courier link
+  Files: order-management.php (modal UI), courier-bulk-upload.php (already OK)
+
+================================================================================
                               END OF DOCUMENT
 ================================================================================
