@@ -352,12 +352,18 @@ $phones = array_unique(array_filter(array_column($orders, 'customer_phone')));
 foreach ($phones as $phone) {
     $pl = '%'.substr(preg_replace('/[^0-9]/','',$phone),-10).'%';
     try {
-        $sr = $db->fetch("SELECT COUNT(*) as total, SUM(CASE WHEN order_status='delivered' THEN 1 ELSE 0 END) as delivered, SUM(CASE WHEN order_status='cancelled' THEN 1 ELSE 0 END) as cancelled, SUM(total) as total_spent FROM orders WHERE customer_phone LIKE ?", [$pl]);
-        $t=intval($sr['total']); $d=intval($sr['delivered']); $c=intval($sr['cancelled']);
+        $sr = $db->fetch("SELECT COUNT(*) as total, SUM(CASE WHEN order_status='delivered' THEN 1 ELSE 0 END) as delivered, SUM(CASE WHEN order_status='cancelled' THEN 1 ELSE 0 END) as cancelled, SUM(CASE WHEN order_status='returned' THEN 1 ELSE 0 END) as returned, SUM(total) as total_spent FROM orders WHERE customer_phone LIKE ?", [$pl]);
+        $t=intval($sr['total']); $d=intval($sr['delivered']); $c=intval($sr['cancelled']); $ret=intval($sr['returned']??0);
         $rate=$t>0?round(($d/$t)*100):0;
-        $successRates[$phone]=['total'=>$t,'delivered'=>$d,'cancelled'=>$c,'rate'=>$rate,'total_spent'=>$sr['total_spent']??0];
+        // Per-courier breakdown
+        $courierBreak = [];
+        try {
+            $cbRows = $db->fetchAll("SELECT COALESCE(NULLIF(courier_name,''),shipping_method,'Unknown') as cn, COUNT(*) as total, SUM(CASE WHEN order_status='delivered' THEN 1 ELSE 0 END) as delivered, SUM(CASE WHEN order_status IN ('cancelled','returned') THEN 1 ELSE 0 END) as failed FROM orders WHERE customer_phone LIKE ? GROUP BY cn HAVING cn IS NOT NULL AND cn != ''", [$pl]);
+            foreach ($cbRows as $cb) { $courierBreak[] = ['name'=>$cb['cn'],'delivered'=>intval($cb['delivered']),'total'=>intval($cb['total'])]; }
+        } catch (\Throwable $e) {}
+        $successRates[$phone]=['total'=>$t,'delivered'=>$d,'cancelled'=>$c,'returned'=>$ret,'rate'=>$rate,'total_spent'=>$sr['total_spent']??0,'courier_breakdown'=>$courierBreak];
         $previousOrders[$phone] = $db->fetchAll("SELECT id, order_number, order_status, total, created_at FROM orders WHERE customer_phone LIKE ? ORDER BY created_at DESC LIMIT 5", [$pl]);
-    } catch(Exception $e) { $successRates[$phone]=['total'=>0,'delivered'=>0,'cancelled'=>0,'rate'=>0,'total_spent'=>0]; $previousOrders[$phone]=[]; }
+    } catch(Exception $e) { $successRates[$phone]=['total'=>0,'delivered'=>0,'cancelled'=>0,'returned'=>0,'rate'=>0,'total_spent'=>0,'courier_breakdown'=>[]]; $previousOrders[$phone]=[]; }
 }
 
 // Pre-fetch items + tags
@@ -523,7 +529,7 @@ function sortIcon($col) {
 }
 ?>
 <style>
-.om-table th,.om-table td{padding:8px 10px;white-space:nowrap;vertical-align:top;border-bottom:1px solid #f1f5f9;font-size:12px}
+.om-table th,.om-table td{padding:8px 8px;white-space:nowrap;vertical-align:top;border-bottom:1px solid #f1f5f9;font-size:12px}
 .om-table th{background:linear-gradient(to bottom,#f8fafc,#f1f5f9);color:#475569;font-weight:600;text-transform:uppercase;letter-spacing:.4px;font-size:10px;position:sticky;top:0;z-index:2;border-bottom:2px solid #e2e8f0;user-select:none}
 .om-table th a{color:inherit;text-decoration:none}
 .om-table tbody tr{transition:background .15s}
@@ -532,6 +538,12 @@ function sortIcon($col) {
 .om-table .cust-phone{font-size:11px;color:#64748b;font-family:'SF Mono',SFMono-Regular,Menlo,monospace}
 .om-table .cust-addr{font-size:10px;color:#94a3b8}
 .om-wrap{overflow-x:auto;border:1px solid #e2e8f0;border-radius:12px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.om-table{table-layout:fixed;width:100%}
+.om-table colgroup .col-cb{width:30px}.om-table colgroup .col-date{width:90px}.om-table colgroup .col-inv{width:72px}.om-table colgroup .col-cust{width:170px}.om-table colgroup .col-note{width:120px}.om-table colgroup .col-prod{width:180px}.om-table colgroup .col-tag{width:90px}.om-table colgroup .col-total{width:75px}.om-table colgroup .col-upload{width:130px}.om-table colgroup .col-print{width:38px}.om-table colgroup .col-user{width:55px}.om-table colgroup .col-src{width:48px}.om-table colgroup .col-ship{width:110px}.om-table colgroup .col-act{width:65px}
+.rate-popup{display:none;position:absolute;z-index:50;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.15);padding:14px 16px;width:260px;left:50%;transform:translateX(-50%);top:calc(100% + 6px)}
+.rate-popup::before{content:'';position:absolute;top:-6px;left:50%;transform:translateX(-50%);width:12px;height:12px;background:#fff;border-left:1px solid #e2e8f0;border-top:1px solid #e2e8f0;transform:translateX(-50%) rotate(45deg)}
+.rate-wrap{position:relative;display:inline-block;cursor:pointer}
+.rate-wrap:hover .rate-popup{display:block}
 .rate-badge{display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px}
 .tag-badge{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:12px;white-space:nowrap}
 .dot-menu{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border-radius:5px;cursor:pointer;color:#94a3b8;font-size:14px;line-height:1;transition:all .15s}
@@ -735,22 +747,25 @@ $_courierBarHidden = !$status || !in_array($status, $_courierVisibleStatuses);
         </div>
     </div>
     <table class="om-table w-full" id="ordersTable">
+        <colgroup>
+            <col class="col-cb"><col class="col-date"><col class="col-inv"><col class="col-cust"><col class="col-note"><col class="col-prod"><col class="col-tag"><col class="col-total"><col class="col-upload"><col class="col-print"><col class="col-user"><col class="col-src"><col class="col-ship"><col class="col-act">
+        </colgroup>
         <thead>
             <tr>
-                <th style="width:30px"><input type="checkbox" id="selectAll" onchange="toggleAll(this)"></th>
+                <th><input type="checkbox" id="selectAll" onchange="toggleAll(this)"></th>
                 <th><a href="#" onclick="event.preventDefault();OM.goSort('created_at')" style="cursor:pointer">Date <?= sortIcon('created_at') ?></a></th>
                 <th><a href="#" onclick="event.preventDefault();OM.goSort('order_number')" style="cursor:pointer">Invoice <?= sortIcon('order_number') ?></a></th>
                 <th>Customer</th>
                 <th>Note</th>
                 <th>Products</th>
                 <th>Tags</th>
-                <th><a href="#" onclick="event.preventDefault();OM.goSort('total')" style="cursor:pointer">Total <?= sortIcon('total') ?></a></th>
+                <th style="text-align:right"><a href="#" onclick="event.preventDefault();OM.goSort('total')" style="cursor:pointer">Total <?= sortIcon('total') ?></a></th>
                 <th>Upload</th>
-                <th style="width:40px;text-align:center">Print</th>
+                <th style="text-align:center">Print</th>
                 <th>User</th>
                 <th><a href="#" onclick="event.preventDefault();OM.goSort('channel')" style="cursor:pointer">Source <?= sortIcon('channel') ?></a></th>
                 <th>Shipping Note</th>
-                <th style="width:70px;text-align:center">Actions</th>
+                <th style="text-align:center">Actions</th>
             </tr>
         </thead>
         <tbody>
