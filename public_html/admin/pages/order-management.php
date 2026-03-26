@@ -53,6 +53,35 @@ function _bulkStockAdjust($db, $orderId, $direction = 'reduce') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $action = $_POST['action'];
     
+    if ($action === 'log_print') {
+        // Log print to print_queue table
+        $printType = sanitize($_POST['print_type'] ?? 'invoice');
+        $orderIds = json_decode($_POST['order_ids'] ?? '[]', true) ?: [];
+        $adminId = getAdminId();
+        $now = date('Y-m-d H:i:s');
+        $logged = 0;
+        foreach ($orderIds as $oid) {
+            $oid = intval($oid);
+            if (!$oid) continue;
+            try {
+                $db->insert('print_queue', [
+                    'order_id' => $oid,
+                    'print_type' => in_array($printType, ['invoice','label','sticker']) ? $printType : 'invoice',
+                    'is_printed' => 1,
+                    'printed_at' => $now,
+                    'printed_by' => $adminId,
+                ]);
+                $logged++;
+            } catch (\Throwable $e) {}
+        }
+        if (!empty($_POST['_ajax'])) {
+            while (ob_get_level()) ob_end_clean();
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true, 'logged' => $logged]);
+            exit;
+        }
+    }
+    
     if ($action === 'update_status') {
         $orderId = intval($_POST['order_id']);
         $newStatus = sanitize($_POST['status']);
@@ -287,7 +316,7 @@ $sortDir = strtoupper($_GET['dir'] ?? 'DESC') === 'ASC' ? 'ASC' : 'DESC';
 $allowedSorts = ['created_at'=>'o.created_at','order_number'=>'o.order_number','total'=>'o.total','customer_name'=>'o.customer_name','channel'=>'o.channel','updated_at'=>'o.updated_at'];
 $orderBy = ($allowedSorts[$sortCol] ?? 'o.created_at') . ' ' . $sortDir;
 
-$orders = $db->fetchAll("SELECT o.*, au.full_name as assigned_name FROM orders o LEFT JOIN admin_users au ON au.id = o.assigned_to WHERE {$where} ORDER BY {$orderBy} LIMIT {$limit} OFFSET {$offset}", $params);
+$orders = $db->fetchAll("SELECT o.*, au.full_name as assigned_name, (SELECT COUNT(*) FROM print_queue pq WHERE pq.order_id = o.id) as print_count FROM orders o LEFT JOIN admin_users au ON au.id = o.assigned_to WHERE {$where} ORDER BY {$orderBy} LIMIT {$limit} OFFSET {$offset}", $params);
 
 // Pre-fetch customer success rates
 $successRates=[]; $previousOrders=[];
@@ -416,7 +445,7 @@ if ($_isFrag) {
         include $__tplFile;
     }
     if (empty($orders)) {
-        echo '<tr><td colspan="13" style="text-align:center;padding:40px 20px;color:#94a3b8"><div style="font-size:28px;margin-bottom:8px">📦</div>No orders found</td></tr>';
+        echo '<tr><td colspan="14" style="text-align:center;padding:40px 20px;color:#94a3b8"><div style="font-size:28px;margin-bottom:8px">📦</div>No orders found</td></tr>';
     }
     $__rowsHtml = ob_get_clean();
 
@@ -689,6 +718,7 @@ $_courierBarHidden = !$status || !in_array($status, $_courierVisibleStatuses);
                 <th>Tags</th>
                 <th><a href="#" onclick="event.preventDefault();OM.goSort('total')" style="cursor:pointer">Total <?= sortIcon('total') ?></a></th>
                 <th>Upload</th>
+                <th style="width:40px;text-align:center">Print</th>
                 <th>User</th>
                 <th><a href="#" onclick="event.preventDefault();OM.goSort('channel')" style="cursor:pointer">Source <?= sortIcon('channel') ?></a></th>
                 <th>Shipping Note</th>
@@ -883,7 +913,7 @@ $_courierBarHidden = !$status || !in_array($status, $_courierVisibleStatuses);
 </tr>
 <?php endforeach; ?>
 <?php if(empty($orders)): ?>
-<tr><td colspan="13" style="text-align:center;padding:40px 20px;color:#94a3b8"><div style="font-size:28px;margin-bottom:8px">📦</div>No orders found</td></tr>
+<tr><td colspan="14" style="text-align:center;padding:40px 20px;color:#94a3b8"><div style="font-size:28px;margin-bottom:8px">📦</div>No orders found</td></tr>
 <?php endif; ?>
         </tbody>
     </table>
@@ -2127,7 +2157,11 @@ function reloadInvPreview() {
     var layout = document.getElementById('invLayoutSelect').value;
     document.getElementById('invPrintIframe').src = '<?= adminUrl('pages/order-print.php') ?>?ids=' + _invIds.join(',') + '&template=' + tpl + '&layout=' + layout + '&modal=1';
 }
-function doInvPrint() { document.getElementById('invPrintIframe').contentWindow.print(); }
+function doInvPrint() {
+    document.getElementById('invPrintIframe').contentWindow.print();
+    // Log print to print_queue
+    _logPrintQueue(_invIds, 'invoice');
+}
 function openInvNewTab() {
     var tpl = document.getElementById('invTplSelect').value;
     var layout = document.getElementById('invLayoutSelect').value;
@@ -2197,6 +2231,8 @@ function doStkPrint() {
     var url = '<?= adminUrl('pages/order-print.php') ?>?ids=' + _stkIds.join(',') + '&template=' + tpl + stkSizeParams();
     var w = window.open(url, '_blank');
     if (w) { w.addEventListener('load', function(){ w.print(); }); }
+    // Log print to print_queue
+    _logPrintQueue(_stkIds, 'sticker');
 }
 function openStkNewTab() {
     var tpl = document.getElementById('stkTplSelect').value;
@@ -2209,6 +2245,16 @@ function openPrintPopup(forceIds, defaultTpl) {
     if (!ids.length) { alert('Select orders first'); return; }
     if (defaultTpl && defaultTpl.startsWith('stk_')) openStkPrint(ids);
     else openInvPrint(ids);
+}
+// ── Print Queue Logging ──
+function _logPrintQueue(ids, printType) {
+    if (!ids || !ids.length) return;
+    fetch(location.href.split('?')[0], {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'action=log_print&_ajax=1&print_type=' + encodeURIComponent(printType) + '&order_ids=' + encodeURIComponent(JSON.stringify(ids))
+    }).catch(function(){});
 }
 function closePrintModal() { closeInvModal(); closeStkModal(); }
 function bPrint(t) { var ids = getIds(); if (!ids.length) { alert('Select orders'); return; } if (t && t.startsWith('stk_')) openStkPrint(ids); else openInvPrint(ids); }

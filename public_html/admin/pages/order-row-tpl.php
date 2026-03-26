@@ -109,6 +109,16 @@
         <?php endif; ?>
     </td>
     
+    <!-- Print Status -->
+    <td style="text-align:center">
+        <?php $__printed = intval($order['print_count'] ?? 0); ?>
+        <?php if ($__printed > 0): ?>
+            <span style="color:#22c55e;font-size:14px" title="Printed <?= $__printed ?> time(s)">✓</span>
+        <?php else: ?>
+            <span style="color:#d1d5db;font-size:12px" title="Not printed">—</span>
+        <?php endif; ?>
+    </td>
+    
     <!-- User -->
     <td>
         <span style="font-size:11px;color:#475569"><?= e($order['assigned_name'] ?? '—') ?></span>
