@@ -2143,7 +2143,9 @@ function handleEditLoad(iframe) {
 // Listen for postMessage from modal iframe (primary close mechanism)
 window.addEventListener('message', function(e) {
     if (e.data && e.data.type === 'orderSaved') {
+        // Close whichever modal is open
         closeEditModal();
+        closeOrderModal();
         OM.refresh();
     }
 });
@@ -2394,9 +2396,20 @@ function openOrderModal(url, e) {
     return false;
 }
 function closeOrderModal() {
-    document.getElementById('orderEditModal').classList.add('hidden');
+    var m = document.getElementById('orderEditModal');
+    if (m.classList.contains('hidden')) return; // already closed
+    m.classList.add('hidden');
     document.getElementById('orderEditFrame').src = 'about:blank';
     OM.refresh();
+}
+function handleOrderFrameLoad(iframe) {
+    if (!iframe.src || iframe.src === 'about:blank') return;
+    try {
+        var iUrl = iframe.contentWindow.location.href;
+        if (iUrl.includes('order-management.php') || iUrl.includes('msg=updated') || iUrl.includes('msg=confirmed') || iUrl.includes('msg=status_updated')) {
+            closeOrderModal();
+        }
+    } catch(e) {}
 }
 </script>
 
@@ -2407,7 +2420,7 @@ function closeOrderModal() {
             <h3 class="text-sm font-bold text-gray-800">📝 Order Details</h3>
             <button onclick="closeOrderModal()" class="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-600 text-sm font-bold">✕</button>
         </div>
-        <iframe id="orderEditFrame" src="about:blank" class="flex-1 w-full border-0"></iframe>
+        <iframe id="orderEditFrame" src="about:blank" class="flex-1 w-full border-0" onload="handleOrderFrameLoad(this)"></iframe>
     </div>
 </div>
 
