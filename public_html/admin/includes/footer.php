@@ -518,6 +518,19 @@ function openPageGuide(){
 }
 function closePageGuide(){ document.getElementById('pageGuideModal').classList.add('hidden'); }
 document.addEventListener('keydown', function(e){ if(e.key==='Escape') closePageGuide(); });
+
+// ── Global CSRF Token Helper ──
+window._csrfToken = function(){ return document.querySelector('meta[name="csrf-token"]')?.content || ''; };
+// Auto-inject CSRF token into all fetch() POST requests
+(function(){
+    const _origFetch = window.fetch;
+    window.fetch = function(url, opts) {
+        if (opts && opts.method && opts.method.toUpperCase() === 'POST' && opts.body instanceof FormData) {
+            if (!opts.body.has('_csrf_token')) opts.body.append('_csrf_token', window._csrfToken());
+        }
+        return _origFetch.apply(this, arguments);
+    };
+}());
 </script>
 </body>
 </html>

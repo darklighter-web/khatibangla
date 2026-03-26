@@ -251,8 +251,21 @@ function handlePathao($db, $payload) {
     
     try { $db->insert('order_status_history', ['order_id' => $order['id'], 'status' => $newStatus, 'note' => "Pathao webhook: {$event}" . ($payloadOrderStatus ? " ({$payloadOrderStatus})" : '')]); } catch (\Throwable $e) {}
     
-    if ($newStatus === 'delivered') { try { awardOrderCredits($order['id']); } catch (\Throwable $e) {} }
-    if (in_array($newStatus, ['pending_cancel', 'pending_return'])) { try { refundOrderCreditsOnCancel($order['id']); } catch (\Throwable $e) {} }
+    if ($newStatus === 'delivered') {
+        try { awardOrderCredits($order['id']); } catch (\Throwable $e) {}
+        try {
+            $__ex = $db->fetch("SELECT id FROM accounting_entries WHERE reference_type='order' AND reference_id=? AND entry_type='income'", [$order['id']]);
+            if (!$__ex) { $db->insert('accounting_entries', ['entry_type'=>'income','amount'=>floatval($order['total']),'reference_type'=>'order','reference_id'=>$order['id'],'description'=>'Order #'.$order['order_number'].' delivered (Pathao webhook)','entry_date'=>date('Y-m-d')]); }
+        } catch (\Throwable $e) {}
+    }
+    if (in_array($newStatus, ['pending_cancel', 'pending_return'])) {
+        try { refundOrderCreditsOnCancel($order['id']); } catch (\Throwable $e) {}
+        try {
+            $__inc = $db->fetch("SELECT id FROM accounting_entries WHERE reference_type='order' AND reference_id=? AND entry_type='income'", [$order['id']]);
+            $__ref = $db->fetch("SELECT id FROM accounting_entries WHERE reference_type='order' AND reference_id=? AND entry_type='refund'", [$order['id']]);
+            if ($__inc && !$__ref) { $db->insert('accounting_entries', ['entry_type'=>'refund','amount'=>floatval($order['total']),'reference_type'=>'order','reference_id'=>$order['id'],'description'=>'Order #'.$order['order_number'].' '.$newStatus.' (Pathao webhook)','entry_date'=>date('Y-m-d')]); }
+        } catch (\Throwable $e) {}
+    }
     
     _webhookLog('Pathao', "#{$order['order_number']}: {$currentStatus} → {$newStatus} (event: {$event})");
     return "#{$order['order_number']}: {$currentStatus} → {$newStatus}";
@@ -387,8 +400,21 @@ function processStatusUpdate($db, $order, $courierStatus, $map, $courierName, $p
     $db->update('orders', $extraUpdate, 'id = ?', [$order['id']]);
     
     try { $db->insert('order_status_history', ['order_id' => $order['id'], 'status' => $newStatus, 'note' => "{$courierName} webhook: {$courierStatus}"]); } catch (\Throwable $e) {}
-    if ($newStatus === 'delivered') { try { awardOrderCredits($order['id']); } catch (\Throwable $e) {} }
-    if (in_array($newStatus, ['pending_cancel', 'pending_return'])) { try { refundOrderCreditsOnCancel($order['id']); } catch (\Throwable $e) {} }
+    if ($newStatus === 'delivered') {
+        try { awardOrderCredits($order['id']); } catch (\Throwable $e) {}
+        try {
+            $__ex = $db->fetch("SELECT id FROM accounting_entries WHERE reference_type='order' AND reference_id=? AND entry_type='income'", [$order['id']]);
+            if (!$__ex) { $db->insert('accounting_entries', ['entry_type'=>'income','amount'=>floatval($order['total']),'reference_type'=>'order','reference_id'=>$order['id'],'description'=>'Order #'.$order['order_number'].' delivered ('.$courierName.' webhook)','entry_date'=>date('Y-m-d')]); }
+        } catch (\Throwable $e) {}
+    }
+    if (in_array($newStatus, ['pending_cancel', 'pending_return'])) {
+        try { refundOrderCreditsOnCancel($order['id']); } catch (\Throwable $e) {}
+        try {
+            $__inc = $db->fetch("SELECT id FROM accounting_entries WHERE reference_type='order' AND reference_id=? AND entry_type='income'", [$order['id']]);
+            $__ref = $db->fetch("SELECT id FROM accounting_entries WHERE reference_type='order' AND reference_id=? AND entry_type='refund'", [$order['id']]);
+            if ($__inc && !$__ref) { $db->insert('accounting_entries', ['entry_type'=>'refund','amount'=>floatval($order['total']),'reference_type'=>'order','reference_id'=>$order['id'],'description'=>'Order #'.$order['order_number'].' '.$newStatus.' ('.$courierName.' webhook)','entry_date'=>date('Y-m-d')]); }
+        } catch (\Throwable $e) {}
+    }
     
     _webhookLog($courierName, "#{$order['order_number']}: {$currentStatus} → {$newStatus}");
     return "#{$order['order_number']}: {$currentStatus} → {$newStatus}";

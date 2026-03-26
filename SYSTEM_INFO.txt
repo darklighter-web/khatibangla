@@ -472,6 +472,52 @@ SECURITY (sec_ prefix):
    - Use own orders table for fraud checking
 
 ================================================================================
+                          CHANGELOG — 2026-03-27 (Full Audit)
+================================================================================
+
+SECURITY FIXES:
+  • Fixed 33 broken confirm() calls across 21 admin pages — every delete,
+    block, clear, and dangerous action was silently failing due to the global
+    window.confirm() override always returning false. All converted to
+    await window._confirmAsync() with async function declarations.
+  • Added requirePermission() checks to 4 sensitive pages: employees.php
+    (employees), security.php (security), settings.php (settings),
+    accounting.php (accounting). Previously any logged-in admin could access.
+  • Activated login brute force protection — security.php was never included
+    in login.php, so getSecurityGuard() returned null and all rate limiting
+    was bypassed. Now properly included.
+  • Added CSRF meta tag to admin header for global token availability.
+  • Added auto CSRF token injection to all fetch() POST FormData requests
+    via global fetch() wrapper in footer.php.
+
+PERFORMANCE:
+  • Fixed N+1 query in order-management.php — replaced 17 separate
+    SELECT COUNT(*) queries (one per status) with single GROUP BY query.
+
+ACCOUNTING:
+  • Added automatic accounting entries on order status changes:
+    - Delivered → creates 'income' entry in accounting_entries
+    - Cancelled/Returned → creates 'refund' entry if income existed
+    - Prevents duplicates with existence checks
+    - Applied to: order-view.php, order-management.php, courier-webhook.php
+      (Pathao, Steadfast, CarryBee, RedX webhook handlers)
+
+FILES CHANGED (24 total):
+  admin/login.php, admin/includes/header.php, admin/includes/footer.php,
+  admin/pages/accounting.php, admin/pages/api-health.php,
+  admin/pages/chat-settings.php, admin/pages/checkout-fields.php,
+  admin/pages/customer-retention.php, admin/pages/customer-view.php,
+  admin/pages/customers.php, admin/pages/dashboard.php,
+  admin/pages/employees.php, admin/pages/incomplete-orders.php,
+  admin/pages/landing-page-builder.php, admin/pages/landing-pages.php,
+  admin/pages/media.php, admin/pages/order-management.php,
+  admin/pages/order-view.php, admin/pages/product-form.php,
+  admin/pages/progress-bars.php, admin/pages/scan-to-update.php,
+  admin/pages/security.php, admin/pages/select-invoice.php,
+  admin/pages/select-sticker.php, admin/pages/settings.php,
+  admin/pages/speed.php, api/courier-webhook.php
+
+================================================================================
                           CHANGELOG — 2026-03-27 (Part 2)
 ================================================================================
 

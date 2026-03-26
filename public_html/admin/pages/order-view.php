@@ -195,8 +195,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $db->update('orders', ['order_status' => $newStatus, 'updated_at' => date('Y-m-d H:i:s')], 'id = ?', [$id]);
         $db->insert('order_status_history', ['order_id'=>$id,'status'=>$newStatus,'changed_by'=>getAdminId(),'note'=>$notes]);
         logActivity(getAdminId(), 'update_status', 'orders', $id, "Changed to {$newStatus}");
-        if ($newStatus === 'delivered')  { try { awardOrderCredits($id); } catch (\Throwable $e) {} }
-        if ($newStatus === 'cancelled')  { try { refundOrderCreditsOnCancel($id); } catch (\Throwable $e) {} }
+        if ($newStatus === 'delivered')  {
+            try { awardOrderCredits($id); } catch (\Throwable $e) {}
+            // Record income accounting entry
+            try {
+                $existing = $db->fetch("SELECT id FROM accounting_entries WHERE reference_type='order' AND reference_id=? AND entry_type='income'", [$id]);
+                if (!$existing) {
+                    $db->insert('accounting_entries', [
+                        'entry_type' => 'income',
+                        'amount' => floatval($order['total']),
+                        'reference_type' => 'order',
+                        'reference_id' => $id,
+                        'description' => 'Order #' . $order['order_number'] . ' delivered',
+                        'entry_date' => date('Y-m-d'),
+                    ]);
+                }
+            } catch (\Throwable $e) {}
+        }
+        if ($newStatus === 'cancelled')  {
+            try { refundOrderCreditsOnCancel($id); } catch (\Throwable $e) {}
+            // Record refund accounting entry if income was previously recorded
+            try {
+                $incomeEntry = $db->fetch("SELECT id FROM accounting_entries WHERE reference_type='order' AND reference_id=? AND entry_type='income'", [$id]);
+                if ($incomeEntry) {
+                    $existing = $db->fetch("SELECT id FROM accounting_entries WHERE reference_type='order' AND reference_id=? AND entry_type='refund'", [$id]);
+                    if (!$existing) {
+                        $db->insert('accounting_entries', [
+                            'entry_type' => 'refund',
+                            'amount' => floatval($order['total']),
+                            'reference_type' => 'order',
+                            'reference_id' => $id,
+                            'description' => 'Order #' . $order['order_number'] . ' cancelled (refund)',
+                            'entry_date' => date('Y-m-d'),
+                        ]);
+                    }
+                }
+            } catch (\Throwable $e) {}
+        }
 
         // ── Stock Management: restore stock on cancel/return ──
         $stockRestoreStatuses = ['cancelled', 'returned'];

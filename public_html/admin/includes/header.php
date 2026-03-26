@@ -218,6 +218,7 @@ $icons = [
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="<?= generateCSRFToken() ?>">
     <title><?= $pageTitle ?? 'Dashboard' ?> - Admin Panel</title>
     <?php if ($siteFavicon): ?>
     <link rel="icon" href="<?= uploadUrl($siteFavicon) ?>" type="image/png">

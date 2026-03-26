@@ -89,7 +89,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         try { $db->insert('order_status_history', ['order_id' => $orderId, 'status' => $newStatus, 'changed_by' => getAdminId(), 'note' => sanitize($_POST['notes'] ?? '')]); } catch (Exception $e) {}
         if ($newStatus === 'delivered') { try { awardOrderCredits($orderId); } catch (\Throwable $e) {} }
         if (in_array($newStatus, ['cancelled', 'returned'])) { try { refundOrderCreditsOnCancel($orderId); } catch (\Throwable $e) {} }
-        if ($newStatus === 'delivered') { try { $db->update('orders', ['delivered_at' => date('Y-m-d H:i:s')], 'id = ? AND delivered_at IS NULL', [$orderId]); } catch (\Throwable $e) {} }
+        if ($newStatus === 'delivered') {
+            try { $db->update('orders', ['delivered_at' => date('Y-m-d H:i:s')], 'id = ? AND delivered_at IS NULL', [$orderId]); } catch (\Throwable $e) {}
+            // Accounting: record income
+            try {
+                $__o = $db->fetch("SELECT order_number, total FROM orders WHERE id=?", [$orderId]);
+                $__ex = $db->fetch("SELECT id FROM accounting_entries WHERE reference_type='order' AND reference_id=? AND entry_type='income'", [$orderId]);
+                if (!$__ex && $__o) {
+                    $db->insert('accounting_entries', ['entry_type'=>'income','amount'=>floatval($__o['total']),'reference_type'=>'order','reference_id'=>$orderId,'description'=>'Order #'.$__o['order_number'].' delivered','entry_date'=>date('Y-m-d')]);
+                }
+            } catch (\Throwable $e) {}
+        }
+        if (in_array($newStatus, ['cancelled', 'returned'])) {
+            // Accounting: record refund if income existed
+            try {
+                $__o = $db->fetch("SELECT order_number, total FROM orders WHERE id=?", [$orderId]);
+                $__inc = $db->fetch("SELECT id FROM accounting_entries WHERE reference_type='order' AND reference_id=? AND entry_type='income'", [$orderId]);
+                if ($__inc && $__o) {
+                    $__ref = $db->fetch("SELECT id FROM accounting_entries WHERE reference_type='order' AND reference_id=? AND entry_type='refund'", [$orderId]);
+                    if (!$__ref) { $db->insert('accounting_entries', ['entry_type'=>'refund','amount'=>floatval($__o['total']),'reference_type'=>'order','reference_id'=>$orderId,'description'=>'Order #'.$__o['order_number'].' '.$newStatus.' (refund)','entry_date'=>date('Y-m-d')]); }
+                }
+            } catch (\Throwable $e) {}
+        }
         try { $db->query("DELETE FROM order_locks WHERE order_id = ?", [$orderId]); } catch (\Throwable $e) {}
         if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) || !empty($_POST['_ajax'])) {
             header('Content-Type: application/json'); echo json_encode(['success'=>true]); exit;
