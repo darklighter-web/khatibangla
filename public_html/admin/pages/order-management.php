@@ -2129,7 +2129,7 @@ function handleEditLoad(iframe) {
     // Detect this redirect and refresh the table instead
     try {
         var iUrl = iframe.contentWindow.location.href;
-        if (iUrl.includes('order-management.php') || iUrl.includes('msg=updated') || iUrl.includes('msg=created')) {
+        if (iUrl.includes('order-management.php') || iUrl.includes('msg=updated') || iUrl.includes('msg=created') || iUrl.includes('msg=status_updated') || iUrl.includes('msg=confirmed')) {
             closeEditModal();
             OM.refresh();
             return;
@@ -2139,6 +2139,14 @@ function handleEditLoad(iframe) {
         if (title) document.getElementById('editOrderNum').textContent = title.replace('Order Management','').replace('|','').trim() || document.getElementById('editOrderNum').textContent;
     } catch(e) {}
 }
+
+// Listen for postMessage from modal iframe (primary close mechanism)
+window.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'orderSaved') {
+        closeEditModal();
+        OM.refresh();
+    }
+});
 
 function printPickingList() {
     var content = document.getElementById('pickingContent').innerHTML;

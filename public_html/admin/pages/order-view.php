@@ -160,6 +160,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Release order lock on save/confirm
         try { $db->query("DELETE FROM order_locks WHERE order_id = ?", [$id]); } catch (\Throwable $e) {}
         if ($action === 'confirm_order') {
+            if ($isModal) {
+                while (ob_get_level()) ob_end_clean();
+                echo '<html><body><script>window.parent.postMessage({type:"orderSaved",action:"confirmed",order_id:' . $id . '},"*");</script></body></html>';
+                exit;
+            }
             if ($isProcSession) {
                 // Return JSON for session mode — JS handles navigation
                 while (ob_get_level()) ob_end_clean(); // Clear any buffered output
@@ -168,6 +173,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
             redirect(adminUrl("pages/order-management.php?{$_returnQs}msg=confirmed"));
+        }
+        if ($isModal) {
+            while (ob_get_level()) ob_end_clean();
+            echo '<html><body><script>window.parent.postMessage({type:"orderSaved",action:"saved",order_id:' . $id . '},"*");</script></body></html>';
+            exit;
         }
         if ($isProcSession) {
             while (ob_get_level()) ob_end_clean();
@@ -224,6 +234,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Release order lock on status change
         try { $db->query("DELETE FROM order_locks WHERE order_id = ?", [$id]); } catch (\Throwable $e) {}
+        if ($isModal) {
+            while (ob_get_level()) ob_end_clean();
+            echo '<html><body><script>window.parent.postMessage({type:"orderSaved",action:"status_updated",order_id:' . $id . ',new_status:"' . addslashes($newStatus) . '"},"*");</script></body></html>';
+            exit;
+        }
         if ($isProcSession) {
             while (ob_get_level()) ob_end_clean();
             header('Content-Type: application/json');
