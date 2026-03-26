@@ -523,10 +523,10 @@ function togAll(cb){document.querySelectorAll('.rcb').forEach(c=>c.checked=cb.ch
 function toggleSelAll(){const cbs=document.querySelectorAll('.rcb');const all=[...cbs].every(c=>c.checked);cbs.forEach(c=>c.checked=!all);document.getElementById('allCb').checked=!all;updBar()}
 function clearSel(){document.querySelectorAll('.rcb').forEach(c=>c.checked=false);document.getElementById('allCb').checked=false;updBar()}
 
-function doBulk(act){
+async function doBulk(act){
     const ids=getIds();if(!ids.length)return alert('Select customers first');
     const lbl={bulk_block:'block',bulk_unblock:'unblock',bulk_delete:'permanently delete'};
-    if(!confirm('Are you sure you want to '+lbl[act]+' '+ids.length+' customer(s)?'))return;
+    const _ok = await window._confirmAsync('Are you sure you want to '+lbl[act]+' '+ids.length+' customer(s)?'); if(!_ok) return;
     document.getElementById('bAct').value=act;
     document.getElementById('bIds').value=ids.join(',');
     document.getElementById('bForm').submit();

@@ -1060,7 +1060,7 @@ const RM = {
 
     // ── Rebuild ────────────────────────────────────────────────────────
     rebuild() {
-        if (!confirm('Rebuild retention log from all delivered orders?\nThis scans your full order history.')) return;
+        const _ok = await window._confirmAsync('Rebuild retention log from all delivered orders?\nThis scans your full order history.'); if(!_ok) return;
         document.getElementById('rebuildOverlay').classList.remove('hidden');
         RM._post({action:'rebuild'}, d => {
             document.getElementById('rebuildOverlay').classList.add('hidden');

@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../includes/session.php';
 $pageTitle = 'Settings';
 require_once __DIR__ . '/../includes/auth.php';
+requirePermission('settings');
 // Load FB CAPI for ads tab
 if (file_exists(__DIR__ . '/../../includes/fb-capi.php')) {
     require_once __DIR__ . '/../../includes/fb-capi.php';
@@ -1148,8 +1149,8 @@ require_once __DIR__ . '/../includes/header.php';
                 inp.classList.toggle('ring-2', v !== def);
                 inp.classList.toggle('ring-indigo-400', v !== def);
             }
-            function resetFontSizes() {
-                if (!confirm('Reset all font sizes to defaults?')) return;
+            async function resetFontSizes() {
+                const _ok = await window._confirmAsync('Reset all font sizes to defaults?'); if(!_ok) return;
                 document.querySelectorAll('.fs-input').forEach(inp => {
                     inp.value = inp.dataset.default;
                     inp.classList.remove('ring-2', 'ring-indigo-400');
@@ -1708,7 +1709,7 @@ require_once __DIR__ . '/../includes/header.php';
                 } catch(e){ el.textContent = 'Error: '+e.message; }
             }
             async function clearFbLogs(){
-                if(!confirm('সব CAPI logs মুছে ফেলবেন?')) return;
+                const _ok = await window._confirmAsync('সব CAPI logs মুছে ফেলবেন?'); if(!_ok) return;
                 try {
                     await fetch('<?= SITE_URL ?>/api/fb-test.php', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'action=clear_logs'});
                     document.getElementById('fbLogs').textContent = '(Logs cleared)';
@@ -2016,7 +2017,7 @@ require_once __DIR__ . '/../includes/header.php';
                 }
 
                 window.resetRegFields = function() {
-                    if (!confirm('Reset registration fields to default?')) return;
+                    const _ok = await window._confirmAsync('Reset registration fields to default?'); if(!_ok) return;
                     document.getElementById('regFieldsInput').value = JSON.stringify(<?= json_encode(array_map(fn($f) => ['key'=>$f['key'],'label'=>$f['label'],'placeholder'=>$f['placeholder'],'enabled'=>$f['enabled'],'required'=>$f['required']], $regDefaults), JSON_UNESCAPED_UNICODE) ?>);
                     document.querySelector('form').submit();
                 };

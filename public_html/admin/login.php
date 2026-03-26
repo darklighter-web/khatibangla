@@ -6,6 +6,7 @@
  */
 require_once __DIR__ . '/../includes/session.php';
 require_once __DIR__ . '/includes/auth.php';
+@include_once __DIR__ . '/../includes/security.php';
 
 // Already logged in as admin? Go to dashboard
 if (isAdminLoggedIn()) {

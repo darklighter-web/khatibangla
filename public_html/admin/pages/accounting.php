@@ -15,6 +15,7 @@
 require_once __DIR__ . '/../../includes/session.php';
 $pageTitle = 'Accounting';
 require_once __DIR__ . '/../includes/auth.php';
+requirePermission('accounting');
 $db = Database::getInstance();
 
 // ── Date Range ──

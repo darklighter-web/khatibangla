@@ -479,8 +479,8 @@ function updateStats() {
     document.getElementById('statFailed').textContent = failedScans;
 }
 
-function clearResults() {
-    if (!confirm('Clear all scan results?')) return;
+async function clearResults() {
+    const _ok = await window._confirmAsync('Clear all scan results?'); if(!_ok) return;
     document.getElementById('scanResults').innerHTML = '<tr id="emptyRow"><td colspan="6" class="px-4 py-10 text-center text-gray-400">No items scanned yet</td></tr>';
     totalScans = successScans = failedScans = 0;
     scannedBarcodes.clear();

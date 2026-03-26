@@ -577,8 +577,8 @@ function loadTemplate(id) {
     });
 }
 
-function deleteTemplate(id) {
-    if (!confirm('Delete this template?')) return;
+async function deleteTemplate(id) {
+    const _ok = await window._confirmAsync('Delete this template?'); if(!_ok) return;
     const fd = new FormData(); fd.append('action','delete_template'); fd.append('id',id);
     fetch(API,{method:'POST',body:fd}).then(r=>r.json()).then(() => loadTemplates());
 }
@@ -607,8 +607,8 @@ function addSection(type) {
     selectSection(sec.id);
 }
 
-function removeSection(id) {
-    if (!confirm('Remove this section?')) return;
+async function removeSection(id) {
+    const _ok = await window._confirmAsync('Remove this section?'); if(!_ok) return;
     sections = sections.filter(s => s.id !== id);
     if (selectedSectionId === id) { selectedSectionId = null; showNoSelection(); }
     renderSections();
@@ -1558,8 +1558,8 @@ function lpCfSaveClose() {
     lpCfClose();
 }
 
-function lpCfResetModal() {
-    if (!confirm('Reset to site-wide defaults? Your LP-specific changes will be lost.')) return;
+async function lpCfResetModal() {
+    const _ok = await window._confirmAsync('Reset to site-wide defaults? Your LP-specific changes will be lost.'); if(!_ok) return;
     _cfFields = JSON.parse(JSON.stringify(SITE_CF_DEFAULTS));
     _cfRenderList();
     _cfRenderPreview();

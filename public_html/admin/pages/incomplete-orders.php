@@ -388,10 +388,10 @@ function deselectAll() {
     updateBulkBar();
 }
 
-function bulkDelete() {
+async function bulkDelete() {
     var checked = getChecked();
     if (checked.length === 0) return;
-    if (!confirm('⚠️ Delete ' + checked.length + ' incomplete order(s)?\n\nThis cannot be undone.')) return;
+    const _ok = await window._confirmAsync('⚠️ Delete ' + checked.length + ' incomplete order(s)?\n\nThis cannot be undone.'); if(!_ok) return;
     
     var form = document.createElement('form');
     form.method = 'POST';

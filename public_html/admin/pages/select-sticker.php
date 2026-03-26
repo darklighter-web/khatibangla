@@ -341,8 +341,8 @@ function stkSelect(key){
     });
 }
 
-function delPreset(key,name){
-    if(!confirm('Delete "'+name+'"?'))return;
+async function delPreset(key,name){
+    const _ok = await window._confirmAsync('Delete "'+name+'"?'); if(!_ok) return;
     fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'action=delete_preset&template_key='+encodeURIComponent(key)})
     .then(function(r){return r.json();}).then(function(d){
         if(d.success){var c=document.querySelector('[data-key="'+key+'"]');if(c){c.style.transition='all .3s';c.style.opacity='0';c.style.transform='scale(.9)';setTimeout(function(){c.remove();if(!document.querySelector('#custGrid .stk-card'))document.getElementById('custSec').classList.add('hidden');},300);}stkToast('Deleted','red');}

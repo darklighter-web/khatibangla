@@ -379,7 +379,7 @@ async function copyReport() {
 }
 
 async function clearLog() {
-    if (!confirm('Clear all API error logs?')) return;
+    const _ok = await window._confirmAsync('Clear all API error logs?'); if(!_ok) return;
     try {
         await fetch(`${API_BASE}?action=clear_log`);
         showToast('🗑️ Error log cleared');

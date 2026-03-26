@@ -739,7 +739,7 @@ exit; endif; /* end lockBlocked */ ?>
                         <button type="button" onclick="navigator.clipboard.writeText('<?= e($order['order_number']) ?>')" class="p-2 border border-gray-200 rounded-md text-gray-500 hover:bg-gray-50 text-xs" title="Copy"><i class="far fa-copy"></i></button>
                         <a href="<?= adminUrl('pages/order-print.php?id='.$id) ?>" target="_blank" class="p-2 border border-gray-200 rounded-md text-gray-500 hover:bg-gray-50 text-xs" title="Print"><i class="fas fa-print"></i></a>
                         <a href="<?= adminUrl('pages/order-print.php?id='.$id.'&template=sticker') ?>" target="_blank" class="p-2 border border-gray-200 rounded-md text-gray-500 hover:bg-gray-50 text-xs" title="Sticker"><i class="fas fa-tag"></i></a>
-                        <?php if (!$order['is_fake']): ?><button type="button" onclick="if(confirm('Mark fake? Phone will be blocked.')){document.getElementById('fakeForm').submit()}" class="p-2 border border-red-200 rounded-md text-red-400 hover:bg-red-50 text-xs" title="Fake"><i class="fas fa-ban"></i></button><?php endif; ?>
+                        <?php if (!$order['is_fake']): ?><button type="button" onclick="window._confirmAsync('Mark fake? Phone will be blocked.').then(function(_ok){ if(!_ok)return; document.getElementById('fakeForm').submit() })" class="p-2 border border-red-200 rounded-md text-red-400 hover:bg-red-50 text-xs" title="Fake"><i class="fas fa-ban"></i></button><?php endif; ?>
                     </div>
                     <div class="flex items-center gap-2">
                         <select name="channel" class="flex-1 px-2 py-1.5 border border-gray-200 rounded-md text-xs">

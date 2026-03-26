@@ -268,9 +268,16 @@ $nextAction = [
 
 // Status counts
 $statusCounts = [];
-foreach ($allStatuses as $s) { try { $statusCounts[$s] = $db->count('orders', 'order_status = ?', [$s]); } catch(Exception $e) { $statusCounts[$s] = 0; } }
-// Include legacy pending in processing count
-try { $pendingCount = $db->count('orders', "order_status = 'pending'"); $statusCounts['processing'] += $pendingCount; } catch(\Throwable $e) {}
+foreach ($allStatuses as $s) { $statusCounts[$s] = 0; }
+try {
+    $scRows = $db->fetchAll("SELECT order_status, COUNT(*) as cnt FROM orders GROUP BY order_status");
+    foreach ($scRows as $scr) {
+        $st = $scr['order_status'];
+        if (isset($statusCounts[$st])) $statusCounts[$st] = intval($scr['cnt']);
+        // Map legacy pending into processing
+        if ($st === 'pending') $statusCounts['processing'] = ($statusCounts['processing'] ?? 0) + intval($scr['cnt']);
+    }
+} catch (\Throwable $e) {}
 $totalOrders = array_sum($statusCounts);
 
 // ── Filters ──
@@ -1534,7 +1541,7 @@ function subTag(t){
 }
 
 // Row context menu
-function toggleRowMenu(el, orderId, orderNum) {
+async function toggleRowMenu(el, orderId, orderNum) {
     const rm = document.getElementById('rowMenu');
     if (rm._open === orderId) { rm.classList.add('hidden'); rm._open = null; return; }
     const r = el.getBoundingClientRect();

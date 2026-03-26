@@ -440,8 +440,8 @@ function saveFields() {
     document.getElementById('saveForm').submit();
 }
 
-function resetToDefault() {
-    if (!confirm('Reset all fields to default? Your customizations will be lost.')) return;
+async function resetToDefault() {
+    const _ok = await window._confirmAsync('Reset all fields to default? Your customizations will be lost.'); if(!_ok) return;
     document.getElementById('fieldOrderInput').value = JSON.stringify(<?= json_encode(array_map(fn($f) => ['key'=>$f['key'],'label'=>$f['label'],'placeholder'=>$f['placeholder'],'enabled'=>$f['enabled'],'required'=>$f['required'],'width'=>'full'], $defaultFields), JSON_UNESCAPED_UNICODE) ?>);
     document.getElementById('saveForm').submit();
 }

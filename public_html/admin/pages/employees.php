@@ -4,6 +4,7 @@ require_once __DIR__ . '/../../includes/session.php';
  * Admin - Employee & Role Management with Granular Permissions
  */
 require_once __DIR__ . '/../includes/auth.php';
+requirePermission('employees');
 $pageTitle = 'Team Management';
 $db = Database::getInstance();
 

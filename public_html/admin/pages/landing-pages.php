@@ -170,8 +170,8 @@ function duplicatePage(id) {
     });
 }
 
-function deletePage(id, title) {
-    if (!confirm('Delete "' + title + '"? This cannot be undone.')) return;
+async function deletePage(id, title) {
+    const _ok = await window._confirmAsync('Delete "' + title + '"? This cannot be undone.'); if(!_ok) return;
     const fd = new FormData(); fd.append('action','delete'); fd.append('id',id);
     fetch(API,{method:'POST',body:fd}).then(r=>r.json()).then(() => loadPages());
 }

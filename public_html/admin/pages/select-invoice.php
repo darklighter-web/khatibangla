@@ -349,8 +349,8 @@ function selectTpl(key) {
     });
 }
 
-function delPreset(key, name) {
-    if (!confirm('Delete "'+name+'"? This cannot be undone.')) return;
+async function delPreset(key, name) {
+    const _ok = await window._confirmAsync('Delete "'+name+'"? This cannot be undone.'); if(!_ok) return;
     fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'action=delete_preset&template_key='+encodeURIComponent(key)})
     .then(r=>r.json()).then(d => {
         if (d.success) {

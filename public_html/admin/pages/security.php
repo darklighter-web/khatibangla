@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../includes/session.php';
 $pageTitle = 'Security Center';
 require_once __DIR__ . '/../includes/auth.php';
+requirePermission('security');
 $db = Database::getInstance();
 
 // Load all sec_ settings
@@ -446,8 +447,8 @@ function loadLogs(page) {
     });
 }
 
-function clearLogs(period) {
-    if (!confirm('Delete logs?')) return;
+async function clearLogs(period) {
+    const _ok = await window._confirmAsync('Delete logs?'); if(!_ok) return;
     const fd = new FormData(); fd.append('action','clear_logs'); fd.append('period',period);
     fetch(API, {method:'POST',body:fd}).then(r=>r.json()).then(()=>loadLogs(1));
 }
@@ -486,20 +487,20 @@ function addIpRule() {
     });
 }
 
-function removeIpRule(id) {
-    if (!confirm('Remove this IP rule?')) return;
+async function removeIpRule(id) {
+    const _ok = await window._confirmAsync('Remove this IP rule?'); if(!_ok) return;
     const fd = new FormData(); fd.append('action','remove_ip_rule'); fd.append('id',id);
     fetch(API,{method:'POST',body:fd}).then(r=>r.json()).then(()=>loadIpRules());
 }
 
-function clearAutoBlocks() {
-    if (!confirm('Clear all auto-blocked IPs?\n\nThis removes IPs blocked by rate limits and scanner detection.\nManual blocks are preserved.\n\nThis will fix "Access Denied" for iOS Safari and other devices.')) return;
+async function clearAutoBlocks() {
+    const _ok = await window._confirmAsync('Clear all auto-blocked IPs?\n\nThis removes IPs blocked by rate limits and scanner detection.\nManual blocks are preserved.\n\nThis will fix "Access Denied" for iOS Safari and other devices.'); if(!_ok) return;
     const fd = new FormData(); fd.append('action','clear_auto_blocks');
     fetch(API,{method:'POST',body:fd}).then(r=>r.json()).then(d => { alert(d.message); loadIpRules(); loadDashboard(); });
 }
 
-function blockIpFromLog(ip) {
-    if (!confirm('Block IP ' + ip + ' permanently?')) return;
+async function blockIpFromLog(ip) {
+    const _ok = await window._confirmAsync('Block IP ' + ip + ' permanently?'); if(!_ok) return;
     const fd = new FormData(); fd.append('action','block_ip_from_log'); fd.append('ip',ip);
     fetch(API,{method:'POST',body:fd}).then(r=>r.json()).then(d => { alert(d.message); loadDashboard(); });
 }
@@ -613,8 +614,8 @@ function phpCheck(label, pass, value) {
 
 function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-function deleteFile(file) {
-    if (!confirm('Delete suspicious file: ' + file + '?')) return;
+async function deleteFile(file) {
+    const _ok = await window._confirmAsync('Delete suspicious file: ' + file + '?'); if(!_ok) return;
     const fd = new FormData(); fd.append('action','delete_suspicious_file'); fd.append('file',file);
     fetch(API,{method:'POST',body:fd}).then(r=>r.json()).then(d => { alert(d.message); runScan(); });
 }
@@ -707,10 +708,10 @@ function copyAdminUrl() {
     navigator.clipboard.writeText(url).then(() => alert('Admin URL copied! Bookmark this URL.'));
 }
 
-function saveAdminKey() {
+async function saveAdminKey() {
     const key = document.getElementById('admin-secret-key').value.trim();
     if (!key || key.length < 6) { alert('Key must be at least 6 characters'); return; }
-    if (!confirm('Are you sure? You will need the new URL to access admin:\n\n<?= SITE_URL ?>/menzio-panel.php?key=' + key + '\n\nBookmark it now!')) return;
+    const _ok = await window._confirmAsync('Are you sure? You will need the new URL to access admin:\n\n<?= SITE_URL ?>/menzio-panel.php?key=' + key + '\n\nBookmark it now!'); if(!_ok) return;
     const fd = new FormData(); fd.append('action','save_admin_key'); fd.append('key', key);
     fetch(API,{method:'POST',body:fd}).then(r=>r.json()).then(d => {
         if (d.success) {

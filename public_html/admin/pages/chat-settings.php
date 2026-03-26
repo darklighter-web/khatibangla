@@ -294,8 +294,8 @@ function updatePreviewBubble() {
 }
 updatePreviewBubble();
 document.getElementById('previewBubble').onclick = () => document.getElementById('previewWindow').classList.toggle('hidden');
-function cleanupGuests() {
-    if (!confirm('Delete all expired guest chats older than 24 hours?')) return;
+async function cleanupGuests() {
+    const _ok = await window._confirmAsync('Delete all expired guest chats older than 24 hours?'); if(!_ok) return;
     document.getElementById('cleanupForm').submit();
 }
 </script>
@@ -428,8 +428,8 @@ function toggleReply(id, btn) {
     fetch(location.pathname, {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'action=toggle_reply&reply_id='+id})
     .then(r=>r.json()).then(() => { const row = document.getElementById('reply-'+id); row.classList.toggle('opacity-50'); btn.classList.toggle('text-green-500'); btn.classList.toggle('text-gray-400'); });
 }
-function deleteReply(id) {
-    if (!confirm('Delete this auto-reply?')) return;
+async function deleteReply(id) {
+    const _ok = await window._confirmAsync('Delete this auto-reply?'); if(!_ok) return;
     fetch(location.pathname, {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'action=delete_reply&reply_id='+id})
     .then(r=>r.json()).then(() => document.getElementById('reply-'+id)?.remove());
 }

@@ -445,16 +445,16 @@ function filterImages() {
     });
 }
 
-function deleteSingle(path) {
-    if (!confirm('Delete ' + path + '?')) return;
+async function deleteSingle(path) {
+    const _ok = await window._confirmAsync('Delete ' + path + '?'); if(!_ok) return;
     fetch(API_URL, {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({action: 'delete', files: [path]})
     }).then(r => r.json()).then(d => { if (d.success) location.reload(); else alert(d.message || 'Delete failed'); });
 }
 
-function bulkDelete() {
-    if (!confirm(`Delete ${selected.size} selected files?`)) return;
+async function bulkDelete() {
+    const _ok = await window._confirmAsync(`Delete ${selected.size} selected files?`); if(!_ok) return;
     fetch(API_URL, {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({action: 'delete', files: Array.from(selected)})
@@ -467,7 +467,7 @@ async function bulkConvert() {
         return el && el.dataset.webp === '0';
     });
     if (toConvert.length === 0) { alert('No non-WebP images selected'); return; }
-    if (!confirm(`Convert ${toConvert.length} images to WebP? Originals will be kept.`)) return;
+    const _ok = await window._confirmAsync(`Convert ${toConvert.length} images to WebP? Originals will be kept.`); if(!_ok) return;
 
     const modal = document.getElementById('convertModal');
     modal.classList.remove('hidden');

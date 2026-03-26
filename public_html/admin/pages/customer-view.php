@@ -693,8 +693,8 @@ function genPass() {
     for (let i = 0; i < 6; i++) p += c.charAt(Math.floor(Math.random() * c.length));
     document.getElementById('newPassInput').value = p;
 }
-function deleteCreditTx(txId, custId) {
-    if (!confirm('Delete this credit transaction? The balance will be adjusted automatically.')) return;
+async function deleteCreditTx(txId, custId) {
+    const _ok = await window._confirmAsync('Delete this credit transaction? The balance will be adjusted automatically.'); if(!_ok) return;
     fetch('<?= SITE_URL ?>/api/store-credit.php', {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},

@@ -700,7 +700,7 @@ if (timerEl) {
 function clockIn(){fetch(SESSION_API,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'action=clock_in'}).then(r=>r.json()).then(d=>{if(d.success)location.reload();else alert(d.message)})}
 function clockOut(){const n=prompt('আজকের কাজের সারসংক্ষেপ:')||'';fetch(SESSION_API,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'action=clock_out&notes='+encodeURIComponent(n)}).then(r=>r.json()).then(d=>{if(d.success)location.reload();else alert(d.message)})}
 function markLeave(){const u=document.getElementById('leaveUser').value,d=document.getElementById('leaveDate').value,t=document.getElementById('leaveType').value;fetch(SESSION_API,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:`action=mark_leave&user_id=${u}&leave_date=${d}&leave_type=${t}`}).then(r=>r.json()).then(d=>{if(d.success)location.reload();else alert(d.message)})}
-function removeLeave(id){if(!confirm('Delete?'))return;fetch(SESSION_API,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'action=remove_leave&id='+id}).then(r=>r.json()).then(d=>{if(d.success)location.reload()})}
+async function removeLeave(id){const _ok = await window._confirmAsync('Delete?'); if(!_ok) return;fetch(SESSION_API,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'action=remove_leave&id='+id}).then(r=>r.json()).then(d=>{if(d.success)location.reload()})}
 </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

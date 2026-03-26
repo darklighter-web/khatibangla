@@ -522,8 +522,8 @@ function saveActiveBar(id) {
     fetch(API, {method:'POST', body:fd}).then(function(){ location.reload(); });
 }
 
-function deleteBar(id) {
-    if (!confirm('Delete this progress bar?')) return;
+async function deleteBar(id) {
+    const _ok = await window._confirmAsync('Delete this progress bar?'); if(!_ok) return;
     var fd = new FormData(); fd.append('action', 'admin_delete'); fd.append('id', id);
     fetch(API, {method:'POST', body:fd}).then(function(){ location.reload(); });
 }

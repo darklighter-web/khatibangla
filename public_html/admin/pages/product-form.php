@@ -1383,7 +1383,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ── Image Helpers ──
-function delImg(id) { if(!confirm('Delete?'))return; fetch(location.href,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:`action=delete_image&image_id=${id}`}).then(r=>r.json()).then(d=>{if(d.success)document.getElementById('img-'+id).remove();}); }
+async function delImg(id) { const _ok = await window._confirmAsync('Delete?'); if(!_ok) return; fetch(location.href,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:`action=delete_image&image_id=${id}`}).then(r=>r.json()).then(d=>{if(d.success)document.getElementById('img-'+id).remove();}); }
 function setPrimary(id) { fetch(location.href,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:`action=set_primary&image_id=${id}`}).then(r=>r.json()).then(d=>{if(d.success)location.reload();}); }
 function previewUp(inp) { const c=document.getElementById('uploadPreviews'); Array.from(inp.files).forEach(f=>{const r=new FileReader();r.onload=e=>{c.insertAdjacentHTML('beforeend',`<div class="w-20 h-20 rounded-lg overflow-hidden border-2 border-blue-300"><img src="${e.target.result}" class="w-full h-full object-cover"></div>`);};r.readAsDataURL(f);}); }
 

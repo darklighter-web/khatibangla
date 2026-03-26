@@ -259,7 +259,7 @@ require_once __DIR__ . '/../includes/header.php';
                             <p class="text-sm font-medium text-gray-800">Clean Customer Uploads</p>
                             <p class="text-xs text-gray-500">Delete all customer-uploaded files (prescriptions, photos)</p>
                         </div>
-                        <button onclick="if(confirm('This will permanently delete ALL customer upload files. Continue?')){fetch('<?= SITE_URL ?>/api/speed.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'clean_customer_uploads'})}).then(r=>r.json()).then(d=>{showToast(d.success?'Deleted '+d.data.deleted+' files':'Failed',d.success?'success':'error');}).catch(()=>showToast('Error','error'));}" class="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium hover:bg-red-700 transition flex-shrink-0">
+                        <button onclick="window._confirmAsync('This will permanently delete ALL customer upload files. Continue?').then(function(_ok){ if(!_ok)return; fetch('<?= SITE_URL ?>/api/speed.php',{method:'POST',headers:{'Content-Type':'application/json' }),body:JSON.stringify({action:'clean_customer_uploads'})}).then(r=>r.json()).then(d=>{showToast(d.success?'Deleted '+d.data.deleted+' files':'Failed',d.success?'success':'error');}).catch(()=>showToast('Error','error'));}" class="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium hover:bg-red-700 transition flex-shrink-0">
                             <i class="fas fa-trash-alt mr-1"></i> Clean
                         </button>
                     </div>
@@ -740,8 +740,8 @@ function purgeSinglePage(url, btn) {
     .catch(() => { btn.innerHTML = origHtml; });
 }
 
-function purgeAllCdn() {
-    if (!confirm('Purge ALL CDN cache? This will force all pages to reload from origin.')) return;
+async function purgeAllCdn() {
+    const _ok = await window._confirmAsync('Purge ALL CDN cache? This will force all pages to reload from origin.'); if(!_ok) return;
     const btn = event.target.closest('button');
     doPurge(['*'], btn);
 }
