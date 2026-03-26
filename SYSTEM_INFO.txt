@@ -472,6 +472,36 @@ SECURITY (sec_ prefix):
    - Use own orders table for fraud checking
 
 ================================================================================
+                          CHANGELOG — 2026-03-27 (Part 2)
+================================================================================
+
+FEATURE — PRINT STATUS COLUMN
+  Added a "Print" column between "Upload" and "User" in the order management
+  table. Shows a green ✓ if the order has ever been printed (invoice or
+  sticker), and a dash (—) if not.
+  Implementation:
+    • Main orders SQL query now includes: (SELECT COUNT(*) FROM print_queue
+      pq WHERE pq.order_id = o.id) as print_count
+    • order-row-tpl.php renders ✓ or — based on print_count > 0
+    • _logPrintQueue(ids, type) JS function fires on doInvPrint/doStkPrint
+    • New 'log_print' POST handler inserts into print_queue table
+    • colspan updated from 13 to 14
+  Files: order-management.php, order-row-tpl.php
+
+FIX — CRM SYSTEM NAVIGATION
+  Moved "Retention CRM" from Marketing section and "Call Center" from Support
+  section into a new "CRM System" nav group under Sales, directly below
+  Order Management. Sub-items: Retention Dashboard, Call Center.
+  File: admin/includes/header.php
+
+NOTE — CONSIGNMENT ID DISPLAY
+  The Upload column in order-management already renders courier_consignment_id
+  unconditionally — at any order status. The CID appears as a clickable link
+  (Pathao/Steadfast/RedX) whenever the field is populated. The upload APIs
+  set order_status to 'ready_to_ship' when uploading, which is why CID
+  visually appears to only show after that status.
+
+================================================================================
                           CHANGELOG — 2026-03-27
 ================================================================================
 
