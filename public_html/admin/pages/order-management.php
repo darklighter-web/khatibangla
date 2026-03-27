@@ -580,10 +580,10 @@ function sortIcon($col) {
 .om-wrap{overflow-x:auto;border:1px solid #e2e8f0;border-radius:12px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.04)}
 .om-table{table-layout:fixed;width:100%}
 .om-table colgroup .col-cb{width:30px}.om-table colgroup .col-date{width:90px}.om-table colgroup .col-inv{width:72px}.om-table colgroup .col-cust{width:170px}.om-table colgroup .col-note{width:120px}.om-table colgroup .col-prod{width:180px}.om-table colgroup .col-tag{width:90px}.om-table colgroup .col-total{width:75px}.om-table colgroup .col-upload{width:130px}.om-table colgroup .col-print{width:38px}.om-table colgroup .col-user{width:55px}.om-table colgroup .col-src{width:48px}.om-table colgroup .col-ship{width:110px}.om-table colgroup .col-act{width:65px}
-.rate-popup{display:none;position:absolute;z-index:50;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.15);padding:14px 16px;width:260px;left:50%;transform:translateX(-50%);top:calc(100% + 6px)}
-.rate-popup::before{content:'';position:absolute;top:-6px;left:50%;transform:translateX(-50%);width:12px;height:12px;background:#fff;border-left:1px solid #e2e8f0;border-top:1px solid #e2e8f0;transform:translateX(-50%) rotate(45deg)}
+.rate-popup{display:none;position:absolute;z-index:50;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.15);padding:16px;width:280px;left:0;top:calc(100% + 6px)}
+.rate-popup::before{content:'';position:absolute;top:-6px;left:20px;width:12px;height:12px;background:#fff;border-left:1px solid #e2e8f0;border-top:1px solid #e2e8f0;transform:rotate(45deg)}
 .rate-wrap{position:relative;display:inline-block;cursor:pointer}
-.rate-wrap:hover .rate-popup{display:block}
+.rate-wrap:hover .rate-popup,.rate-wrap.pinned .rate-popup{display:block}
 .rate-badge{display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px}
 .tag-badge{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:12px;white-space:nowrap}
 .dot-menu{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border-radius:5px;cursor:pointer;color:#94a3b8;font-size:14px;line-height:1;transition:all .15s}
@@ -1567,6 +1567,38 @@ function startProcessingSession() {
     setInterval(fetchCount, 15000);
 })();
 <?php endif; ?>
+
+// ── Rate Popup: Refresh (rebuild from DB) & Fetch All (call courier APIs) ──
+function rateRefresh(phone, btn) {
+    if (!phone) return;
+    var orig = btn.innerHTML; btn.innerHTML = '⏳...'; btn.disabled = true;
+    fetch('<?= SITE_URL ?>/api/courier-stats.php', {
+        method: 'POST', headers: {'Content-Type':'application/json'}, credentials: 'same-origin',
+        body: JSON.stringify({action:'rebuild', phones:[phone]})
+    }).then(r=>r.json()).then(d=> {
+        btn.innerHTML = '✓ Done'; btn.style.color = '#16a34a';
+        setTimeout(()=> OM.refresh(), 800);
+    }).catch(()=> { btn.innerHTML = orig; btn.disabled = false; });
+}
+function rateFetchAll(phone, btn) {
+    if (!phone) return;
+    var orig = btn.innerHTML; btn.innerHTML = '⏳ Fetching...'; btn.disabled = true;
+    // This calls courier-lookup.php which fetches from all courier APIs and writes to cache
+    fetch('<?= adminUrl("api/courier-lookup.php") ?>?phone=' + encodeURIComponent(phone))
+    .then(r=>r.json()).then(d=> {
+        if (d.error) { btn.innerHTML = '❌ ' + d.error; setTimeout(()=>{btn.innerHTML=orig;btn.disabled=false;},2000); return; }
+        btn.innerHTML = '✓ Fetched'; btn.style.color = '#16a34a';
+        setTimeout(()=> OM.refresh(), 800);
+    }).catch(()=> { btn.innerHTML = orig; btn.disabled = false; });
+}
+// Pin popup on click so buttons are usable
+document.addEventListener('click', function(e) {
+    var wrap = e.target.closest('.rate-wrap');
+    // Close all other pinned popups
+    document.querySelectorAll('.rate-wrap.pinned').forEach(function(el) { if (el !== wrap) el.classList.remove('pinned'); });
+    if (wrap && !e.target.closest('button')) wrap.classList.toggle('pinned');
+    else if (!e.target.closest('.rate-popup')) document.querySelectorAll('.rate-wrap.pinned').forEach(function(el) { el.classList.remove('pinned'); });
+});
 
 function syncCourier(){ recheckCourier(); }
 

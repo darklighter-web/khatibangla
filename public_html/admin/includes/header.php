@@ -226,13 +226,23 @@ $icons = [
     <?php else: ?>
     <link rel="icon" href="<?= SITE_URL ?>/favicon.ico" type="image/x-icon">
     <?php endif; ?>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.17/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr" defer></script>
     <style>
+        /* Tailwind arbitrary value classes (pre-built CSS doesn't include JIT values) */
+        .text-\[8px\]{font-size:8px}.text-\[9px\]{font-size:9px}.text-\[10px\]{font-size:10px}.text-\[11px\]{font-size:11px}.text-\[12px\]{font-size:12px}.text-\[13px\]{font-size:13px}
+        .z-\[50\]{z-index:50}.z-\[55\]{z-index:55}.z-\[60\]{z-index:60}.z-\[100\]{z-index:100}.z-\[999\]{z-index:999}.z-\[9997\]{z-index:9997}.z-\[9998\]{z-index:9998}.z-\[9999\]{z-index:9999}.z-\[99999\]{z-index:99999}
+        .h-\[44px\]{height:44px}.h-\[180px\]{height:180px}.h-\[200px\]{height:200px}.h-\[250px\]{height:250px}.h-\[300px\]{height:300px}.h-\[350px\]{height:350px}.h-\[400px\]{height:400px}.h-\[420px\]{height:420px}.h-\[450px\]{height:450px}.h-\[500px\]{height:500px}.h-\[540px\]{height:540px}.h-\[600px\]{height:600px}
+        .h-\[55vh\]{height:55vh}.h-\[70vh\]{height:70vh}.h-\[80vh\]{height:80vh}.h-\[85vh\]{height:85vh}.h-\[90vh\]{height:90vh}.h-\[92vh\]{height:92vh}.h-\[calc\(100vh-174px\)\]{height:calc(100vh - 174px)}
+        .w-\[90px\]{width:90px}.w-\[100px\]{width:100px}.w-\[110px\]{width:110px}.w-\[120px\]{width:120px}.w-\[130px\]{width:130px}.w-\[140px\]{width:140px}.w-\[150px\]{width:150px}.w-\[160px\]{width:160px}.w-\[180px\]{width:180px}.w-\[200px\]{width:200px}.w-\[280px\]{width:280px}.w-\[300px\]{width:300px}.w-\[360px\]{width:360px}.w-\[380px\]{width:380px}.w-\[400px\]{width:400px}.w-\[420px\]{width:420px}.w-\[800px\]{width:800px}.w-\[1400px\]{width:1400px}
+        .w-\[60\%\]{width:60%}.w-\[95vw\]{width:95vw}
+        .min-w-\[180px\]{min-width:180px}.min-w-\[200px\]{min-width:200px}
+        .max-h-\[70vh\]{max-height:70vh}.max-w-6xl{max-width:72rem}.max-w-5xl{max-width:64rem}
+        .leading-\[14px\]{line-height:14px}.top-\[2px\]{top:2px}.gap-\[2px\]{gap:2px}
+        .bg-black\/60{background:rgba(0,0,0,.6)}.bg-black\/50{background:rgba(0,0,0,.5)}.bg-black\/40{background:rgba(0,0,0,.4)}.bg-white\/70{background:rgba(255,255,255,.7)}
         body{font-family:'Inter',sans-serif}
         .sidebar-scroll::-webkit-scrollbar{width:4px}
         .sidebar-scroll::-webkit-scrollbar-thumb{background:rgba(128,128,128,0.3);border-radius:4px}

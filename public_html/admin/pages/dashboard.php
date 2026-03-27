@@ -543,6 +543,7 @@ $deliveryRate    = $shippedPeriod > 0 ? round(($deliveredPeriod / $shippedPeriod
 </div>
 
 <!-- ═══════ CHARTS JS ═══════ -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 function updateParam(k,v){const u=new URL(location);u.searchParams.set(k,v);return u.toString();}
 

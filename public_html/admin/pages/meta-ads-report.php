@@ -213,6 +213,7 @@ $tabs = [
         <canvas id="convChart" height="150"></canvas>
     </div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 const dailyAd = <?= json_encode($dailySpend) ?>;
 new Chart(document.getElementById('spendChart'), {

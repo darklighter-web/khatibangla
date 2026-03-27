@@ -30,38 +30,43 @@
             <span class="rate-wrap">
                 <span class="rate-badge" style="background:<?= $__rBg ?>;color:<?= $__rClr ?>"><?= $sr['rate'] ?>%</span>
                 <?php if ($sr['total'] > 0): ?>
-                <div class="rate-popup">
-                    <div style="font-size:11px;font-weight:700;color:#111827;margin-bottom:6px">Courier Rating</div>
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-                        <span style="font-size:22px;font-weight:800;color:<?= $__rClr ?>"><?= $sr['rate'] ?>%</span>
-                        <span style="font-size:11px;color:#6b7280">success rate</span>
+                <div class="rate-popup" onclick="event.stopPropagation()">
+                    <div style="font-weight:700;font-size:13px;color:#111827;margin-bottom:8px">COURIER RATING</div>
+                    <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:6px">
+                        <span style="font-size:24px;font-weight:800;color:<?= $__rClr ?>"><?= number_format($sr['rate'],1) ?>%</span>
+                        <span style="font-size:12px;color:#6b7280">success rate</span>
                     </div>
-                    <div style="background:#e5e7eb;border-radius:6px;height:6px;overflow:hidden;margin-bottom:10px">
-                        <div style="background:<?= $__rBar ?>;height:100%;width:<?= $sr['rate'] ?>%;border-radius:6px"></div>
+                    <div style="background:#e5e7eb;border-radius:6px;height:7px;overflow:hidden;margin-bottom:12px">
+                        <div style="background:<?= $__rBar ?>;height:100%;width:<?= min(100,$sr['rate']) ?>%;border-radius:6px"></div>
                     </div>
-                    <div style="display:flex;gap:6px;margin-bottom:10px">
-                        <div style="flex:1;background:#f9fafb;border:1px solid #f3f4f6;border-radius:8px;padding:5px 6px;text-align:center">
-                            <div style="font-size:8px;color:#9ca3af;text-transform:uppercase;font-weight:600">Total</div>
-                            <div style="font-size:15px;font-weight:700;color:#111827"><?= $sr['total'] ?></div>
+                    <div style="display:flex;gap:1px;margin-bottom:12px;background:#e5e7eb;border-radius:8px;overflow:hidden">
+                        <div style="flex:1;background:#fff;padding:8px 6px;text-align:center">
+                            <div style="font-size:8px;color:#9ca3af;text-transform:uppercase;font-weight:700;letter-spacing:.5px">Total</div>
+                            <div style="font-size:18px;font-weight:800;color:#111827"><?= $sr['total'] ?></div>
                         </div>
-                        <div style="flex:1;background:#f0fdf4;border:1px solid #dcfce7;border-radius:8px;padding:5px 6px;text-align:center">
-                            <div style="font-size:8px;color:#16a34a;text-transform:uppercase;font-weight:600">Success</div>
-                            <div style="font-size:15px;font-weight:700;color:#16a34a"><?= $sr['delivered'] ?></div>
+                        <div style="flex:1;background:#fff;padding:8px 6px;text-align:center">
+                            <div style="font-size:8px;color:#16a34a;text-transform:uppercase;font-weight:700;letter-spacing:.5px">Success</div>
+                            <div style="font-size:18px;font-weight:800;color:#16a34a"><?= $sr['delivered'] ?></div>
                         </div>
-                        <div style="flex:1;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:5px 6px;text-align:center">
-                            <div style="font-size:8px;color:#dc2626;text-transform:uppercase;font-weight:600">Failed</div>
-                            <div style="font-size:15px;font-weight:700;color:#dc2626"><?= $sr['cancelled'] + ($sr['returned'] ?? 0) ?></div>
+                        <div style="flex:1;background:#fff;padding:8px 6px;text-align:center">
+                            <div style="font-size:8px;color:#dc2626;text-transform:uppercase;font-weight:700;letter-spacing:.5px">Failed</div>
+                            <div style="font-size:18px;font-weight:800;color:#dc2626"><?= $sr['cancelled'] + ($sr['returned'] ?? 0) ?></div>
                         </div>
                     </div>
                     <?php if (!empty($__cBreak)): ?>
-                    <div style="font-size:10px;font-weight:600;color:#6b7280;margin-bottom:4px">Breakdown</div>
-                    <div style="display:flex;flex-wrap:wrap;gap:4px">
-                        <?php foreach ($__cBreak as $cb): ?>
-                        <span style="font-size:10px;color:#374151;background:#f3f4f6;padding:2px 7px;border-radius:6px"><?= e($cb['name']) ?>: <b><?= $cb['delivered'] ?></b>/<?= $cb['total'] ?></span>
-                        <?php endforeach; ?>
+                    <div style="margin-bottom:10px">
+                        <div style="font-size:11px;font-weight:700;color:#374151;margin-bottom:5px">Breakdown</div>
+                        <div style="font-size:11px;color:#374151"><?php
+                            $__bParts = [];
+                            foreach ($__cBreak as $cb) { $__bParts[] = '<b>' . e($cb['name']) . '</b>: ' . $cb['delivered'] . '/' . $cb['total']; }
+                            echo implode('&nbsp;&nbsp;&nbsp;', $__bParts);
+                        ?></div>
                     </div>
                     <?php endif; ?>
-                    <div style="font-size:9px;color:#9ca3af;margin-top:8px;text-align:right">Spent: ৳<?= number_format(floatval($sr['total_spent'])) ?></div>
+                    <div style="display:flex;gap:6px;padding-top:8px;border-top:1px solid #f3f4f6">
+                        <button onclick="event.stopPropagation();rateRefresh('<?= e($order['customer_phone']) ?>',this)" style="flex:1;padding:6px 10px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;font-size:11px;color:#374151;cursor:pointer;font-weight:500;display:flex;align-items:center;justify-content:center;gap:4px" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='#fff'">🔄 Refresh</button>
+                        <button onclick="event.stopPropagation();rateFetchAll('<?= e($order['customer_phone']) ?>',this)" style="flex:1;padding:6px 10px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;font-size:11px;color:#374151;cursor:pointer;font-weight:500;display:flex;align-items:center;justify-content:center;gap:4px" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='#fff'">🔍 Fetch All (<?= $sr['total'] ?>)</button>
+                    </div>
                 </div>
                 <?php endif; ?>
             </span>

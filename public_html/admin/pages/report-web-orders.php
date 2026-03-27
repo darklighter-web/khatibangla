@@ -109,6 +109,7 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 const d = <?= json_encode($dailyOrders) ?>;
 new Chart(document.getElementById('dailyChart'), { type:'line', data:{labels:d.map(x=>{const dt=new Date(x.date);return dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});}),datasets:[{label:'Orders',data:d.map(x=>x.cnt),borderColor:'#3b82f6',tension:0.4,fill:true,backgroundColor:'rgba(59,130,246,0.1)'}]}, options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}} });

@@ -611,6 +611,7 @@ function applyCustomRange() {
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 document.querySelectorAll('.date-row').forEach(row => {
     row.addEventListener('click', function() {

@@ -175,6 +175,7 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 const trendData = <?= json_encode($monthlyTrend) ?>;
 new Chart(document.getElementById('trendChart'), {
