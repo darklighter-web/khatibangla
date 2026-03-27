@@ -2059,7 +2059,7 @@ async function uploadToPathao(orderId, btn) {
     var zoneName = zs?.selectedOptions[0]?.textContent?.trim() || '';
     var areaName = as2?.selectedOptions[0]?.textContent?.trim() || '';
     if(cityName==='Select City')cityName=''; if(zoneName==='Select Zone')zoneName=''; if(areaName==='Select Area')areaName='';
-    const ok = await window._confirmAsync('Upload this order to Pathao Courier?');
+    const ok = await window._confirmAsync('Upload this order to Pathao?');
     if (!ok) return;
     if(btn){btn.disabled=true;btn.textContent='⏳ Uploading to Pathao...';}
     fetch(PATHAO_API, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({

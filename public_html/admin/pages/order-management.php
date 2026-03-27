@@ -260,6 +260,11 @@ try { $db->query("ALTER TABLE orders ADD COLUMN courier_uploaded_at DATETIME DEF
 try { $db->query("CREATE TABLE IF NOT EXISTS courier_webhook_log (id INT AUTO_INCREMENT PRIMARY KEY, courier VARCHAR(50), payload TEXT, result VARCHAR(255), ip_address VARCHAR(45), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, INDEX(courier), INDEX(created_at)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"); } catch(\Throwable $e) {}
 try { $db->query("ALTER TABLE orders ADD COLUMN pathao_consignment_id VARCHAR(100) DEFAULT NULL AFTER courier_consignment_id"); } catch(\Throwable $e) {}
 try { $db->query("ALTER TABLE orders ADD INDEX idx_pathao_cid (pathao_consignment_id)"); } catch(\Throwable $e) {}
+// Normalize courier names: "Pathao Courier" → "Pathao"
+try { $db->query("UPDATE orders SET courier_name = 'Pathao' WHERE courier_name IN ('Pathao Courier','pathao courier','PATHAO COURIER')"); } catch(\Throwable $e) {}
+try { $db->query("UPDATE orders SET shipping_method = 'Pathao' WHERE shipping_method IN ('Pathao Courier','pathao courier','PATHAO COURIER')"); } catch(\Throwable $e) {}
+// Invalidate courier stats cache after name normalization so breakdown regenerates
+try { $db->query("UPDATE customer_courier_stats SET fetched_at = '2000-01-01' WHERE courier_breakdown LIKE '%Pathao Courier%'"); } catch(\Throwable $e) {}
 try { $db->query("ALTER TABLE orders ADD COLUMN is_preorder TINYINT(1) DEFAULT 0 AFTER is_fake"); } catch(\Throwable $e) {}
 try { $db->query("ALTER TABLE orders ADD COLUMN order_note TEXT DEFAULT NULL AFTER notes"); } catch(\Throwable $e) {}
 try { $db->query("ALTER TABLE orders ADD COLUMN preorder_date DATE DEFAULT NULL AFTER is_preorder"); } catch(\Throwable $e) {}
@@ -389,7 +394,7 @@ foreach ($phones as $phone) {
             $rate=$t>0?round(($d/$t)*100,2):0;
             $courierBreak = [];
             try {
-                $cbRows = $db->fetchAll("SELECT COALESCE(NULLIF(courier_name,''),NULLIF(shipping_method,''),'Unknown') as cn, COUNT(*) as total, SUM(CASE WHEN order_status='delivered' THEN 1 ELSE 0 END) as delivered FROM orders WHERE REPLACE(REPLACE(customer_phone,' ',''),'-','') LIKE ? AND (courier_name IS NOT NULL AND courier_name != '' OR shipping_method IS NOT NULL AND shipping_method != '') GROUP BY cn", [$pl]);
+                $cbRows = $db->fetchAll("SELECT CASE WHEN LOWER(COALESCE(NULLIF(courier_name,''),NULLIF(shipping_method,''))) LIKE '%pathao%' THEN 'Pathao' WHEN LOWER(COALESCE(NULLIF(courier_name,''),NULLIF(shipping_method,''))) LIKE '%steadfast%' THEN 'Steadfast' WHEN LOWER(COALESCE(NULLIF(courier_name,''),NULLIF(shipping_method,''))) LIKE '%redx%' THEN 'RedX' ELSE COALESCE(NULLIF(courier_name,''),NULLIF(shipping_method,''),'Other') END as cn, COUNT(*) as total, SUM(CASE WHEN order_status='delivered' THEN 1 ELSE 0 END) as delivered FROM orders WHERE REPLACE(REPLACE(customer_phone,' ',''),'-','') LIKE ? AND (courier_name IS NOT NULL AND courier_name != '' OR shipping_method IS NOT NULL AND shipping_method != '') GROUP BY cn", [$pl]);
                 foreach ($cbRows as $cb) { $courierBreak[] = ['name'=>$cb['cn'],'delivered'=>intval($cb['delivered']),'total'=>intval($cb['total'])]; }
             } catch (\Throwable $e) {}
             $successRates[$phone] = ['total'=>$t,'delivered'=>$d,'cancelled'=>$c2,'returned'=>$ret,'rate'=>$rate,'total_spent'=>floatval($sr['total_spent']??0),'courier_breakdown'=>$courierBreak];
@@ -650,7 +655,7 @@ $_courierBarHidden = !$status || !in_array($status, $_courierVisibleStatuses);
             <?php
             $courierIcons = [
                 'Pathao'           => ['icon' => 'fas fa-motorcycle', 'color' => 'teal',   'bg' => 'bg-teal-50',   'border' => 'border-teal-500',   'text' => 'text-teal-700'],
-                'Pathao Courier'   => ['icon' => 'fas fa-motorcycle', 'color' => 'teal',   'bg' => 'bg-teal-50',   'border' => 'border-teal-500',   'text' => 'text-teal-700'],
+                'Pathao'   => ['icon' => 'fas fa-motorcycle', 'color' => 'teal',   'bg' => 'bg-teal-50',   'border' => 'border-teal-500',   'text' => 'text-teal-700'],
                 'Steadfast'        => ['icon' => 'fas fa-truck',       'color' => 'blue',   'bg' => 'bg-blue-50',   'border' => 'border-blue-500',   'text' => 'text-blue-700'],
                 'Steadfast Courier'=> ['icon' => 'fas fa-truck',       'color' => 'blue',   'bg' => 'bg-blue-50',   'border' => 'border-blue-500',   'text' => 'text-blue-700'],
                 'RedX'             => ['icon' => 'fas fa-bolt',        'color' => 'red',    'bg' => 'bg-red-50',    'border' => 'border-red-500',    'text' => 'text-red-700'],
@@ -722,8 +727,8 @@ $_courierBarHidden = !$status || !in_array($status, $_courierVisibleStatuses);
     </select>
     <button type="button" onclick="recheckCourier()" class="border border-emerald-200 text-emerald-600 px-2.5 py-1.5 rounded text-xs hover:bg-emerald-50 font-medium" title="Re-sync courier statuses for all active orders">🔄 Check</button>
     <button type="button" onclick="fcCheck('')" class="border border-blue-200 text-blue-600 px-2.5 py-1.5 rounded text-xs hover:bg-blue-50 font-medium" title="Fraud check a customer phone">🔍 Fraud</button>
-    <div class="relative" id="viewWrap" style="display:inline-block">
-        <button type="button" onclick="document.getElementById('viewDrop').classList.toggle('show')" class="border text-gray-500 px-2.5 py-1.5 rounded text-xs hover:bg-gray-50 font-medium flex items-center gap-1"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg> View</button>
+    <div class="relative" id="viewWrap">
+        <button type="button" onclick="document.getElementById('viewDrop').classList.toggle('show')" class="border text-gray-500 px-2.5 py-1.5 rounded text-xs hover:bg-gray-50 font-medium inline-flex items-center gap-1"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg> View</button>
         <div id="viewDrop" class="om-view-drop">
             <div style="padding:6px 14px 8px;font-weight:700;font-size:12px;color:#111827;border-bottom:1px solid #f3f4f6;margin-bottom:4px">Toggle columns</div>
             <?php

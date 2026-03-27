@@ -68,7 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($name) $db->update('customers', ['name' => $name], 'id = ?', [$customerId]);
         }
 
-        $deliveryMethod = sanitize($_POST['delivery_method'] ?? 'Pathao Courier');
+        $deliveryMethod = sanitize($_POST['delivery_method'] ?? 'Pathao');
         $channel        = sanitize($_POST['channel'] ?? 'phone');
         $isPreorder     = !empty($_POST['is_preorder']) ? 1 : 0;
         $preorderDate   = !empty($_POST['preorder_date']) ? $_POST['preorder_date'] : null;
@@ -191,7 +191,7 @@ $msg = $_GET['msg'] ?? '';
                 <div>
                     <label class="block text-sm font-semibold text-gray-800 mb-1.5">Delivery Method</label>
                     <select name="delivery_method" class="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none">
-                        <?php foreach(['Pathao Courier','Steadfast','CarryBee','RedX','SA Paribahan','Sundarban','Self Delivery','Store Pickup'] as $dm): ?>
+                        <?php foreach(['Pathao','Steadfast','CarryBee','RedX','SA Paribahan','Sundarban','Self Delivery','Store Pickup'] as $dm): ?>
                         <option value="<?= $dm ?>"><?= $dm ?></option>
                         <?php endforeach; ?>
                     </select>

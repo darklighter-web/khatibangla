@@ -89,7 +89,7 @@ function buildStatsForPhone($db, $phone) {
     // Per-courier breakdown
     $breakdown = [];
     try {
-        $cbRows = $db->fetchAll("SELECT COALESCE(NULLIF(courier_name,''),NULLIF(shipping_method,''),'Unknown') as cn, 
+        $cbRows = $db->fetchAll("SELECT CASE WHEN LOWER(COALESCE(NULLIF(courier_name,''),NULLIF(shipping_method,''))) LIKE '%pathao%' THEN 'Pathao' WHEN LOWER(COALESCE(NULLIF(courier_name,''),NULLIF(shipping_method,''))) LIKE '%steadfast%' THEN 'Steadfast' WHEN LOWER(COALESCE(NULLIF(courier_name,''),NULLIF(shipping_method,''))) LIKE '%redx%' THEN 'RedX' ELSE COALESCE(NULLIF(courier_name,''),NULLIF(shipping_method,''),'Other') END as cn, 
             COUNT(*) as total, 
             SUM(CASE WHEN order_status='delivered' THEN 1 ELSE 0 END) as delivered
             FROM orders WHERE REPLACE(REPLACE(customer_phone,' ',''),'-','') LIKE ? 
