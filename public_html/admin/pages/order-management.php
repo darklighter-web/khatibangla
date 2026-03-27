@@ -736,9 +736,10 @@ $_courierBarHidden = !$status || !in_array($status, $_courierVisibleStatuses);
                 ['key'=>'date','label'=>'Date'],['key'=>'invoice','label'=>'Invoice'],
                 ['key'=>'customer','label'=>'Customer'],['key'=>'note','label'=>'Note'],
                 ['key'=>'products','label'=>'Products'],['key'=>'tags','label'=>'Tags'],
-                ['key'=>'total','label'=>'Total'],['key'=>'upload','label'=>'Upload'],
-                ['key'=>'print','label'=>'Print'],['key'=>'user','label'=>'User'],
-                ['key'=>'source','label'=>'Source'],['key'=>'shipping','label'=>'Shipping'],
+                ['key'=>'total','label'=>'Total'],['key'=>'rate','label'=>'Success Rate'],
+                ['key'=>'upload','label'=>'Upload'],['key'=>'print','label'=>'Print'],
+                ['key'=>'user','label'=>'User'],['key'=>'source','label'=>'Source'],
+                ['key'=>'shipping','label'=>'Shipping'],
             ];
             foreach ($__cols as $c): ?>
             <label><input type="checkbox" checked data-col="<?= $c['key'] ?>" onchange="toggleCol(this)"> <?= $c['label'] ?></label>
@@ -832,6 +833,7 @@ $_courierBarHidden = !$status || !in_array($status, $_courierVisibleStatuses);
                 <th data-col="products">Products</th>
                 <th data-col="tags" style="width:72px">Tags</th>
                 <th data-col="total" style="width:68px;text-align:right"><a href="#" onclick="event.preventDefault();OM.goSort('total')" style="cursor:pointer">Total <?= sortIcon('total') ?></a></th>
+                <th data-col="rate" style="width:120px">Success Rate</th>
                 <th data-col="upload" style="width:110px">Upload</th>
                 <th data-col="print" style="width:34px;text-align:center">Print</th>
                 <th data-col="user" style="width:62px">User</th>

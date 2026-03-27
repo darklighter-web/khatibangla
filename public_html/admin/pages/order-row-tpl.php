@@ -1,5 +1,11 @@
 <?php // order-row-tpl.php — single source of truth for order table rows
 $__userDisplay = $order['last_action_by'] ?? $order['assigned_name'] ?? '—';
+$__rClr=$sr['rate']>=70?'#22c55e':($sr['rate']>=40?'#eab308':'#ef4444');
+$__rBg=$sr['rate']>=70?'#dcfce7':($sr['rate']>=40?'#fef9c3':'#fee2e2');
+$__rTxt=$sr['rate']>=70?'#166534':($sr['rate']>=40?'#854d0e':'#991b1b');
+$__cBreak=$sr['courier_breakdown']??[];
+// SVG donut: circumference = 2*PI*16 ≈ 100.53
+$__circ=100.53; $__dash=($sr['rate']/100)*$__circ; $__gap=$__circ-$__dash;
 ?>
 <tr data-order-id="<?= $order['id'] ?>">
     <td style="vertical-align:middle"><input type="checkbox" name="order_ids[]" value="<?= $order['id'] ?>" class="order-check" onchange="updateBulk()"></td>
@@ -22,40 +28,7 @@ $__userDisplay = $order['last_action_by'] ?? $order['assigned_name'] ?? '—';
 
     <td data-col="customer">
         <div class="cust-name"><?= e(mb_strimwidth($order['customer_name'],0,22,'...')) ?></div>
-        <div style="margin-top:1px;display:flex;align-items:center;gap:3px">
-            <span class="cust-phone"><?= e($order['customer_phone']) ?></span>
-            <?php
-                $__rBg=$sr['rate']>=70?'#dcfce7':($sr['rate']>=40?'#fef9c3':'#fee2e2');
-                $__rClr=$sr['rate']>=70?'#166534':($sr['rate']>=40?'#854d0e':'#991b1b');
-                $__rBar=$sr['rate']>=70?'#22c55e':($sr['rate']>=40?'#eab308':'#ef4444');
-                $__cBreak=$sr['courier_breakdown']??[];
-            ?>
-            <span class="rate-wrap">
-                <span class="rate-badge" style="background:<?=$__rBg?>;color:<?=$__rClr?>"><?=$sr['rate']?>%</span>
-                <?php if($sr['total']>0):?>
-                <div class="rate-popup" onclick="event.stopPropagation()">
-                    <div style="font-weight:700;font-size:13px;color:#111827;margin-bottom:8px">COURIER RATING</div>
-                    <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:6px">
-                        <span style="font-size:24px;font-weight:800;color:<?=$__rClr?>"><?=number_format($sr['rate'],1)?>%</span>
-                        <span style="font-size:12px;color:#6b7280">success rate</span>
-                    </div>
-                    <div style="background:#e5e7eb;border-radius:6px;height:7px;overflow:hidden;margin-bottom:12px">
-                        <div style="background:<?=$__rBar?>;height:100%;width:<?=min(100,$sr['rate'])?>%;border-radius:6px"></div>
-                    </div>
-                    <div style="display:flex;gap:1px;margin-bottom:12px;background:#e5e7eb;border-radius:8px;overflow:hidden">
-                        <div style="flex:1;background:#fff;padding:8px 6px;text-align:center"><div style="font-size:8px;color:#9ca3af;text-transform:uppercase;font-weight:700;letter-spacing:.5px">Total</div><div style="font-size:18px;font-weight:800;color:#111827"><?=$sr['total']?></div></div>
-                        <div style="flex:1;background:#fff;padding:8px 6px;text-align:center"><div style="font-size:8px;color:#16a34a;text-transform:uppercase;font-weight:700;letter-spacing:.5px">Success</div><div style="font-size:18px;font-weight:800;color:#16a34a"><?=$sr['delivered']?></div></div>
-                        <div style="flex:1;background:#fff;padding:8px 6px;text-align:center"><div style="font-size:8px;color:#dc2626;text-transform:uppercase;font-weight:700;letter-spacing:.5px">Failed</div><div style="font-size:18px;font-weight:800;color:#dc2626"><?=$sr['cancelled']+($sr['returned']??0)?></div></div>
-                    </div>
-                    <?php if(!empty($__cBreak)):?><div style="margin-bottom:10px"><div style="font-size:11px;font-weight:700;color:#374151;margin-bottom:5px">Breakdown</div><div style="font-size:11px;color:#374151"><?php $__bp=[];foreach($__cBreak as $cb){$__bp[]='<b>'.e($cb['name']).'</b>: '.$cb['delivered'].'/'.$cb['total'];}echo implode('&nbsp;&nbsp;&nbsp;',$__bp);?></div></div><?php endif;?>
-                    <div style="display:flex;gap:6px;padding-top:8px;border-top:1px solid #f3f4f6">
-                        <button onclick="event.stopPropagation();rateRefresh('<?=e($order['customer_phone'])?>',this)" style="flex:1;padding:6px 10px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;font-size:11px;color:#374151;cursor:pointer;font-weight:500;display:flex;align-items:center;justify-content:center;gap:4px" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='#fff'">🔄 Refresh</button>
-                        <button onclick="event.stopPropagation();rateFetchAll('<?=e($order['customer_phone'])?>',this)" style="flex:1;padding:6px 10px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;font-size:11px;color:#374151;cursor:pointer;font-weight:500;display:flex;align-items:center;justify-content:center;gap:4px" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='#fff'">🔍 Fetch All (<?=$sr['total']?>)</button>
-                    </div>
-                </div>
-                <?php endif;?>
-            </span>
-        </div>
+        <div style="margin-top:1px"><span class="cust-phone"><?= e($order['customer_phone']) ?></span></div>
         <div class="cust-addr">📍 <?=e(mb_strimwidth($order['customer_address'],0,28,'...'))?></div>
     </td>
 
@@ -91,6 +64,47 @@ $__userDisplay = $order['last_action_by'] ?? $order['assigned_name'] ?? '—';
     <td data-col="total" style="text-align:right;white-space:nowrap">
         <div style="font-weight:700;color:#0f172a;font-size:12px"><?=number_format($order['total'],2)?></div>
         <?php if($creditUsed>0):?><div style="font-size:9px;color:#ca8a04">-৳<?=number_format($creditUsed)?></div><?php endif;?>
+    </td>
+
+    <!-- ═══ Success Rate Column — circular donut + stats ═══ -->
+    <td data-col="rate">
+        <span class="rate-wrap">
+        <div style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <svg width="36" height="36" viewBox="0 0 36 36" style="flex-shrink:0;transform:rotate(-90deg)">
+                <circle cx="18" cy="18" r="16" fill="none" stroke="#e5e7eb" stroke-width="3"/>
+                <circle cx="18" cy="18" r="16" fill="none" stroke="<?=$__rClr?>" stroke-width="3" stroke-dasharray="<?=$__dash?> <?=$__gap?>" stroke-linecap="round"/>
+            </svg>
+            <div style="line-height:1.2">
+                <div style="font-size:11px;font-weight:700;color:<?=$__rTxt?>">Success: <?=$sr['rate']?>%</div>
+                <div style="font-size:10px;color:#64748b">Order: <?=$sr['delivered']?>/<?=$sr['total']?></div>
+                <?php if(!empty($sr['customer_rating'])):?>
+                <div style="font-size:9px;color:#7c3aed">Rating: <?= is_numeric($sr['customer_rating']) ? $sr['customer_rating'] : ucfirst(str_replace('_',' ',$sr['customer_rating'])) ?></div>
+                <?php endif;?>
+            </div>
+        </div>
+        <?php if($sr['total']>0):?>
+        <div class="rate-popup" onclick="event.stopPropagation()">
+            <div style="font-weight:700;font-size:13px;color:#111827;margin-bottom:8px">COURIER RATING</div>
+            <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:6px">
+                <span style="font-size:24px;font-weight:800;color:<?=$__rTxt?>"><?=number_format($sr['rate'],1)?>%</span>
+                <span style="font-size:12px;color:#6b7280">success rate</span>
+            </div>
+            <div style="background:#e5e7eb;border-radius:6px;height:7px;overflow:hidden;margin-bottom:12px">
+                <div style="background:<?=$__rClr?>;height:100%;width:<?=min(100,$sr['rate'])?>%;border-radius:6px"></div>
+            </div>
+            <div style="display:flex;gap:1px;margin-bottom:12px;background:#e5e7eb;border-radius:8px;overflow:hidden">
+                <div style="flex:1;background:#fff;padding:8px 6px;text-align:center"><div style="font-size:8px;color:#9ca3af;text-transform:uppercase;font-weight:700;letter-spacing:.5px">Total</div><div style="font-size:18px;font-weight:800;color:#111827"><?=$sr['total']?></div></div>
+                <div style="flex:1;background:#fff;padding:8px 6px;text-align:center"><div style="font-size:8px;color:#16a34a;text-transform:uppercase;font-weight:700;letter-spacing:.5px">Success</div><div style="font-size:18px;font-weight:800;color:#16a34a"><?=$sr['delivered']?></div></div>
+                <div style="flex:1;background:#fff;padding:8px 6px;text-align:center"><div style="font-size:8px;color:#dc2626;text-transform:uppercase;font-weight:700;letter-spacing:.5px">Failed</div><div style="font-size:18px;font-weight:800;color:#dc2626"><?=$sr['cancelled']+($sr['returned']??0)?></div></div>
+            </div>
+            <?php if(!empty($__cBreak)):?><div style="margin-bottom:10px"><div style="font-size:11px;font-weight:700;color:#374151;margin-bottom:5px">Breakdown</div><div style="font-size:11px;color:#374151"><?php $__bp=[];foreach($__cBreak as $cb){$__bp[]='<b>'.e($cb['name']).'</b>: '.$cb['delivered'].'/'.$cb['total'];}echo implode('&nbsp;&nbsp;&nbsp;',$__bp);?></div></div><?php endif;?>
+            <div style="display:flex;gap:6px;padding-top:8px;border-top:1px solid #f3f4f6">
+                <button onclick="event.stopPropagation();rateRefresh('<?=e($order['customer_phone'])?>',this)" style="flex:1;padding:6px 10px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;font-size:11px;color:#374151;cursor:pointer;font-weight:500;display:flex;align-items:center;justify-content:center;gap:4px" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='#fff'">🔄 Refresh</button>
+                <button onclick="event.stopPropagation();rateFetchAll('<?=e($order['customer_phone'])?>',this)" style="flex:1;padding:6px 10px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;font-size:11px;color:#374151;cursor:pointer;font-weight:500;display:flex;align-items:center;justify-content:center;gap:4px" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='#fff'">🔍 Fetch All (<?=$sr['total']?>)</button>
+            </div>
+        </div>
+        <?php endif;?>
+        </span>
     </td>
 
     <td data-col="upload">
