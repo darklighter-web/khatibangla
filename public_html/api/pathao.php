@@ -255,7 +255,32 @@ class PathaoAPI {
         $rating    = $customer['customer_rating'] ?? null;
         
         if ($showCount === false || $version === 'v2') {
-            // v2 mode: rating only, no delivery counts
+            // v2 mode: rating only, no delivery counts from portal
+            // Try Hermes API as fallback for actual counts
+            if ($this->isConfigured()) {
+                try {
+                    $hResp = $this->authed('POST', '/aladdin/api/v1/merchant/customer-check', ['phone' => $phone]);
+                    if ($hResp) {
+                        $hd = $hResp['data'] ?? $hResp;
+                        if (isset($hd['data']) && is_array($hd['data'])) $hd = $hd['data'];
+                        $hTotal = intval($hd['total'] ?? $hd['total_orders'] ?? $hd['total_delivery'] ?? 0);
+                        $hSuccess = intval($hd['success'] ?? $hd['delivered'] ?? $hd['successful_delivery'] ?? 0);
+                        if ($hTotal > 0) {
+                            return [
+                                'successful_delivery' => $hSuccess,
+                                'total_delivery'      => $hTotal,
+                                'cancel'              => $hTotal - $hSuccess,
+                                'show_count'          => true,
+                                'customer_rating'     => $rating,
+                                'version'             => $version,
+                                'source'              => 'hermes_api_fallback',
+                                'raw'                 => $hd,
+                            ];
+                        }
+                    }
+                } catch (\Throwable $e) {}
+            }
+            // Hermes fallback didn't work — return rating only
             return [
                 'successful_delivery' => 0,
                 'total_delivery'      => 0,

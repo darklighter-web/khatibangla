@@ -1305,7 +1305,12 @@ function updCard(id,data){
     c.querySelector('[data-success]').textContent='Success: '+data.success;
     c.querySelector('[data-cancelled]').textContent='Cancelled: '+data.cancelled;
     const bar=c.querySelector('[data-bar]');bar.style.width=Math.min(100,rate)+'%';bar.style.background=bc;
-    if(data.api_checked>0)re.innerHTML+=' <span style="color:#22c55e;font-size:9px">✓API</span>';
+    var badges='';
+    if(data.api_checked>0) badges+=' <span style="color:#22c55e;font-size:9px">✓API</span>';
+    if(data.data_source==='our_db') badges+=' <span style="color:#f59e0b;font-size:9px">DB</span>';
+    if(data.customer_rating!==undefined&&data.customer_rating!==null) badges+=' <span style="background:#f3e8ff;color:#7c3aed;font-size:9px;padding:0 4px;border-radius:4px;margin-left:2px">⭐'+data.customer_rating+'</span>';
+    re.innerHTML='Success Rate: '+rate+'%'+badges;
+    re.style.color=rc;
 }
 <?php if(!empty($order['customer_phone'])):?>
 document.addEventListener('DOMContentLoaded',()=>setTimeout(fetchCourierData,500));

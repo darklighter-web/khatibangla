@@ -225,13 +225,21 @@ if ($fraudData['pathao']) {
     $apiSuccess = intval($fraudData['pathao']['successful_delivery'] ?? 0);
     $apiCancel  = $apiTotal - $apiSuccess;
     $result['Pathao']['fraud_api'] = $fraudData['pathao'];
-    $canOverride = (($fraudData['pathao']['show_count'] ?? true) === true) && intval($fraudData['pathao']['total_delivery'] ?? 0) > 0;
+    // Always pass through customer_rating from Pathao (available even when counts are hidden)
+    $result['Pathao']['customer_rating'] = $fraudData['pathao']['customer_rating'] ?? null;
+    $result['Pathao']['show_count'] = $fraudData['pathao']['show_count'] ?? true;
+    
+    $canOverride = (($fraudData['pathao']['show_count'] ?? true) === true) && $apiTotal > 0;
     if ($canOverride && $apiTotal > $result['Pathao']['total']) {
+        // API has more data (cross-merchant) — use API counts
         $result['Pathao']['total']     = $apiTotal;
         $result['Pathao']['success']   = $apiSuccess;
         $result['Pathao']['cancelled'] = $apiCancel;
         $result['Pathao']['rate']      = $apiTotal > 0 ? round(($apiSuccess / $apiTotal) * 100) : 0;
         $result['Pathao']['data_source'] = 'merchant_portal';
+    } else {
+        // API hides counts (v2) or our DB has more — use our DB counts + Pathao rating
+        $result['Pathao']['data_source'] = 'our_db';
     }
     $result['Pathao']['api_checked'] = max($result['Pathao']['api_checked'], 1);
 }
