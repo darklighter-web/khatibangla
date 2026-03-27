@@ -1,11 +1,11 @@
 <?php // order-row-tpl.php — single source of truth for order table rows
 $__userDisplay = $order['last_action_by'] ?? $order['assigned_name'] ?? '—';
 $__rClr=$sr['rate']>=70?'#22c55e':($sr['rate']>=40?'#eab308':'#ef4444');
-$__rBg=$sr['rate']>=70?'#dcfce7':($sr['rate']>=40?'#fef9c3':'#fee2e2');
 $__rTxt=$sr['rate']>=70?'#166534':($sr['rate']>=40?'#854d0e':'#991b1b');
 $__cBreak=$sr['courier_breakdown']??[];
-// SVG donut: circumference = 2*PI*16 ≈ 100.53
 $__circ=100.53; $__dash=($sr['rate']/100)*$__circ; $__gap=$__circ-$__dash;
+// Statuses that show compact badge (post-processing stages)
+$__compactRate = in_array($order['order_status'], ['confirmed','ready_to_ship','shipped','delivered','on_hold','pending_return','pending_cancel','partial_delivered']);
 ?>
 <tr data-order-id="<?= $order['id'] ?>">
     <td style="vertical-align:middle"><input type="checkbox" name="order_ids[]" value="<?= $order['id'] ?>" class="order-check" onchange="updateBulk()"></td>
@@ -66,22 +66,25 @@ $__circ=100.53; $__dash=($sr['rate']/100)*$__circ; $__gap=$__circ-$__dash;
         <?php if($creditUsed>0):?><div style="font-size:9px;color:#ca8a04">-৳<?=number_format($creditUsed)?></div><?php endif;?>
     </td>
 
-    <!-- ═══ Success Rate Column — circular donut + stats ═══ -->
-    <td data-col="rate">
+    <!-- ═══ Success Rate Column ═══ -->
+    <td data-col="rate" style="white-space:nowrap">
         <span class="rate-wrap">
-        <div style="display:flex;align-items:center;gap:6px;cursor:pointer">
-            <svg width="36" height="36" viewBox="0 0 36 36" style="flex-shrink:0;transform:rotate(-90deg)">
-                <circle cx="18" cy="18" r="16" fill="none" stroke="#e5e7eb" stroke-width="3"/>
-                <circle cx="18" cy="18" r="16" fill="none" stroke="<?=$__rClr?>" stroke-width="3" stroke-dasharray="<?=$__dash?> <?=$__gap?>" stroke-linecap="round"/>
-            </svg>
-            <div style="line-height:1.2">
-                <div style="font-size:11px;font-weight:700;color:<?=$__rTxt?>">Success: <?=$sr['rate']?>%</div>
-                <div style="font-size:10px;color:#64748b">Order: <?=$sr['delivered']?>/<?=$sr['total']?></div>
-                <?php if(!empty($sr['customer_rating'])):?>
-                <div style="font-size:9px;color:#7c3aed">Rating: <?= is_numeric($sr['customer_rating']) ? $sr['customer_rating'] : ucfirst(str_replace('_',' ',$sr['customer_rating'])) ?></div>
-                <?php endif;?>
+        <?php if($__compactRate): ?>
+            <!-- Compact: badge with hover popup (confirmed/rts/shipped/delivered) -->
+            <span class="rate-badge" style="background:<?=$sr['rate']>=70?'#dcfce7':($sr['rate']>=40?'#fef9c3':'#fee2e2')?>;color:<?=$__rTxt?>;cursor:pointer"><?=$sr['rate']?>%</span>
+        <?php else: ?>
+            <!-- Full: circular donut (processing/all/no_response) -->
+            <div style="display:flex;align-items:center;gap:5px;cursor:pointer">
+                <svg width="34" height="34" viewBox="0 0 36 36" style="flex-shrink:0;transform:rotate(-90deg)">
+                    <circle cx="18" cy="18" r="16" fill="none" stroke="#e5e7eb" stroke-width="3"/>
+                    <circle cx="18" cy="18" r="16" fill="none" stroke="<?=$__rClr?>" stroke-width="3" stroke-dasharray="<?=$__dash?> <?=$__gap?>" stroke-linecap="round"/>
+                </svg>
+                <div style="line-height:1.25;min-width:0">
+                    <div style="font-size:10px;font-weight:700;color:<?=$__rTxt?>">Success: <?=$sr['rate']?>%</div>
+                    <div style="font-size:9px;color:#64748b">Order: <?=$sr['delivered']?>/<?=$sr['total']?></div>
+                </div>
             </div>
-        </div>
+        <?php endif; ?>
         <?php if($sr['total']>0):?>
         <div class="rate-popup" onclick="event.stopPropagation()">
             <div style="font-weight:700;font-size:13px;color:#111827;margin-bottom:8px">COURIER RATING</div>

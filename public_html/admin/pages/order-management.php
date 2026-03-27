@@ -347,10 +347,10 @@ $offset = ($page-1)*$limit; $totalPages = ceil($total/$limit);
 // Column sorting
 $sortCol = $_GET['sort'] ?? 'created_at';
 $sortDir = strtoupper($_GET['dir'] ?? 'DESC') === 'ASC' ? 'ASC' : 'DESC';
-$allowedSorts = ['created_at'=>'o.created_at','order_number'=>'o.order_number','total'=>'o.total','customer_name'=>'o.customer_name','channel'=>'o.channel','updated_at'=>'o.updated_at'];
+$allowedSorts = ['created_at'=>'o.created_at','order_number'=>'o.order_number','total'=>'o.total','customer_name'=>'o.customer_name','channel'=>'o.channel','updated_at'=>'o.updated_at','success_rate'=>'COALESCE(ccs.success_rate,0)'];
 $orderBy = ($allowedSorts[$sortCol] ?? 'o.created_at') . ' ' . $sortDir;
 
-$orders = $db->fetchAll("SELECT o.*, au.full_name as assigned_name, (SELECT COUNT(*) FROM print_queue pq WHERE pq.order_id = o.id) as print_count, (SELECT au2.full_name FROM order_status_history osh2 LEFT JOIN admin_users au2 ON au2.id = osh2.changed_by WHERE osh2.order_id = o.id AND osh2.changed_by IS NOT NULL ORDER BY osh2.created_at DESC LIMIT 1) as last_action_by FROM orders o LEFT JOIN admin_users au ON au.id = o.assigned_to WHERE {$where} ORDER BY {$orderBy} LIMIT {$limit} OFFSET {$offset}", $params);
+$orders = $db->fetchAll("SELECT o.*, au.full_name as assigned_name, (SELECT COUNT(*) FROM print_queue pq WHERE pq.order_id = o.id) as print_count, (SELECT au2.full_name FROM order_status_history osh2 LEFT JOIN admin_users au2 ON au2.id = osh2.changed_by WHERE osh2.order_id = o.id AND osh2.changed_by IS NOT NULL ORDER BY osh2.created_at DESC LIMIT 1) as last_action_by, ccs.success_rate as cached_success_rate FROM orders o LEFT JOIN admin_users au ON au.id = o.assigned_to LEFT JOIN customer_courier_stats ccs ON ccs.phone_hash = MD5(RIGHT(REPLACE(REPLACE(o.customer_phone,' ',''),'-',''),11)) WHERE {$where} ORDER BY {$orderBy} LIMIT {$limit} OFFSET {$offset}", $params);
 
 // Pre-fetch customer success rates
 $successRates=[]; $previousOrders=[];
@@ -833,7 +833,7 @@ $_courierBarHidden = !$status || !in_array($status, $_courierVisibleStatuses);
                 <th data-col="products">Products</th>
                 <th data-col="tags" style="width:72px">Tags</th>
                 <th data-col="total" style="width:68px;text-align:right"><a href="#" onclick="event.preventDefault();OM.goSort('total')" style="cursor:pointer">Total <?= sortIcon('total') ?></a></th>
-                <th data-col="rate" style="width:120px">Success Rate</th>
+                <th data-col="rate" style="width:120px"><a href="#" onclick="event.preventDefault();OM.goSort('success_rate')" style="cursor:pointer">Success Rate <?= sortIcon('success_rate') ?></a></th>
                 <th data-col="upload" style="width:110px">Upload</th>
                 <th data-col="print" style="width:34px;text-align:center">Print</th>
                 <th data-col="user" style="width:62px">User</th>
