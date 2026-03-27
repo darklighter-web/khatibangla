@@ -349,24 +349,61 @@ $orders = $db->fetchAll("SELECT o.*, au.full_name as assigned_name, (SELECT COUN
 // Pre-fetch customer success rates
 $successRates=[]; $previousOrders=[];
 $phones = array_unique(array_filter(array_column($orders, 'customer_phone')));
+
+// Ensure cache table exists
+try { $db->query("CREATE TABLE IF NOT EXISTS `customer_courier_stats` (`id` int(11) NOT NULL AUTO_INCREMENT,`phone_hash` varchar(32) NOT NULL,`phone_display` varchar(20) NOT NULL,`total_orders` int(11) NOT NULL DEFAULT 0,`delivered` int(11) NOT NULL DEFAULT 0,`cancelled` int(11) NOT NULL DEFAULT 0,`returned` int(11) NOT NULL DEFAULT 0,`success_rate` decimal(5,2) NOT NULL DEFAULT 0.00,`total_spent` decimal(12,2) NOT NULL DEFAULT 0.00,`courier_breakdown` text DEFAULT NULL,`fetched_at` datetime NOT NULL,`created_at` timestamp DEFAULT CURRENT_TIMESTAMP,`updated_at` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,PRIMARY KEY (`id`),UNIQUE KEY `idx_phone_hash` (`phone_hash`),KEY `idx_fetched` (`fetched_at`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3"); } catch (\Throwable $e) {}
+
+// Batch fetch from cache
+$phoneHashes = [];
 foreach ($phones as $phone) {
-    $cleanPhone = preg_replace('/[^0-9]/','',$phone);
-    // Use last 11 digits for Bangladesh numbers (01XXXXXXXXX)
-    $phoneMatch = substr($cleanPhone, -11);
-    $pl = '%'.$phoneMatch;
+    $clean = preg_replace('/[^0-9]/', '', $phone);
+    $phoneHashes[$phone] = md5(substr($clean, -11));
+}
+$cachedStats = [];
+if (!empty($phoneHashes)) {
+    $hashList = array_values($phoneHashes);
+    $ph2 = implode(',', array_fill(0, count($hashList), '?'));
     try {
-        $sr = $db->fetch("SELECT COUNT(*) as total, SUM(CASE WHEN order_status='delivered' THEN 1 ELSE 0 END) as delivered, SUM(CASE WHEN order_status='cancelled' THEN 1 ELSE 0 END) as cancelled, SUM(CASE WHEN order_status='returned' THEN 1 ELSE 0 END) as returned, SUM(total) as total_spent FROM orders WHERE REPLACE(REPLACE(customer_phone,' ',''),'-','') LIKE ?", [$pl]);
-        $t=intval($sr['total']); $d=intval($sr['delivered']); $c=intval($sr['cancelled']); $ret=intval($sr['returned']??0);
-        $rate=$t>0?round(($d/$t)*100):0;
-        // Per-courier breakdown
-        $courierBreak = [];
+        $rows = $db->fetchAll("SELECT * FROM customer_courier_stats WHERE phone_hash IN ({$ph2}) AND fetched_at > DATE_SUB(NOW(), INTERVAL 12 HOUR)", $hashList);
+        foreach ($rows as $r) { $cachedStats[$r['phone_hash']] = $r; }
+    } catch (\Throwable $e) {}
+}
+
+foreach ($phones as $phone) {
+    $hash = $phoneHashes[$phone];
+    if (isset($cachedStats[$hash])) {
+        $c = $cachedStats[$hash];
+        $successRates[$phone] = [
+            'total' => intval($c['total_orders']), 'delivered' => intval($c['delivered']),
+            'cancelled' => intval($c['cancelled']), 'returned' => intval($c['returned']),
+            'rate' => floatval($c['success_rate']), 'total_spent' => floatval($c['total_spent']),
+            'courier_breakdown' => json_decode($c['courier_breakdown'] ?? '[]', true) ?: [],
+        ];
+    } else {
+        // Cache miss — compute from orders table and cache
+        $pl = '%' . substr(preg_replace('/[^0-9]/', '', $phone), -11);
         try {
-            $cbRows = $db->fetchAll("SELECT COALESCE(NULLIF(courier_name,''),NULLIF(shipping_method,''),'Unknown') as cn, COUNT(*) as total, SUM(CASE WHEN order_status='delivered' THEN 1 ELSE 0 END) as delivered, SUM(CASE WHEN order_status IN ('cancelled','returned') THEN 1 ELSE 0 END) as failed FROM orders WHERE REPLACE(REPLACE(customer_phone,' ',''),'-','') LIKE ? AND (courier_name IS NOT NULL AND courier_name != '' OR shipping_method IS NOT NULL AND shipping_method != '') GROUP BY cn", [$pl]);
-            foreach ($cbRows as $cb) { $courierBreak[] = ['name'=>$cb['cn'],'delivered'=>intval($cb['delivered']),'total'=>intval($cb['total'])]; }
-        } catch (\Throwable $e) {}
-        $successRates[$phone]=['total'=>$t,'delivered'=>$d,'cancelled'=>$c,'returned'=>$ret,'rate'=>$rate,'total_spent'=>$sr['total_spent']??0,'courier_breakdown'=>$courierBreak];
-        $previousOrders[$phone] = $db->fetchAll("SELECT id, order_number, order_status, total, created_at FROM orders WHERE REPLACE(REPLACE(customer_phone,' ',''),'-','') LIKE ? ORDER BY created_at DESC LIMIT 5", [$pl]);
-    } catch(Exception $e) { $successRates[$phone]=['total'=>0,'delivered'=>0,'cancelled'=>0,'returned'=>0,'rate'=>0,'total_spent'=>0,'courier_breakdown'=>[]]; $previousOrders[$phone]=[]; }
+            $sr = $db->fetch("SELECT COUNT(*) as total, SUM(CASE WHEN order_status='delivered' THEN 1 ELSE 0 END) as delivered, SUM(CASE WHEN order_status='cancelled' THEN 1 ELSE 0 END) as cancelled, SUM(CASE WHEN order_status='returned' THEN 1 ELSE 0 END) as returned, SUM(total) as total_spent FROM orders WHERE REPLACE(REPLACE(customer_phone,' ',''),'-','') LIKE ?", [$pl]);
+            $t=intval($sr['total']); $d=intval($sr['delivered']); $c2=intval($sr['cancelled']); $ret=intval($sr['returned']??0);
+            $rate=$t>0?round(($d/$t)*100,2):0;
+            $courierBreak = [];
+            try {
+                $cbRows = $db->fetchAll("SELECT COALESCE(NULLIF(courier_name,''),NULLIF(shipping_method,''),'Unknown') as cn, COUNT(*) as total, SUM(CASE WHEN order_status='delivered' THEN 1 ELSE 0 END) as delivered FROM orders WHERE REPLACE(REPLACE(customer_phone,' ',''),'-','') LIKE ? AND (courier_name IS NOT NULL AND courier_name != '' OR shipping_method IS NOT NULL AND shipping_method != '') GROUP BY cn", [$pl]);
+                foreach ($cbRows as $cb) { $courierBreak[] = ['name'=>$cb['cn'],'delivered'=>intval($cb['delivered']),'total'=>intval($cb['total'])]; }
+            } catch (\Throwable $e) {}
+            $successRates[$phone] = ['total'=>$t,'delivered'=>$d,'cancelled'=>$c2,'returned'=>$ret,'rate'=>$rate,'total_spent'=>floatval($sr['total_spent']??0),'courier_breakdown'=>$courierBreak];
+            // Write to cache
+            try {
+                $now = date('Y-m-d H:i:s');
+                $db->query("INSERT INTO customer_courier_stats (phone_hash,phone_display,total_orders,delivered,cancelled,returned,success_rate,total_spent,courier_breakdown,fetched_at) VALUES (?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE phone_display=VALUES(phone_display),total_orders=VALUES(total_orders),delivered=VALUES(delivered),cancelled=VALUES(cancelled),returned=VALUES(returned),success_rate=VALUES(success_rate),total_spent=VALUES(total_spent),courier_breakdown=VALUES(courier_breakdown),fetched_at=VALUES(fetched_at)", [$hash,$phone,$t,$d,$c2,$ret,$rate,floatval($sr['total_spent']??0),json_encode($courierBreak),$now]);
+            } catch (\Throwable $e) {}
+        } catch (Exception $e) { $successRates[$phone]=['total'=>0,'delivered'=>0,'cancelled'=>0,'returned'=>0,'rate'=>0,'total_spent'=>0,'courier_breakdown'=>[]]; }
+    }
+    // Previous orders (always live — lightweight query)
+    try {
+        $pl2 = '%' . substr(preg_replace('/[^0-9]/', '', $phone), -11);
+        $previousOrders[$phone] = $db->fetchAll("SELECT id, order_number, order_status, total, created_at FROM orders WHERE REPLACE(REPLACE(customer_phone,' ',''),'-','') LIKE ? ORDER BY created_at DESC LIMIT 5", [$pl2]);
+    } catch (\Throwable $e) { $previousOrders[$phone] = []; }
 }
 
 // Pre-fetch items + tags
@@ -676,7 +713,8 @@ $_courierBarHidden = !$status || !in_array($status, $_courierVisibleStatuses);
       <option value="<?=$pp?>" <?=$limit==$pp?'selected':''?>><?=$pp?>/page</option>
       <?php endforeach; ?>
     </select>
-    <button type="button" onclick="fcCheck('')" class="border border-blue-200 text-blue-600 px-2.5 py-1.5 rounded text-xs hover:bg-blue-50 font-medium">🔍 Check</button>
+    <button type="button" onclick="recheckCourier()" class="border border-emerald-200 text-emerald-600 px-2.5 py-1.5 rounded text-xs hover:bg-emerald-50 font-medium" title="Re-sync courier statuses for all active orders">🔄 Check</button>
+    <button type="button" onclick="fcCheck('')" class="border border-blue-200 text-blue-600 px-2.5 py-1.5 rounded text-xs hover:bg-blue-50 font-medium" title="Fraud check a customer phone">🔍 Fraud</button>
     <div class="relative" id="actionsWrap">
         <button type="button" onclick="document.getElementById('actionsMenu').classList.toggle('hidden')" class="border text-gray-500 px-2.5 py-1.5 rounded text-xs hover:bg-gray-50">⋮ Actions</button>
         <div id="actionsMenu" class="hidden absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-xl border z-50 py-1 max-h-[70vh] overflow-y-auto">
@@ -1530,18 +1568,64 @@ function startProcessingSession() {
 })();
 <?php endif; ?>
 
-function syncCourier(){
-    document.getElementById('actionsMenu').classList.add('hidden');
-    const p=document.getElementById('cProg');p.classList.remove('hidden');
-    document.getElementById('cProgL').textContent='🔄 Syncing courier statuses...';
-    document.getElementById('cProgB').style.width='30%';
-    fetch('<?= SITE_URL ?>/api/courier-sync.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({limit:50})})
-    .then(r=>r.json()).then(d=>{
+function syncCourier(){ recheckCourier(); }
+
+async function recheckCourier(){
+    const p=document.getElementById('cProg');
+    p.classList.remove('hidden');
+    document.getElementById('cProgB').style.width='10%';
+    document.getElementById('cProgL').textContent='🔄 Fetching latest courier statuses from APIs...';
+    document.getElementById('cErr').classList.add('hidden');
+    
+    try {
+        const r = await fetch('<?= SITE_URL ?>/api/courier-stats.php',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            credentials:'same-origin',
+            body:JSON.stringify({action:'recheck', limit:50})
+        });
+        const d = await r.json();
+        
         document.getElementById('cProgB').style.width='100%';
-        document.getElementById('cProgL').textContent='✓ Synced '+d.total+' orders: '+d.updated+' updated, '+d.errors+' errors';
-        if(d.details?.length){const e=document.getElementById('cErr');e.classList.remove('hidden');e.innerHTML=d.details.slice(0,5).join('<br>')}
-        setTimeout(()=>OM.refresh(),2500);
-    }).catch(e=>{document.getElementById('cProgL').textContent='Sync error: '+e.message});
+        
+        if (d.success !== false) {
+            let msg = '✓ Checked ' + (d.total||0) + ' orders';
+            if (d.synced) msg += ' · ' + d.synced + ' synced';
+            if (d.updated) msg += ' · ' + d.updated + ' status updated';
+            if (d.cache_rebuilt) msg += ' · ' + d.cache_rebuilt + ' customer stats refreshed';
+            if (d.skipped) msg += ' · ' + d.skipped + ' skipped';
+            if (d.errors) msg += ' · ' + d.errors + ' errors';
+            document.getElementById('cProgL').textContent = msg;
+            
+            if (d.details && d.details.length) {
+                const e = document.getElementById('cErr');
+                e.classList.remove('hidden');
+                e.style.color = d.errors ? '#dc2626' : '#16a34a';
+                e.innerHTML = d.details.slice(0, 8).map(function(x){
+                    var isErr = x.includes('Error') || x.includes('Rate limited');
+                    return '<div style="font-size:10px;padding:2px 0;color:'+(isErr?'#dc2626':'#16a34a')+'">'+x+'</div>';
+                }).join('');
+            }
+            
+            document.getElementById('cProgB').style.background = d.errors ? '#f59e0b' : '#22c55e';
+        } else {
+            document.getElementById('cProgL').textContent = '❌ ' + (d.error || 'Recheck failed');
+            document.getElementById('cProgB').style.background = '#ef4444';
+        }
+        
+        setTimeout(function(){
+            p.classList.add('hidden');
+            document.getElementById('cProgB').style.background = '';
+            document.getElementById('cProgB').style.width = '0%';
+            OM.refresh();
+        }, d.updated > 0 ? 3000 : 2000);
+        
+    } catch(e) {
+        document.getElementById('cProgL').textContent = '❌ Network error: ' + e.message;
+        document.getElementById('cProgB').style.width = '100%';
+        document.getElementById('cProgB').style.background = '#ef4444';
+        setTimeout(function(){ p.classList.add('hidden'); }, 3000);
+    }
 }
 
 /* ─── Fraud Check Popup ─── */
