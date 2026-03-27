@@ -570,17 +570,23 @@ function sortIcon($col) {
 }
 ?>
 <style>
-.om-table th,.om-table td{padding:6px 6px;vertical-align:top;border-bottom:1px solid #f1f5f9;font-size:12px}
-.om-table th{background:linear-gradient(to bottom,#f8fafc,#f1f5f9);color:#475569;font-weight:600;text-transform:uppercase;letter-spacing:.4px;font-size:10px;position:sticky;top:0;z-index:2;border-bottom:2px solid #e2e8f0;user-select:none;white-space:nowrap;padding:10px 6px}
+.om-table th,.om-table td{padding:7px 5px;vertical-align:top;border-bottom:1px solid #f1f5f9;font-size:12px}
+.om-table th{background:linear-gradient(to bottom,#f8fafc,#f1f5f9);color:#475569;font-weight:600;text-transform:uppercase;letter-spacing:.4px;font-size:10px;position:sticky;top:0;z-index:2;border-bottom:2px solid #e2e8f0;user-select:none;white-space:nowrap;padding:10px 5px}
 .om-table th a{color:inherit;text-decoration:none}
 .om-table tbody tr{transition:background .15s}
 .om-table tbody tr:hover{background:#f0f7ff}
 .om-table .cust-name{font-weight:600;color:#1e293b;font-size:12px}
 .om-table .cust-phone{font-size:11px;color:#64748b;font-family:'SF Mono',SFMono-Regular,Menlo,monospace}
-.om-table .cust-addr{font-size:10px;color:#94a3b8}
+.om-table .cust-addr{font-size:10px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
 .om-wrap{overflow-x:auto;border:1px solid #e2e8f0;border-radius:12px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.04)}
 .om-table{width:100%;border-collapse:collapse}
-.om-table td{white-space:normal;word-break:break-word}
+.om-table td{word-break:break-word}
+.om-col-hide{display:none!important}
+.om-view-drop{position:absolute;right:0;top:calc(100% + 4px);width:200px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.12);z-index:50;padding:8px 0;display:none}
+.om-view-drop.show{display:block}
+.om-view-drop label{display:flex;align-items:center;gap:8px;padding:5px 14px;font-size:12px;color:#374151;cursor:pointer;transition:background .1s}
+.om-view-drop label:hover{background:#f3f4f6}
+.om-view-drop input[type=checkbox]{width:15px;height:15px;accent-color:#3b82f6;cursor:pointer}
 .rate-popup{display:none;position:absolute;z-index:50;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.15);padding:16px;width:280px;left:0;top:calc(100% + 6px)}
 .rate-popup::before{content:'';position:absolute;top:-6px;left:20px;width:12px;height:12px;background:#fff;border-left:1px solid #e2e8f0;border-top:1px solid #e2e8f0;transform:rotate(45deg)}
 .rate-wrap{position:relative;display:inline-block;cursor:pointer}
@@ -716,6 +722,28 @@ $_courierBarHidden = !$status || !in_array($status, $_courierVisibleStatuses);
     </select>
     <button type="button" onclick="recheckCourier()" class="border border-emerald-200 text-emerald-600 px-2.5 py-1.5 rounded text-xs hover:bg-emerald-50 font-medium" title="Re-sync courier statuses for all active orders">🔄 Check</button>
     <button type="button" onclick="fcCheck('')" class="border border-blue-200 text-blue-600 px-2.5 py-1.5 rounded text-xs hover:bg-blue-50 font-medium" title="Fraud check a customer phone">🔍 Fraud</button>
+    <div class="relative" id="viewWrap" style="display:inline-block">
+        <button type="button" onclick="document.getElementById('viewDrop').classList.toggle('show')" class="border text-gray-500 px-2.5 py-1.5 rounded text-xs hover:bg-gray-50 font-medium flex items-center gap-1"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg> View</button>
+        <div id="viewDrop" class="om-view-drop">
+            <div style="padding:6px 14px 8px;font-weight:700;font-size:12px;color:#111827;border-bottom:1px solid #f3f4f6;margin-bottom:4px">Toggle columns</div>
+            <?php
+            $__cols = [
+                ['key'=>'date','label'=>'Date'],['key'=>'invoice','label'=>'Invoice'],
+                ['key'=>'customer','label'=>'Customer'],['key'=>'note','label'=>'Note'],
+                ['key'=>'products','label'=>'Products'],['key'=>'tags','label'=>'Tags'],
+                ['key'=>'total','label'=>'Total'],['key'=>'upload','label'=>'Upload'],
+                ['key'=>'print','label'=>'Print'],['key'=>'user','label'=>'User'],
+                ['key'=>'source','label'=>'Source'],['key'=>'shipping','label'=>'Shipping'],
+            ];
+            foreach ($__cols as $c): ?>
+            <label><input type="checkbox" checked data-col="<?= $c['key'] ?>" onchange="toggleCol(this)"> <?= $c['label'] ?></label>
+            <?php endforeach; ?>
+            <div style="padding:8px 14px 6px;border-top:1px solid #f3f4f6;margin-top:4px;display:flex;gap:6px">
+                <button onclick="saveView()" style="flex:1;padding:5px;border-radius:6px;background:#5eead4;color:#0f766e;font-size:11px;font-weight:600;border:none;cursor:pointer">Save</button>
+                <button onclick="resetView()" style="flex:1;padding:5px;border-radius:6px;background:#fca5a5;color:#991b1b;font-size:11px;font-weight:600;border:none;cursor:pointer">Reset</button>
+            </div>
+        </div>
+    </div>
     <div class="relative" id="actionsWrap">
         <button type="button" onclick="document.getElementById('actionsMenu').classList.toggle('hidden')" class="border text-gray-500 px-2.5 py-1.5 rounded text-xs hover:bg-gray-50">⋮ Actions</button>
         <div id="actionsMenu" class="hidden absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-xl border z-50 py-1 max-h-[70vh] overflow-y-auto">
@@ -792,19 +820,19 @@ $_courierBarHidden = !$status || !in_array($status, $_courierVisibleStatuses);
         <thead>
             <tr>
                 <th style="width:28px"><input type="checkbox" id="selectAll" onchange="toggleAll(this)"></th>
-                <th style="width:88px"><a href="#" onclick="event.preventDefault();OM.goSort('created_at')" style="cursor:pointer">Date <?= sortIcon('created_at') ?></a></th>
-                <th style="width:70px"><a href="#" onclick="event.preventDefault();OM.goSort('order_number')" style="cursor:pointer">Invoice <?= sortIcon('order_number') ?></a></th>
-                <th style="min-width:150px">Customer</th>
-                <th style="min-width:100px">Note</th>
-                <th style="min-width:160px">Products</th>
-                <th style="width:80px">Tags</th>
-                <th style="width:70px;text-align:right"><a href="#" onclick="event.preventDefault();OM.goSort('total')" style="cursor:pointer">Total <?= sortIcon('total') ?></a></th>
-                <th style="width:120px">Upload</th>
-                <th style="width:36px;text-align:center">Print</th>
-                <th style="width:70px">User</th>
-                <th style="width:46px"><a href="#" onclick="event.preventDefault();OM.goSort('channel')" style="cursor:pointer">Source <?= sortIcon('channel') ?></a></th>
-                <th style="min-width:90px">Shipping</th>
-                <th style="width:58px;text-align:center">Actions</th>
+                <th data-col="date" style="width:80px"><a href="#" onclick="event.preventDefault();OM.goSort('created_at')" style="cursor:pointer">Date <?= sortIcon('created_at') ?></a></th>
+                <th data-col="invoice" style="width:68px"><a href="#" onclick="event.preventDefault();OM.goSort('order_number')" style="cursor:pointer">Invoice <?= sortIcon('order_number') ?></a></th>
+                <th data-col="customer">Customer</th>
+                <th data-col="note">Note</th>
+                <th data-col="products">Products</th>
+                <th data-col="tags" style="width:72px">Tags</th>
+                <th data-col="total" style="width:68px;text-align:right"><a href="#" onclick="event.preventDefault();OM.goSort('total')" style="cursor:pointer">Total <?= sortIcon('total') ?></a></th>
+                <th data-col="upload" style="width:110px">Upload</th>
+                <th data-col="print" style="width:34px;text-align:center">Print</th>
+                <th data-col="user" style="width:62px">User</th>
+                <th data-col="source" style="width:44px"><a href="#" onclick="event.preventDefault();OM.goSort('channel')" style="cursor:pointer">Src <?= sortIcon('channel') ?></a></th>
+                <th data-col="shipping">Shipping</th>
+                <th style="width:56px;text-align:center">Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -1565,6 +1593,68 @@ function startProcessingSession() {
     setInterval(fetchCount, 15000);
 })();
 <?php endif; ?>
+
+// ── Column Toggle View System (saved per admin user via localStorage) ──
+var _viewKey = 'om_col_view_<?= getAdminId() ?>';
+function _getView() { try { return JSON.parse(localStorage.getItem(_viewKey)) || {}; } catch(e) { return {}; } }
+function _applyView() {
+    var v = _getView();
+    var allCols = document.querySelectorAll('#viewDrop input[data-col]');
+    allCols.forEach(function(cb) {
+        var col = cb.dataset.col;
+        var hidden = v[col] === false;
+        cb.checked = !hidden;
+        _setColVisible(col, !hidden);
+    });
+}
+function _setColVisible(col, visible) {
+    // Toggle th
+    document.querySelectorAll('#ordersTable th[data-col="'+col+'"]').forEach(function(el) {
+        el.classList.toggle('om-col-hide', !visible);
+    });
+    // Toggle td by index - find the th index first
+    var ths = document.querySelectorAll('#ordersTable thead th');
+    var idx = -1;
+    ths.forEach(function(th, i) { if (th.dataset.col === col) idx = i; });
+    if (idx >= 0) {
+        document.querySelectorAll('#ordersTable tbody tr').forEach(function(tr) {
+            var td = tr.children[idx];
+            if (td) td.classList.toggle('om-col-hide', !visible);
+        });
+    }
+}
+function toggleCol(cb) {
+    _setColVisible(cb.dataset.col, cb.checked);
+}
+function saveView() {
+    var v = {};
+    document.querySelectorAll('#viewDrop input[data-col]').forEach(function(cb) {
+        if (!cb.checked) v[cb.dataset.col] = false;
+    });
+    localStorage.setItem(_viewKey, JSON.stringify(v));
+    document.getElementById('viewDrop').classList.remove('show');
+}
+function resetView() {
+    localStorage.removeItem(_viewKey);
+    document.querySelectorAll('#viewDrop input[data-col]').forEach(function(cb) {
+        cb.checked = true;
+        _setColVisible(cb.dataset.col, true);
+    });
+    document.getElementById('viewDrop').classList.remove('show');
+}
+// Close view dropdown on outside click
+document.addEventListener('click', function(e) {
+    var w = document.getElementById('viewWrap');
+    if (w && !w.contains(e.target)) document.getElementById('viewDrop').classList.remove('show');
+});
+// Apply saved view on page load
+document.addEventListener('DOMContentLoaded', _applyView);
+// Re-apply after AJAX refresh (new rows don't have the hidden class)
+var _origOMFetch = OM._fetch;
+OM._fetch = async function(params) {
+    await _origOMFetch.call(OM, params);
+    _applyView();
+};
 
 // ── Rate Popup: Refresh (rebuild from DB) & Fetch All (call courier APIs) ──
 function rateRefresh(phone, btn) {
