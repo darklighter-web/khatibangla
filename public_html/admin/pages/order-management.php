@@ -306,7 +306,7 @@ $status=$_GET['status']??''; $search=$_GET['search']??''; $dateFrom=$_GET['date_
 $channel=$_GET['channel']??''; $courier=$_GET['courier']??''; $assignedTo=$_GET['assigned']??''; $preorderFilter=$_GET['preorder']??'';
 $tagFilter=$_GET['tag']??''; $customerFilter=$_GET['customer']??'';
 $page = max(1, intval($_GET['page'] ?? 1));
-$allowedLimits = [50,100,200,500,1000,0];
+$allowedLimits = [200,1000,0];
 $limit = isset($_GET['per_page']) && in_array((int)$_GET['per_page'], $allowedLimits) ? (int)$_GET['per_page'] : 200;
 if ($limit === 0) $limit = 999999; // "All"
 
@@ -710,9 +710,8 @@ $_courierBarHidden = !$status || !in_array($status, $_courierVisibleStatuses);
     <?php endif; ?>
     <a href="<?= adminUrl('pages/order-add.php') ?>" class="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-medium hover:bg-blue-700">+ New Order</a>
     <select class="border rounded text-xs px-2 py-1.5 text-gray-600" onchange="OM.go({per_page:this.value,page:1})" title="Orders per page">
-      <?php foreach([50,100,200,500,1000] as $pp): ?>
-      <option value="<?=$pp?>" <?=$limit==$pp?'selected':''?>><?=$pp?>/page</option>
-      <?php endforeach; ?>
+      <option value="200" <?=$limit==200?'selected':''?>>200/page</option>
+      <option value="1000" <?=$limit==1000?'selected':''?>>1000/page</option>
       <option value="0" <?=$limit>=999999?'selected':''?>>All</option>
     </select>
     <button type="button" onclick="recheckCourier()" class="border border-emerald-200 text-emerald-600 px-2.5 py-1.5 rounded text-xs hover:bg-emerald-50 font-medium" title="Re-sync courier statuses for all active orders">🔄 Check</button>
