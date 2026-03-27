@@ -345,7 +345,7 @@ $sortDir = strtoupper($_GET['dir'] ?? 'DESC') === 'ASC' ? 'ASC' : 'DESC';
 $allowedSorts = ['created_at'=>'o.created_at','order_number'=>'o.order_number','total'=>'o.total','customer_name'=>'o.customer_name','channel'=>'o.channel','updated_at'=>'o.updated_at'];
 $orderBy = ($allowedSorts[$sortCol] ?? 'o.created_at') . ' ' . $sortDir;
 
-$orders = $db->fetchAll("SELECT o.*, au.full_name as assigned_name, (SELECT COUNT(*) FROM print_queue pq WHERE pq.order_id = o.id) as print_count FROM orders o LEFT JOIN admin_users au ON au.id = o.assigned_to WHERE {$where} ORDER BY {$orderBy} LIMIT {$limit} OFFSET {$offset}", $params);
+$orders = $db->fetchAll("SELECT o.*, au.full_name as assigned_name, (SELECT COUNT(*) FROM print_queue pq WHERE pq.order_id = o.id) as print_count, (SELECT au2.full_name FROM order_status_history osh2 LEFT JOIN admin_users au2 ON au2.id = osh2.changed_by WHERE osh2.order_id = o.id AND osh2.changed_by IS NOT NULL ORDER BY osh2.created_at DESC LIMIT 1) as last_action_by FROM orders o LEFT JOIN admin_users au ON au.id = o.assigned_to WHERE {$where} ORDER BY {$orderBy} LIMIT {$limit} OFFSET {$offset}", $params);
 
 // Pre-fetch customer success rates
 $successRates=[]; $previousOrders=[];
@@ -570,8 +570,8 @@ function sortIcon($col) {
 }
 ?>
 <style>
-.om-table th,.om-table td{padding:8px 8px;white-space:nowrap;vertical-align:top;border-bottom:1px solid #f1f5f9;font-size:12px}
-.om-table th{background:linear-gradient(to bottom,#f8fafc,#f1f5f9);color:#475569;font-weight:600;text-transform:uppercase;letter-spacing:.4px;font-size:10px;position:sticky;top:0;z-index:2;border-bottom:2px solid #e2e8f0;user-select:none}
+.om-table th,.om-table td{padding:6px 6px;vertical-align:top;border-bottom:1px solid #f1f5f9;font-size:12px}
+.om-table th{background:linear-gradient(to bottom,#f8fafc,#f1f5f9);color:#475569;font-weight:600;text-transform:uppercase;letter-spacing:.4px;font-size:10px;position:sticky;top:0;z-index:2;border-bottom:2px solid #e2e8f0;user-select:none;white-space:nowrap;padding:10px 6px}
 .om-table th a{color:inherit;text-decoration:none}
 .om-table tbody tr{transition:background .15s}
 .om-table tbody tr:hover{background:#f0f7ff}
@@ -579,8 +579,8 @@ function sortIcon($col) {
 .om-table .cust-phone{font-size:11px;color:#64748b;font-family:'SF Mono',SFMono-Regular,Menlo,monospace}
 .om-table .cust-addr{font-size:10px;color:#94a3b8}
 .om-wrap{overflow-x:auto;border:1px solid #e2e8f0;border-radius:12px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.04)}
-.om-table{table-layout:fixed;width:100%}
-.om-table colgroup .col-cb{width:30px}.om-table colgroup .col-date{width:90px}.om-table colgroup .col-inv{width:72px}.om-table colgroup .col-cust{width:170px}.om-table colgroup .col-note{width:120px}.om-table colgroup .col-prod{width:180px}.om-table colgroup .col-tag{width:90px}.om-table colgroup .col-total{width:75px}.om-table colgroup .col-upload{width:130px}.om-table colgroup .col-print{width:38px}.om-table colgroup .col-user{width:55px}.om-table colgroup .col-src{width:48px}.om-table colgroup .col-ship{width:110px}.om-table colgroup .col-act{width:65px}
+.om-table{width:100%;border-collapse:collapse}
+.om-table td{white-space:normal;word-break:break-word}
 .rate-popup{display:none;position:absolute;z-index:50;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.15);padding:16px;width:280px;left:0;top:calc(100% + 6px)}
 .rate-popup::before{content:'';position:absolute;top:-6px;left:20px;width:12px;height:12px;background:#fff;border-left:1px solid #e2e8f0;border-top:1px solid #e2e8f0;transform:rotate(45deg)}
 .rate-wrap{position:relative;display:inline-block;cursor:pointer}
@@ -788,26 +788,23 @@ $_courierBarHidden = !$status || !in_array($status, $_courierVisibleStatuses);
             <span class="text-sm font-medium text-gray-600">Loading orders...</span>
         </div>
     </div>
-    <table class="om-table w-full" id="ordersTable">
-        <colgroup>
-            <col class="col-cb"><col class="col-date"><col class="col-inv"><col class="col-cust"><col class="col-note"><col class="col-prod"><col class="col-tag"><col class="col-total"><col class="col-upload"><col class="col-print"><col class="col-user"><col class="col-src"><col class="col-ship"><col class="col-act">
-        </colgroup>
+    <table class="om-table" id="ordersTable">
         <thead>
             <tr>
-                <th><input type="checkbox" id="selectAll" onchange="toggleAll(this)"></th>
-                <th><a href="#" onclick="event.preventDefault();OM.goSort('created_at')" style="cursor:pointer">Date <?= sortIcon('created_at') ?></a></th>
-                <th><a href="#" onclick="event.preventDefault();OM.goSort('order_number')" style="cursor:pointer">Invoice <?= sortIcon('order_number') ?></a></th>
-                <th>Customer</th>
-                <th>Note</th>
-                <th>Products</th>
-                <th>Tags</th>
-                <th style="text-align:right"><a href="#" onclick="event.preventDefault();OM.goSort('total')" style="cursor:pointer">Total <?= sortIcon('total') ?></a></th>
-                <th>Upload</th>
-                <th style="text-align:center">Print</th>
-                <th>User</th>
-                <th><a href="#" onclick="event.preventDefault();OM.goSort('channel')" style="cursor:pointer">Source <?= sortIcon('channel') ?></a></th>
-                <th>Shipping Note</th>
-                <th style="text-align:center">Actions</th>
+                <th style="width:28px"><input type="checkbox" id="selectAll" onchange="toggleAll(this)"></th>
+                <th style="width:88px"><a href="#" onclick="event.preventDefault();OM.goSort('created_at')" style="cursor:pointer">Date <?= sortIcon('created_at') ?></a></th>
+                <th style="width:70px"><a href="#" onclick="event.preventDefault();OM.goSort('order_number')" style="cursor:pointer">Invoice <?= sortIcon('order_number') ?></a></th>
+                <th style="min-width:150px">Customer</th>
+                <th style="min-width:100px">Note</th>
+                <th style="min-width:160px">Products</th>
+                <th style="width:80px">Tags</th>
+                <th style="width:70px;text-align:right"><a href="#" onclick="event.preventDefault();OM.goSort('total')" style="cursor:pointer">Total <?= sortIcon('total') ?></a></th>
+                <th style="width:120px">Upload</th>
+                <th style="width:36px;text-align:center">Print</th>
+                <th style="width:70px">User</th>
+                <th style="width:46px"><a href="#" onclick="event.preventDefault();OM.goSort('channel')" style="cursor:pointer">Source <?= sortIcon('channel') ?></a></th>
+                <th style="min-width:90px">Shipping</th>
+                <th style="width:58px;text-align:center">Actions</th>
             </tr>
         </thead>
         <tbody>
