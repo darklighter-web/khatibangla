@@ -350,19 +350,22 @@ $orders = $db->fetchAll("SELECT o.*, au.full_name as assigned_name, (SELECT COUN
 $successRates=[]; $previousOrders=[];
 $phones = array_unique(array_filter(array_column($orders, 'customer_phone')));
 foreach ($phones as $phone) {
-    $pl = '%'.substr(preg_replace('/[^0-9]/','',$phone),-10).'%';
+    $cleanPhone = preg_replace('/[^0-9]/','',$phone);
+    // Use last 11 digits for Bangladesh numbers (01XXXXXXXXX)
+    $phoneMatch = substr($cleanPhone, -11);
+    $pl = '%'.$phoneMatch;
     try {
-        $sr = $db->fetch("SELECT COUNT(*) as total, SUM(CASE WHEN order_status='delivered' THEN 1 ELSE 0 END) as delivered, SUM(CASE WHEN order_status='cancelled' THEN 1 ELSE 0 END) as cancelled, SUM(CASE WHEN order_status='returned' THEN 1 ELSE 0 END) as returned, SUM(total) as total_spent FROM orders WHERE customer_phone LIKE ?", [$pl]);
+        $sr = $db->fetch("SELECT COUNT(*) as total, SUM(CASE WHEN order_status='delivered' THEN 1 ELSE 0 END) as delivered, SUM(CASE WHEN order_status='cancelled' THEN 1 ELSE 0 END) as cancelled, SUM(CASE WHEN order_status='returned' THEN 1 ELSE 0 END) as returned, SUM(total) as total_spent FROM orders WHERE REPLACE(REPLACE(customer_phone,' ',''),'-','') LIKE ?", [$pl]);
         $t=intval($sr['total']); $d=intval($sr['delivered']); $c=intval($sr['cancelled']); $ret=intval($sr['returned']??0);
         $rate=$t>0?round(($d/$t)*100):0;
         // Per-courier breakdown
         $courierBreak = [];
         try {
-            $cbRows = $db->fetchAll("SELECT COALESCE(NULLIF(courier_name,''),NULLIF(shipping_method,''),'Unknown') as cn, COUNT(*) as total, SUM(CASE WHEN order_status='delivered' THEN 1 ELSE 0 END) as delivered, SUM(CASE WHEN order_status IN ('cancelled','returned') THEN 1 ELSE 0 END) as failed FROM orders WHERE customer_phone LIKE ? AND (courier_name IS NOT NULL AND courier_name != '' OR shipping_method IS NOT NULL AND shipping_method != '') GROUP BY cn", [$pl]);
+            $cbRows = $db->fetchAll("SELECT COALESCE(NULLIF(courier_name,''),NULLIF(shipping_method,''),'Unknown') as cn, COUNT(*) as total, SUM(CASE WHEN order_status='delivered' THEN 1 ELSE 0 END) as delivered, SUM(CASE WHEN order_status IN ('cancelled','returned') THEN 1 ELSE 0 END) as failed FROM orders WHERE REPLACE(REPLACE(customer_phone,' ',''),'-','') LIKE ? AND (courier_name IS NOT NULL AND courier_name != '' OR shipping_method IS NOT NULL AND shipping_method != '') GROUP BY cn", [$pl]);
             foreach ($cbRows as $cb) { $courierBreak[] = ['name'=>$cb['cn'],'delivered'=>intval($cb['delivered']),'total'=>intval($cb['total'])]; }
         } catch (\Throwable $e) {}
         $successRates[$phone]=['total'=>$t,'delivered'=>$d,'cancelled'=>$c,'returned'=>$ret,'rate'=>$rate,'total_spent'=>$sr['total_spent']??0,'courier_breakdown'=>$courierBreak];
-        $previousOrders[$phone] = $db->fetchAll("SELECT id, order_number, order_status, total, created_at FROM orders WHERE customer_phone LIKE ? ORDER BY created_at DESC LIMIT 5", [$pl]);
+        $previousOrders[$phone] = $db->fetchAll("SELECT id, order_number, order_status, total, created_at FROM orders WHERE REPLACE(REPLACE(customer_phone,' ',''),'-','') LIKE ? ORDER BY created_at DESC LIMIT 5", [$pl]);
     } catch(Exception $e) { $successRates[$phone]=['total'=>0,'delivered'=>0,'cancelled'=>0,'returned'=>0,'rate'=>0,'total_spent'=>0,'courier_breakdown'=>[]]; $previousOrders[$phone]=[]; }
 }
 
@@ -2030,9 +2033,10 @@ function handleEditLoad(iframe) {
 // Listen for postMessage from modal iframe (primary close mechanism)
 window.addEventListener('message', function(e) {
     if (e.data && e.data.type === 'orderSaved') {
-        // Close whichever modal is open
+        _orderModalSaved = true;
         closeEditModal();
         closeOrderModal();
+        // If neither modal was open (edge case), still refresh
         OM.refresh();
     }
 });
@@ -2274,26 +2278,29 @@ function confirmBulkStatus(status, label) {
     bStatus(status);
 }
 
+var _orderModalSaved = false;
+function closeOrderModal() {
+    var m = document.getElementById('orderEditModal');
+    if (m.classList.contains('hidden')) return;
+    m.classList.add('hidden');
+    document.getElementById('orderEditFrame').src = 'about:blank';
+    if (_orderModalSaved) { OM.refresh(); _orderModalSaved = false; }
+}
 function openOrderModal(url, e) {
     if (e) e.preventDefault();
+    _orderModalSaved = false;
     var modal = document.getElementById('orderEditModal');
     var iframe = document.getElementById('orderEditFrame');
     iframe.src = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'modal=1';
     modal.classList.remove('hidden');
     return false;
 }
-function closeOrderModal() {
-    var m = document.getElementById('orderEditModal');
-    if (m.classList.contains('hidden')) return; // already closed
-    m.classList.add('hidden');
-    document.getElementById('orderEditFrame').src = 'about:blank';
-    OM.refresh();
-}
 function handleOrderFrameLoad(iframe) {
     if (!iframe.src || iframe.src === 'about:blank') return;
     try {
         var iUrl = iframe.contentWindow.location.href;
         if (iUrl.includes('order-management.php') || iUrl.includes('msg=updated') || iUrl.includes('msg=confirmed') || iUrl.includes('msg=status_updated')) {
+            _orderModalSaved = true;
             closeOrderModal();
         }
     } catch(e) {}
