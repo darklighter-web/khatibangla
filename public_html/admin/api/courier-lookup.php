@@ -31,7 +31,7 @@ if (strlen($phone) < 10) {
     exit;
 }
 
-$phoneLike = '%' . substr($phone, -10) . '%';
+$phoneLike = '%' . substr($phone, -11);
 
 /* ─── 1. Our DB orders ─── */
 $orders = $db->fetchAll(
@@ -88,7 +88,7 @@ if ($pathaoApi) {
     // Steadfast fraud check: try API endpoint first (faster, more reliable), then web scrape
     try {
         $sFraud = null;
-        // Strategy A: Direct API endpoint (uses API key, no login needed)
+        // Strategy A: Direct Steadfast API endpoint (uses API key, no login needed)
         $sfApiKey = getSetting('steadfast_api_key','');
         $sfSecret = getSetting('steadfast_secret_key','');
         if ($sfApiKey && $sfSecret) {
@@ -96,38 +96,47 @@ if ($pathaoApi) {
             $sfUrls = [
                 'https://portal.packzy.com/api/v1/fraud_check/'.urlencode($phone),
                 'https://portal.packzy.com/api/v1/courier_score/'.urlencode($phone),
+                'https://portal.packzy.com/api/v1/fraud-check/'.urlencode($phone),
             ];
             foreach ($sfUrls as $sfUrl) {
                 $ch = curl_init($sfUrl);
-                curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>8,CURLOPT_SSL_VERIFYPEER=>false,CURLOPT_HTTPHEADER=>$sfHeaders,CURLOPT_FOLLOWLOCATION=>true]);
+                curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>10,CURLOPT_SSL_VERIFYPEER=>false,CURLOPT_HTTPHEADER=>$sfHeaders,CURLOPT_FOLLOWLOCATION=>true]);
                 $sfResp = curl_exec($ch); $sfCode = curl_getinfo($ch,CURLINFO_HTTP_CODE); curl_close($ch);
                 if ($sfCode === 200 && $sfResp) {
                     $sfData = json_decode($sfResp, true);
                     if ($sfData) {
+                        // Steadfast API returns nested data or flat structure
                         $flat = array_merge($sfData, $sfData['data'] ?? []);
-                        $totalParcels = intval($flat['total_parcels'] ?? 0);
-                        $del = 0;
-                        foreach (['total_delivered','delivered','success_count','success'] as $dk) {
-                            if (isset($flat[$dk])) { $del = intval($flat[$dk]); break; }
+                        // Try multiple possible field names
+                        $del = 0; $can = 0; $totalParcels = 0;
+                        foreach (['total_delivered','delivered','success_count','success','successful_delivery'] as $dk) {
+                            if (isset($flat[$dk]) && intval($flat[$dk]) > 0) { $del = intval($flat[$dk]); break; }
                         }
-                        $can = intval($flat['total_cancelled'] ?? $flat['cancelled'] ?? $flat['cancel'] ?? 0);
+                        foreach (['total_cancelled','cancelled','cancel','cancel_count'] as $ck) {
+                            if (isset($flat[$ck]) && intval($flat[$ck]) > 0) { $can = intval($flat[$ck]); break; }
+                        }
+                        foreach (['total_parcels','total','total_orders','total_delivery'] as $tk) {
+                            if (isset($flat[$tk]) && intval($flat[$tk]) > 0) { $totalParcels = intval($flat[$tk]); break; }
+                        }
                         $total = $totalParcels > 0 ? $totalParcels : ($del + $can);
                         if ($total > 0 || $del > 0) {
-                            $sFraud = ['total_delivered'=>$del, 'total_cancelled'=>$can, 'total_parcels'=>$total, 'source'=>'api'];
+                            $sFraud = ['total_delivered'=>$del, 'total_cancelled'=>$can, 'total_parcels'=>$total, 'source'=>'steadfast_api'];
                             break;
                         }
                     }
                 }
             }
         }
-        // Strategy B: Web scrape fallback
+        // Strategy B: Web scrape fallback (only if API returned nothing)
         if (!$sFraud && $pathaoApi) {
-            $sfWeb = $pathaoApi->fraudCheckSteadfast($phone);
-            if ($sfWeb && !isset($sfWeb['error'])) $sFraud = $sfWeb;
-            else $fraudData['errors'][] = 'Steadfast: ' . ($sfWeb['error'] ?? 'empty');
+            try {
+                $sfWeb = $pathaoApi->fraudCheckSteadfast($phone);
+                if ($sfWeb && !isset($sfWeb['error'])) $sFraud = $sfWeb;
+            } catch (\Throwable $e) {}
         }
         if ($sFraud) $fraudData['steadfast'] = $sFraud;
-        elseif (!$sFraud && !$sfApiKey) $fraudData['errors'][] = 'Steadfast: API keys not configured';
+        elseif (!$sfApiKey) $fraudData['errors'][] = 'Steadfast: API keys not configured';
+        else $fraudData['errors'][] = 'Steadfast: No data returned from API';
     } catch (\Throwable $e) { $fraudData['errors'][] = 'Steadfast: ' . $e->getMessage(); }
 
     // RedX API fraud check
@@ -305,6 +314,22 @@ try {
         $ourRecord['total_spent']  = floatval($ci['total_spent']);
         $ourRecord['is_new']       = intval($ci['total']) <= 1;
     }
+} catch (\Throwable $e) {}
+
+/* ─── Write to customer_courier_stats cache (shared with order-management) ─── */
+try {
+    $db->query("CREATE TABLE IF NOT EXISTS `customer_courier_stats` (`id` int(11) NOT NULL AUTO_INCREMENT,`phone_hash` varchar(32) NOT NULL,`phone_display` varchar(20) NOT NULL,`total_orders` int(11) NOT NULL DEFAULT 0,`delivered` int(11) NOT NULL DEFAULT 0,`cancelled` int(11) NOT NULL DEFAULT 0,`returned` int(11) NOT NULL DEFAULT 0,`success_rate` decimal(5,2) NOT NULL DEFAULT 0.00,`total_spent` decimal(12,2) NOT NULL DEFAULT 0.00,`courier_breakdown` text DEFAULT NULL,`fetched_at` datetime NOT NULL,`created_at` timestamp DEFAULT CURRENT_TIMESTAMP,`updated_at` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,PRIMARY KEY (`id`),UNIQUE KEY `idx_phone_hash` (`phone_hash`),KEY `idx_fetched` (`fetched_at`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3");
+    
+    $__cacheHash = md5(substr(preg_replace('/[^0-9]/', '', $phone), -11));
+    $__cacheBreakdown = [];
+    foreach ($result as $cName => $cData) {
+        if ($cData['total'] > 0) {
+            $__cacheBreakdown[] = ['name' => $cName, 'delivered' => $cData['success'], 'total' => $cData['total']];
+        }
+    }
+    $__now = date('Y-m-d H:i:s');
+    $db->query("INSERT INTO customer_courier_stats (phone_hash,phone_display,total_orders,delivered,cancelled,returned,success_rate,total_spent,courier_breakdown,fetched_at) VALUES (?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE phone_display=VALUES(phone_display),total_orders=VALUES(total_orders),delivered=VALUES(delivered),cancelled=VALUES(cancelled),returned=VALUES(returned),success_rate=VALUES(success_rate),total_spent=VALUES(total_spent),courier_breakdown=VALUES(courier_breakdown),fetched_at=VALUES(fetched_at)", 
+        [$__cacheHash, $phone, $allTotal, $allSuccess, $allCancelled, $allReturned, $overallRate, $ourRecord['total_spent'], json_encode($__cacheBreakdown), $__now]);
 } catch (\Throwable $e) {}
 
 /* ─── Output ─── */
