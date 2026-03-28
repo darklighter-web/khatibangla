@@ -78,7 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 else { $customerId = $db->insert('customers', ['name' => $name, 'phone' => $phone, 'address' => $address, 'total_orders' => 1]); }
             }
             
-            $orderNumber = generateOrderNumber();
+            $orderNumber = 'TEMP-' . $id; // Temporary ID — real one generated on confirmation
             $orderId = $db->insert('orders', [
                 'order_number' => $orderNumber, 'customer_id' => $customerId,
                 'customer_name' => $name, 'customer_phone' => $phone, 'customer_address' => $address,

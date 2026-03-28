@@ -114,10 +114,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'updated_at' => date('Y-m-d H:i:s'),
         ];
 
-        if ($action === 'confirm_order' && in_array($order['order_status'], ['pending','processing'])) {
+        if ($action === 'confirm_order' && in_array($order['order_status'], ['pending','processing','incomplete'])) {
             $updateData['order_status'] = 'confirmed';
-            $db->insert('order_status_history', ['order_id'=>$id,'status'=>'confirmed','changed_by'=>getAdminId(),'note'=>'Order confirmed']);
-            logActivity(getAdminId(), 'confirm_order', 'orders', $id, 'Confirmed order');
+            
+            // If this is a TEMP order (from incomplete), generate real order number on confirmation
+            if (strpos($order['order_number'], 'TEMP-') === 0) {
+                $realOrderNumber = generateOrderNumber();
+                $updateData['order_number'] = $realOrderNumber;
+                $db->insert('order_status_history', ['order_id'=>$id,'status'=>'confirmed','changed_by'=>getAdminId(),'note'=>'Confirmed: TEMP → ' . $realOrderNumber]);
+                logActivity(getAdminId(), 'confirm_order', 'orders', $id, "Confirmed: {$order['order_number']} → {$realOrderNumber}");
+            } else {
+                $db->insert('order_status_history', ['order_id'=>$id,'status'=>'confirmed','changed_by'=>getAdminId(),'note'=>'Order confirmed']);
+                logActivity(getAdminId(), 'confirm_order', 'orders', $id, 'Confirmed order');
+            }
 
             // ── Reduce stock on confirmation (not on order placement) ──
             try {
@@ -353,7 +362,7 @@ try { $wc = $db->fetch("SELECT COUNT(*) as cnt FROM orders WHERE customer_phone 
 
 $createdAgo  = timeAgo($order['created_at']);
 $updatedAgo  = timeAgo($order['updated_at'] ?? $order['created_at']);
-$isPending   = in_array($order['order_status'], ['pending','processing']);
+$isPending   = in_array($order['order_status'], ['pending','processing','incomplete']);
 $visitorLog  = null;
 try { if (!empty($order['visitor_id'])) $visitorLog = $db->fetch("SELECT * FROM visitor_logs WHERE id = ?", [$order['visitor_id']]); elseif (!empty($order['ip_address'])) $visitorLog = $db->fetch("SELECT * FROM visitor_logs WHERE device_ip=? AND created_at >= DATE_SUB(?, INTERVAL 1 HOUR) ORDER BY id DESC LIMIT 1", [$order['ip_address'], $order['created_at']]); } catch (\Throwable $e) {}
 $orderTags   = [];
