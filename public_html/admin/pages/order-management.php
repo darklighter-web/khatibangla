@@ -575,15 +575,15 @@ function sortIcon($col) {
 }
 ?>
 <style>
-.om-table th,.om-table td{padding:7px 5px;vertical-align:top;border-bottom:1px solid #f1f5f9;font-size:12px}
-.om-table th{background:linear-gradient(to bottom,#f8fafc,#f1f5f9);color:#475569;font-weight:600;text-transform:uppercase;letter-spacing:.4px;font-size:10px;position:sticky;top:0;z-index:2;border-bottom:2px solid #e2e8f0;user-select:none;white-space:nowrap;padding:10px 5px}
+.om-table th,.om-table td{padding:12px 8px;vertical-align:top;border-bottom:1px solid #f1f5f9;font-size:13px}
+.om-table th{background:#fafbfc;color:#6b7280;font-weight:600;font-size:12px;position:sticky;top:0;z-index:2;border-bottom:1px solid #e5e7eb;user-select:none;white-space:nowrap;padding:12px 8px}
 .om-table th a{color:inherit;text-decoration:none}
-.om-table tbody tr{transition:background .15s}
-.om-table tbody tr:hover{background:#f0f7ff}
-.om-table .cust-name{font-weight:600;color:#1e293b;font-size:12px}
-.om-table .cust-phone{font-size:11px;color:#64748b;font-family:'SF Mono',SFMono-Regular,Menlo,monospace}
-.om-table .cust-addr{font-size:10px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
-.om-wrap{overflow-x:auto;border:1px solid #e2e8f0;border-radius:12px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.om-table tbody tr{transition:background .15s;border-bottom:1px solid #f3f4f6}
+.om-table tbody tr:hover{background:#f8fafc}
+.om-table .cust-name{font-weight:500;color:#374151;font-size:13px}
+.om-table .cust-phone{font-size:12px;color:#374151;font-weight:500}
+.om-table .cust-addr{font-size:12px;color:#9ca3af;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
+.om-wrap{overflow-x:auto;border:1px solid #e5e7eb;border-radius:8px;background:#fff}
 .om-table{width:100%;border-collapse:collapse}
 .om-table td{word-break:break-word}
 .om-col-hide{display:none!important}
@@ -596,7 +596,7 @@ function sortIcon($col) {
 .rate-popup::before{content:'';position:absolute;top:-6px;left:20px;width:12px;height:12px;background:#fff;border-left:1px solid #e2e8f0;border-top:1px solid #e2e8f0;transform:rotate(45deg)}
 .rate-wrap{position:relative;display:inline-block;cursor:pointer}
 .rate-wrap:hover .rate-popup,.rate-wrap.pinned .rate-popup{display:block}
-.rate-badge{display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px}
+.rate-badge{display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px}
 .tag-badge{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:12px;white-space:nowrap}
 .dot-menu{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border-radius:5px;cursor:pointer;color:#94a3b8;font-size:14px;line-height:1;transition:all .15s}
 .dot-menu:hover{background:#e2e8f0;color:#334155}
@@ -825,21 +825,21 @@ $_courierBarHidden = !$status || !in_array($status, $_courierVisibleStatuses);
     <table class="om-table" id="ordersTable">
         <thead>
             <tr>
-                <th style="width:28px"><input type="checkbox" id="selectAll" onchange="toggleAll(this)"></th>
-                <th data-col="date" style="width:80px"><a href="#" onclick="event.preventDefault();OM.goSort('created_at')" style="cursor:pointer">Date <?= sortIcon('created_at') ?></a></th>
-                <th data-col="invoice" style="width:68px"><a href="#" onclick="event.preventDefault();OM.goSort('order_number')" style="cursor:pointer">Invoice <?= sortIcon('order_number') ?></a></th>
+                <th style="width:30px"><input type="checkbox" id="selectAll" onchange="toggleAll(this)"></th>
+                <th data-col="date"><a href="#" onclick="event.preventDefault();OM.goSort('created_at')" style="cursor:pointer">Created At <?= sortIcon('created_at') ?></a></th>
+                <th data-col="invoice" style="width:72px"><a href="#" onclick="event.preventDefault();OM.goSort('order_number')" style="cursor:pointer">Invoice <?= sortIcon('order_number') ?></a></th>
                 <th data-col="customer">Customer</th>
                 <th data-col="note">Note</th>
                 <th data-col="products">Products</th>
-                <th data-col="tags" style="width:72px">Tags</th>
-                <th data-col="total" style="width:68px;text-align:right"><a href="#" onclick="event.preventDefault();OM.goSort('total')" style="cursor:pointer">Total <?= sortIcon('total') ?></a></th>
-                <th data-col="rate" style="width:120px"><a href="#" onclick="event.preventDefault();OM.goSort('success_rate')" style="cursor:pointer">Success Rate <?= sortIcon('success_rate') ?></a></th>
-                <th data-col="upload" style="width:110px">Upload</th>
+                <th data-col="tags">Tags</th>
+                <th data-col="total" style="text-align:right"><a href="#" onclick="event.preventDefault();OM.goSort('total')" style="cursor:pointer">Total <?= sortIcon('total') ?></a></th>
+                <th data-col="rate"><a href="#" onclick="event.preventDefault();OM.goSort('success_rate')" style="cursor:pointer">Success Rate <?= sortIcon('success_rate') ?></a></th>
+                <th data-col="upload">Upload</th>
                 <th data-col="print" style="width:34px;text-align:center">Print</th>
-                <th data-col="user" style="width:62px">User</th>
-                <th data-col="source" style="width:44px"><a href="#" onclick="event.preventDefault();OM.goSort('channel')" style="cursor:pointer">Src <?= sortIcon('channel') ?></a></th>
+                <th data-col="user">User</th>
+                <th data-col="source"><a href="#" onclick="event.preventDefault();OM.goSort('channel')" style="cursor:pointer">Source <?= sortIcon('channel') ?></a></th>
                 <th data-col="shipping">Shipping</th>
-                <th style="width:56px;text-align:center">Actions</th>
+                <th style="text-align:center">Actions</th>
             </tr>
         </thead>
         <tbody>
