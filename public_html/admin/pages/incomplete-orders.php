@@ -82,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $orderId = $db->insert('orders', [
                 'order_number' => $orderNumber, 'customer_id' => $customerId,
                 'customer_name' => $name, 'customer_phone' => $phone, 'customer_address' => $address,
-                'channel' => 'INCOMPLETE_ORDER', 'subtotal' => $subtotal, 'shipping_cost' => 0,
+                'channel' => 'WEB', 'subtotal' => $subtotal, 'shipping_cost' => 0,
                 'discount_amount' => 0, 'total' => $total, 'payment_method' => 'cod',
                 'order_status' => 'processing',
                 'notes' => 'From incomplete order #' . $id,
