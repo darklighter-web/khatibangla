@@ -267,6 +267,75 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         try { $db->delete('order_tags', 'order_id = ? AND tag_name = ?', [intval($_POST['order_id']), trim(sanitize($_POST['tag']))]); } catch(Exception $e) {}
         echo json_encode(['success'=>true]); exit;
     }
+    
+    // ── Convert incomplete order → confirmed order ──
+    if ($action === 'convert_incomplete') {
+        $incId = intval($_POST['inc_id'] ?? 0);
+        $recCol2 = 'is_recovered';
+        try { $db->fetch("SELECT is_recovered FROM incomplete_orders LIMIT 1"); } catch (\Throwable $e) { $recCol2 = 'recovered'; }
+        $inc = $db->fetch("SELECT * FROM incomplete_orders WHERE id = ?", [$incId]);
+        if ($inc) {
+            try {
+                $name = sanitize($_POST['conv_name'] ?? $inc['customer_name'] ?? 'Unknown');
+                $phone = sanitize($_POST['conv_phone'] ?? $inc['customer_phone'] ?? '');
+                $address = sanitize($_POST['conv_address'] ?? $inc['customer_address'] ?? '');
+                $shippingArea = sanitize($_POST['conv_shipping'] ?? 'outside_dhaka');
+                $notes = sanitize($_POST['conv_notes'] ?? '');
+                $cart = json_decode($inc['cart_data'] ?? '[]', true) ?: [];
+                
+                if (empty($phone)) { header('Location: ' . adminUrl('pages/order-management.php?status=incomplete&msg=no_phone')); exit; }
+                if (empty($cart)) { header('Location: ' . adminUrl('pages/order-management.php?status=incomplete&msg=empty_cart')); exit; }
+                
+                $subtotal = 0;
+                foreach ($cart as $ci) { $subtotal += floatval($ci['price'] ?? $ci['sale_price'] ?? 0) * intval($ci['qty'] ?? $ci['quantity'] ?? 1); }
+                
+                $shippingCost = $shippingArea === 'inside_dhaka' ? floatval(getSetting('shipping_inside_dhaka', 70))
+                    : ($shippingArea === 'dhaka_sub' ? floatval(getSetting('shipping_dhaka_sub', 100)) : floatval(getSetting('shipping_outside_dhaka', 130)));
+                if ($subtotal >= floatval(getSetting('free_shipping_minimum', 5000))) $shippingCost = 0;
+                $total = $subtotal + $shippingCost;
+                
+                $customerId = null;
+                if ($phone) {
+                    $customer = $db->fetch("SELECT id FROM customers WHERE phone = ?", [$phone]);
+                    if ($customer) { $customerId = $customer['id']; }
+                    else { $customerId = $db->insert('customers', ['name' => $name, 'phone' => $phone, 'address' => $address, 'total_orders' => 1]); }
+                }
+                
+                $orderNumber = generateOrderNumber();
+                $orderId = $db->insert('orders', [
+                    'order_number' => $orderNumber, 'customer_id' => $customerId,
+                    'customer_name' => $name, 'customer_phone' => $phone, 'customer_address' => $address,
+                    'channel' => 'website', 'subtotal' => $subtotal, 'shipping_cost' => $shippingCost,
+                    'discount_amount' => 0, 'total' => $total, 'payment_method' => 'cod',
+                    'order_status' => 'confirmed',
+                    'notes' => $notes ?: 'From incomplete order #' . $incId,
+                ]);
+                
+                foreach ($cart as $ci) {
+                    $productId = intval($ci['product_id'] ?? $ci['id'] ?? 0);
+                    $price = floatval($ci['price'] ?? $ci['sale_price'] ?? 0);
+                    $qty = intval($ci['qty'] ?? $ci['quantity'] ?? 1);
+                    $variantName = $ci['variant_name'] ?? $ci['variant'] ?? null;
+                    if (empty($variantName) && !empty($ci['attributes']) && is_array($ci['attributes'])) {
+                        $parts = []; foreach ($ci['attributes'] as $ak => $av) { $parts[] = ucfirst($ak) . ': ' . $av; } $variantName = implode(', ', $parts);
+                    }
+                    try { $db->insert('order_items', ['order_id'=>$orderId,'product_id'=>$productId,'product_name'=>$ci['name']??$ci['product_name']??'Product','variant_name'=>$variantName,'quantity'=>$qty,'price'=>$price,'subtotal'=>$price*$qty]); } catch (\Throwable $e) {}
+                    if ($productId) { try { $db->query("UPDATE products SET stock_quantity = stock_quantity - ?, sales_count = sales_count + ? WHERE id = ?", [$qty, $qty, $productId]); } catch (\Throwable $e) {} }
+                }
+                
+                $db->insert('order_status_history', ['order_id'=>$orderId,'status'=>'confirmed','changed_by'=>getAdminId(),'note'=>'From incomplete #'.$incId]);
+                // Tag as incomplete order source
+                try { $db->insert('order_tags', ['order_id'=>$orderId,'tag_name'=>'INCOMPLETE_ORDER']); } catch (\Throwable $e) {}
+                $db->update('incomplete_orders', [$recCol2 => 1, 'recovered_order_id' => $orderId], 'id = ?', [$incId]);
+                
+                header('Location: ' . adminUrl("pages/order-view.php?order={$orderNumber}&msg=converted"));
+                exit;
+            } catch (\Throwable $e) {
+                header('Location: ' . adminUrl('pages/order-management.php?status=incomplete&msg=error&detail=' . urlencode($e->getMessage())));
+                exit;
+            }
+        }
+    }
 }
 
 // ── Auto-migrate: convert any remaining 'pending' orders to 'processing' ──
@@ -338,10 +407,57 @@ $allowedLimits = [200,1000,0];
 $limit = isset($_GET['per_page']) && in_array((int)$_GET['per_page'], $allowedLimits) ? (int)$_GET['per_page'] : 200;
 if ($limit === 0) $limit = 999999; // "All"
 
+// ═══ INCOMPLETE STATUS — loads from incomplete_orders table ═══
+$_isIncompleteView = ($status === 'incomplete');
+if ($_isIncompleteView) {
+    $recCol = 'is_recovered';
+    try { $db->fetch("SELECT is_recovered FROM incomplete_orders LIMIT 1"); } catch (\Throwable $e) { $recCol = 'recovered'; }
+    
+    $incWhere = "{$recCol} = 0"; $incParams = [];
+    if ($search) { $incWhere .= " AND (customer_phone LIKE ? OR customer_name LIKE ?)"; $incParams[] = "%$search%"; $incParams[] = "%$search%"; }
+    
+    $incTotal = 0;
+    try { $incTotal = intval($db->fetch("SELECT COUNT(*) as cnt FROM incomplete_orders WHERE {$incWhere}", $incParams)['cnt'] ?? 0); } catch (\Throwable $e) {}
+    $incPage = max(1, intval($_GET['page'] ?? 1));
+    $incLimit = $limit;
+    $incOffset = ($incPage - 1) * $incLimit;
+    $incTotalPages = $incLimit > 0 ? ceil($incTotal / $incLimit) : 1;
+    
+    $incOrders = [];
+    try { $incOrders = $db->fetchAll("SELECT * FROM incomplete_orders WHERE {$incWhere} ORDER BY created_at DESC LIMIT {$incLimit} OFFSET {$incOffset}", $incParams); } catch (\Throwable $e) {}
+    
+    // Fetch product images
+    $incAllPids = []; $incProductImages = [];
+    foreach ($incOrders as $io) { foreach (json_decode($io['cart_data'] ?? '[]', true) ?: [] as $ci) { $pid = intval($ci['product_id'] ?? $ci['id'] ?? 0); if ($pid) $incAllPids[] = $pid; } }
+    if (!empty($incAllPids)) { $uids = array_unique($incAllPids); $ph2 = implode(',', array_fill(0, count($uids), '?'));
+        try { foreach ($db->fetchAll("SELECT id, featured_image, name, name_bn FROM products WHERE id IN ({$ph2})", array_values($uids)) as $img) $incProductImages[$img['id']] = $img; } catch (\Throwable $e) {} }
+    
+    // Fetch courier stats for phones
+    $incSuccessRates = [];
+    $incPhones = array_unique(array_filter(array_column($incOrders, 'customer_phone')));
+    if (!empty($incPhones)) {
+        try { $db->query("CREATE TABLE IF NOT EXISTS `customer_courier_stats` (`id` int(11) NOT NULL AUTO_INCREMENT,`phone_hash` varchar(32) NOT NULL,`phone_display` varchar(20) NOT NULL,`total_orders` int(11) NOT NULL DEFAULT 0,`delivered` int(11) NOT NULL DEFAULT 0,`cancelled` int(11) NOT NULL DEFAULT 0,`returned` int(11) NOT NULL DEFAULT 0,`success_rate` decimal(5,2) NOT NULL DEFAULT 0.00,`total_spent` decimal(12,2) NOT NULL DEFAULT 0.00,`courier_breakdown` text DEFAULT NULL,`fetched_at` datetime NOT NULL,`created_at` timestamp DEFAULT CURRENT_TIMESTAMP,`updated_at` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,PRIMARY KEY (`id`),UNIQUE KEY `idx_phone_hash` (`phone_hash`),KEY `idx_fetched` (`fetched_at`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3"); } catch (\Throwable $e) {}
+        $phoneHashes = [];
+        foreach ($incPhones as $p) { $cl = preg_replace('/[^0-9]/', '', $p); if (strlen($cl)>=10) $phoneHashes[$p] = md5(substr($cl, -11)); }
+        if (!empty($phoneHashes)) {
+            $hashList = array_values($phoneHashes);
+            $ph3 = implode(',', array_fill(0, count($hashList), '?'));
+            $cachedRows = [];
+            try { foreach ($db->fetchAll("SELECT * FROM customer_courier_stats WHERE phone_hash IN ({$ph3}) AND fetched_at > DATE_SUB(NOW(), INTERVAL 12 HOUR)", $hashList) as $r) $cachedRows[$r['phone_hash']] = $r; } catch (\Throwable $e) {}
+            foreach ($phoneHashes as $p => $h) {
+                if (isset($cachedRows[$h])) { $c=$cachedRows[$h]; $incSuccessRates[$p]=['total'=>intval($c['total_orders']),'delivered'=>intval($c['delivered']),'cancelled'=>intval($c['cancelled']),'returned'=>intval($c['returned']),'rate'=>floatval($c['success_rate']),'courier_breakdown'=>json_decode($c['courier_breakdown']??'[]',true)?:[]]; }
+                else { $pl='%'.substr(preg_replace('/[^0-9]/','',$p),-11);
+                    try { $sr=$db->fetch("SELECT COUNT(*) as total, SUM(CASE WHEN order_status='delivered' THEN 1 ELSE 0 END) as delivered FROM orders WHERE REPLACE(REPLACE(customer_phone,' ',''),'-','') LIKE ?",[$pl]); $t=intval($sr['total']??0);$d=intval($sr['delivered']??0); $incSuccessRates[$p]=['total'=>$t,'delivered'=>$d,'cancelled'=>0,'returned'=>0,'rate'=>$t>0?round(($d/$t)*100,2):0,'courier_breakdown'=>[]]; } catch (\Throwable $e) { $incSuccessRates[$p]=['total'=>0,'delivered'=>0,'cancelled'=>0,'returned'=>0,'rate'=>0,'courier_breakdown'=>[]]; }
+                }
+            }
+        }
+    }
+}
+
 $where = '1=1'; $params = [];
-// Incomplete orders have their own page — never show in order management
+// Incomplete orders have their own tab — never show in other tabs
 $where .= " AND o.order_status != 'incomplete'";
-if ($status) {
+if ($status && $status !== 'incomplete') {
     if ($status === 'processing') {
         $where .= " AND o.order_status IN ('processing','pending')";
     } else {
@@ -662,6 +778,16 @@ function sortIcon($col) {
             </a>
             <?php 
             $allTabStatuses = ['processing', 'confirmed', 'ready_to_ship', 'shipped', 'delivered', 'pending_return', 'returned', 'partial_delivered', 'cancelled', 'pending_cancel', 'on_hold', 'no_response', 'good_but_no_response', 'advance_payment', 'lost'];
+            // Incomplete tab (first, before processing) — data from incomplete_orders table
+            $__incIsActive = ($status === 'incomplete');
+            ?>
+            <a href="?status=incomplete"
+               data-status-tab="incomplete"
+               onclick="event.preventDefault();OM.go({status:'incomplete',page:1})"
+               class="px-3 py-2.5 text-xs font-medium whitespace-nowrap border-b-2 transition om-status-tab <?= $__incIsActive ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700' ?>">
+                INCOMPLETE <span class="px-1.5 py-0.5 rounded text-[10px] tab-count <?= $__incIsActive ? 'bg-blue-100 text-blue-700 font-bold' : 'bg-gray-100 text-gray-500' ?>"><?= number_format($incompleteCount) ?></span>
+            </a>
+            <?php
             foreach ($allTabStatuses as $s):
                 $tc = $tabConfig[$s] ?? ['icon'=>'','color'=>'gray','label'=>ucwords(str_replace('_',' ',$s))];
                 $cnt = $statusCounts[$s] ?? 0;
@@ -879,6 +1005,82 @@ $_courierBarHidden = !$status || !in_array($status, $_courierVisibleStatuses);
             </tr>
         </thead>
         <tbody>
+<?php if ($_isIncompleteView):
+    // ═══ INCOMPLETE VIEW — render rows from incomplete_orders table ═══
+    foreach ($incOrders as $inc):
+        $cart = json_decode($inc['cart_data'] ?? '[]', true) ?: [];
+        $ph = preg_replace('/[^0-9]/', '', $inc['customer_phone'] ?? '');
+        $isRec = intval($inc[$recCol] ?? 0);
+        $cartTotal = 0;
+        foreach ($cart as $ci) { $cartTotal += floatval($ci['price'] ?? $ci['sale_price'] ?? 0) * intval($ci['qty'] ?? $ci['quantity'] ?? 1); }
+        $sr = $incSuccessRates[$inc['customer_phone'] ?? ''] ?? ['total'=>0,'delivered'=>0,'rate'=>0,'cancelled'=>0,'returned'=>0,'courier_breakdown'=>[]];
+        $__rClr=$sr['rate']>=70?'#22c55e':($sr['rate']>=40?'#eab308':'#ef4444');
+        $__rTxt=$sr['rate']>=70?'#16a34a':($sr['rate']>=40?'#ca8a04':'#dc2626');
+        $__circ=100.53;$__dash=($sr['rate']/100)*$__circ;$__gap=$__circ-$__dash;
+        $__incAge = time() - strtotime($inc['created_at']); $__isTooNew = $__incAge < 420; $__ageMin = round($__incAge / 60);
+        $stepC = ['cart'=>'#eab308','info'=>'#3b82f6','shipping'=>'#6366f1','payment'=>'#9333ea','checkout_form'=>'#3b82f6'];
+        $stepClr = $stepC[$inc['step_reached']??'cart'] ?? '#9ca3af';
+?>
+<tr class="om-pre <?= $isRec?'opacity-50':'' ?>">
+    <td style="vertical-align:middle"><input type="checkbox" class="order-check" value="<?= $inc['id'] ?>"></td>
+    <td data-col="date" style="white-space:nowrap">
+        <div style="font-size:13px;color:#374151"><?= date('d M, h:i a', strtotime($inc['created_at'])) ?></div>
+        <div style="font-size:11px;color:#9ca3af">TEMP-<?= $inc['id'] ?></div>
+    </td>
+    <td data-col="invoice" style="white-space:nowrap">
+        <span style="font-weight:600;color:#64748b;font-size:13px">TEMP-<?= $inc['id'] ?></span>
+    </td>
+    <td data-col="customer">
+        <?php if(!empty($inc['customer_phone'])):?><div style="display:flex;align-items:center;gap:5px;margin-bottom:2px"><span style="color:#9ca3af;font-size:11px">📞</span><span style="font-size:12px;color:#374151;font-weight:500"><?= e($inc['customer_phone']) ?></span><a href="tel:<?= e($ph) ?>" style="color:#3b82f6;font-size:11px">📱</a><a href="https://wa.me/88<?= $ph ?>" target="_blank" style="color:#22c55e;font-size:11px">💬</a></div><?php endif;?>
+        <?php if(!empty($inc['customer_name'])):?><div style="display:flex;align-items:center;gap:5px;margin-bottom:2px"><span style="color:#9ca3af;font-size:11px">👤</span><span style="font-size:13px;font-weight:500;color:#374151"><?= e($inc['customer_name']) ?></span></div><?php endif;?>
+        <?php if(!empty($inc['customer_address'])):?><div style="display:flex;align-items:center;gap:5px"><span style="color:#9ca3af;font-size:11px">📍</span><span style="font-size:12px;color:#9ca3af"><?= e(mb_strimwidth($inc['customer_address'],0,28,'...')) ?></span></div>
+        <?php elseif(empty($inc['customer_name'])&&empty($inc['customer_phone'])):?><span style="font-size:12px;color:#d1d5db">Unknown visitor</span><?php endif;?>
+    </td>
+    <td data-col="note">
+        <div style="font-size:11px;color:#9ca3af;margin-bottom:2px">Updated <?= timeAgo($inc['created_at']) ?></div>
+        <?php if($__isTooNew):?><div style="font-size:10px;color:#f59e0b;font-weight:600">⚠️ <?= $__ageMin ?>m ago</div><?php endif;?>
+    </td>
+    <td data-col="products" style="cursor:pointer" onclick='showIncProducts(<?= htmlspecialchars(json_encode($cart, JSON_HEX_APOS|JSON_HEX_QUOT), ENT_QUOTES) ?>, "TEMP-<?= $inc['id'] ?>")'>
+        <div style="display:inline-flex;align-items:center;gap:3px;margin-bottom:3px">
+            <span style="width:7px;height:7px;border-radius:50%;background:<?=$stepClr?>"></span>
+            <span style="font-size:9px;font-weight:600;padding:1px 6px;border-radius:12px;background:<?=$stepClr?>22;color:<?=$stepClr?>"><?= strtoupper(str_replace('_',' ',$inc['step_reached']??'CART')) ?></span>
+        </div>
+        <?php foreach(array_slice($cart,0,2) as $ci): $pid=intval($ci['product_id']??$ci['id']??0); $pImg=$incProductImages[$pid]['featured_image']??''; $pName=$ci['name']??$ci['product_name']??($incProductImages[$pid]['name']??'Product');?>
+        <div style="display:flex;align-items:center;gap:5px;margin-top:3px">
+            <div style="width:32px;height:32px;border-radius:6px;border:1px solid #e5e7eb;overflow:hidden;flex-shrink:0;background:#f9fafb"><?php if($pImg):?><img src="<?=imgSrc('products',$pImg)?>" style="width:100%;height:100%;object-fit:cover" loading="lazy"><?php else:?><div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#d1d5db;font-size:14px">📦</div><?php endif;?></div>
+            <div style="overflow:hidden"><div style="font-size:12px;color:#374151;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px"><?=e($pName)?></div><div style="font-size:10px;color:#9ca3af"><?php if(!empty($ci['variant_name']??$ci['variant']??'')):?><?=e(mb_strimwidth($ci['variant_name']??$ci['variant']??'',0,16,'..'))?>·<?php endif;?>Qty: <?=intval($ci['qty']??$ci['quantity']??1)?></div></div>
+        </div>
+        <?php endforeach; if(count($cart)>2):?><div style="font-size:10px;color:#9ca3af;margin-top:2px">+<?=count($cart)-2?> more</div><?php endif;?>
+    </td>
+    <td data-col="tags"><span style="font-size:9px;padding:2px 6px;border-radius:10px;background:#f1f5f9;color:#64748b;font-weight:600">Incomplete</span></td>
+    <td data-col="total" style="text-align:right;white-space:nowrap"><div style="font-weight:700;color:#111827;font-size:13px">৳<?=number_format($cartTotal)?></div></td>
+    <td data-col="rate" style="white-space:nowrap">
+        <?php if($sr['total']>0):?>
+        <div style="display:flex;align-items:center;gap:6px">
+            <svg width="36" height="36" viewBox="0 0 36 36" style="flex-shrink:0;transform:rotate(-90deg)"><circle cx="18" cy="18" r="16" fill="none" stroke="#e5e7eb" stroke-width="3"/><circle cx="18" cy="18" r="16" fill="none" stroke="<?=$__rClr?>" stroke-width="3" stroke-dasharray="<?=$__dash?> <?=$__gap?>" stroke-linecap="round"/></svg>
+            <div style="line-height:1.3"><div style="font-size:11px;font-weight:700;color:<?=$__rTxt?>">Success: <?=$sr['rate']?>%</div><div style="font-size:10px;color:#6b7280">Order: <?=$sr['delivered']?>/<?=$sr['total']?></div></div>
+        </div>
+        <?php else:?><span style="color:#d1d5db">0</span><?php endif;?>
+    </td>
+    <td data-col="upload"><span style="color:#d1d5db">—</span></td>
+    <td data-col="print" style="text-align:center"><span style="color:#d1d5db">—</span></td>
+    <td data-col="user"><span style="color:#d1d5db">—</span></td>
+    <td data-col="source"><span style="font-size:9px;font-weight:600;color:#64748b">WEB</span></td>
+    <td data-col="shipping"><span style="color:#d1d5db">—</span></td>
+    <td style="text-align:center;vertical-align:middle">
+        <?php if(!$isRec):?>
+        <div style="display:flex;align-items:center;justify-content:center;gap:4px">
+            <button onclick='viewDetails(<?=json_encode($inc,JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE)?>,<?=json_encode($cart,JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE)?>)' style="font-size:11px;background:#f3f4f6;color:#374151;padding:5px 10px;border-radius:6px;border:none;cursor:pointer;font-weight:500">Details</button>
+            <?php if(!empty($inc['customer_phone'])):?>
+            <button onclick='confirmIncomplete(<?=json_encode($inc,JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE)?>,<?=json_encode($cart,JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE)?>,<?=$__isTooNew?'true':'false'?>,<?=$__ageMin?>)' style="font-size:11px;background:#16a34a;color:#fff;padding:5px 10px;border-radius:6px;border:none;cursor:pointer;font-weight:600">✓ Confirm</button>
+            <?php endif;?>
+        </div>
+        <?php else:?><span style="font-size:11px;color:#16a34a">✅ Recovered</span><?php endif;?>
+    </td>
+</tr>
+<?php endforeach;
+    if(empty($incOrders)):?><tr><td colspan="15" style="padding:48px;text-align:center;color:#9ca3af"><div style="font-size:32px;margin-bottom:8px">🛒</div><p>No incomplete orders found.</p></td></tr><?php endif;?>
+<?php else: ?>
 <?php 
 $__tplFile2 = __DIR__ . '/order-row-tpl.php';
 foreach ($orders as $order):
@@ -912,6 +1114,7 @@ if (empty($orders)):
 ?>
 <tr><td colspan="14" style="text-align:center;padding:40px 20px;color:#94a3b8"><div style="font-size:28px;margin-bottom:8px">📦</div>No orders found</td></tr>
 <?php endif; ?>
+<?php endif; /* end $_isIncompleteView else */ ?>
         </tbody>
     </table>
 </div>
@@ -1700,6 +1903,54 @@ OM._fetch = async function(params) {
 };
 
 // ── Rate Popup: Refresh (rebuild from DB) & Fetch All (call courier APIs) ──
+// ── Incomplete Order Functions ──
+function showIncProducts(cart, ref) {
+    if (!cart || !cart.length) { alert('No products in cart'); return; }
+    var items = cart.map(function(ci) { return { name: ci.name || ci.product_name || 'Product', variant: ci.variant_name || ci.variant || '', qty: parseInt(ci.qty || ci.quantity || 1), price: parseFloat(ci.price || ci.sale_price || 0), image: '', sku: '' }; });
+    if (typeof showProductPopup === 'function') showProductPopup(items, ref);
+}
+function viewDetails(inc, cart) {
+    var h = '<div style="padding:16px"><h3 style="font-weight:700;margin-bottom:12px">📋 Incomplete Order TEMP-'+inc.id+'</h3>';
+    h += '<div style="background:#f9fafb;border-radius:8px;padding:12px;margin-bottom:12px"><div style="font-size:11px;color:#9ca3af;text-transform:uppercase;font-weight:600;margin-bottom:6px">Customer</div>';
+    if (inc.customer_phone) h += '<div style="font-size:13px;margin-bottom:2px">📞 '+inc.customer_phone+'</div>';
+    if (inc.customer_name) h += '<div style="font-size:13px;margin-bottom:2px">👤 '+inc.customer_name+'</div>';
+    if (inc.customer_address) h += '<div style="font-size:13px;color:#6b7280">📍 '+inc.customer_address+'</div>';
+    h += '</div>';
+    h += '<div style="font-size:11px;color:#9ca3af;text-transform:uppercase;font-weight:600;margin-bottom:6px">Cart Items ('+cart.length+')</div>';
+    var sub = 0;
+    cart.forEach(function(ci) { var pr=parseFloat(ci.price||ci.sale_price||0); var q=parseInt(ci.qty||ci.quantity||1); sub+=pr*q;
+        h += '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f3f4f6"><div style="flex:1"><div style="font-size:13px;font-weight:500">'+(ci.name||ci.product_name||'Product')+'</div>';
+        if (ci.variant_name||ci.variant) h += '<div style="font-size:11px;color:#6366f1">'+(ci.variant_name||ci.variant)+'</div>';
+        h += '<div style="font-size:11px;color:#9ca3af">×'+q+' × ৳'+pr.toLocaleString()+'</div></div><div style="font-weight:700">৳'+(pr*q).toLocaleString()+'</div></div>';
+    });
+    h += '<div style="display:flex;justify-content:space-between;padding:10px 0;font-weight:700;font-size:14px"><span>Total</span><span>৳'+sub.toLocaleString()+'</span></div>';
+    if (inc.ip_address||inc.device_ip) h += '<div style="font-size:10px;color:#9ca3af;margin-top:8px">IP: '+(inc.device_ip||inc.ip_address)+'</div>';
+    h += '</div>';
+    // Show in a simple modal
+    var m = document.getElementById('incDetailsModal');
+    if (!m) { m = document.createElement('div'); m.id='incDetailsModal'; m.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:20px'; m.onclick=function(e){if(e.target===m)m.style.display='none';}; document.body.appendChild(m); }
+    m.innerHTML = '<div style="background:#fff;border-radius:16px;max-width:500px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 25px 60px rgba(0,0,0,.3)" onclick="event.stopPropagation()">'+h+'</div>';
+    m.style.display = 'flex';
+}
+async function confirmIncomplete(inc, cart, isTooNew, ageMin) {
+    if (isTooNew) { var ok = await window._confirmAsync('⚠️ This incomplete order is only '+ageMin+' minute(s) old!\\n\\nThe customer may still be typing. Are you sure?'); if (!ok) return; }
+    convertOrder(inc, cart);
+}
+function convertOrder(inc, cart) {
+    document.getElementById('conv_id').value = inc.id;
+    document.getElementById('conv_name').value = inc.customer_name || '';
+    document.getElementById('conv_phone').value = inc.customer_phone || '';
+    document.getElementById('conv_address').value = inc.customer_address || '';
+    var h='', sub=0;
+    cart.forEach(function(ci) { var pr=parseFloat(ci.price||ci.sale_price||0); var q=parseInt(ci.qty||ci.quantity||1); sub+=pr*q;
+        h += '<div style="display:flex;align-items:center;justify-content:between;padding:8px;border-bottom:1px solid #f3f4f6"><span style="flex:1">'+(ci.name||ci.product_name||'Item')+' × '+q+'</span><span style="font-weight:600">৳'+(pr*q).toLocaleString()+'</span></div>';
+    });
+    if (!h) h = '<div style="padding:12px;text-align:center;color:#9ca3af">No items</div>';
+    document.getElementById('conv_items').innerHTML = h;
+    document.getElementById('conv_total').textContent = '৳'+sub.toLocaleString();
+    document.getElementById('convertModal').classList.remove('hidden');
+}
+
 function rateRefresh(phone, btn) {
     if (!phone) return;
     var orig = btn.innerHTML; btn.innerHTML = '⏳...'; btn.disabled = true;
@@ -2564,5 +2815,38 @@ function handleOrderFrameLoad(iframe) {
         <iframe id="orderEditFrame" src="about:blank" class="flex-1 w-full border-0" onload="handleOrderFrameLoad(this)"></iframe>
     </div>
 </div>
+
+<!-- ═══ CONVERT INCOMPLETE MODAL ═══ -->
+<div id="convertModal" class="fixed inset-0 z-[9999] hidden bg-black/50 flex items-center justify-center p-4" onclick="if(event.target===this)this.classList.add('hidden')">
+<div class="bg-white rounded-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl" onclick="event.stopPropagation()">
+    <div class="sticky top-0 bg-white border-b px-5 py-3 flex items-center justify-between z-10 rounded-t-2xl">
+        <h3 class="font-bold text-gray-800">✓ Create Order from Incomplete</h3>
+        <button onclick="document.getElementById('convertModal').classList.add('hidden')" class="p-1 hover:bg-gray-100 rounded-lg text-gray-400 text-lg">&times;</button>
+    </div>
+    <form method="POST" class="p-5 space-y-4">
+        <input type="hidden" name="action" value="convert_incomplete">
+        <input type="hidden" name="inc_id" id="conv_id">
+        <div class="bg-green-50 border border-green-200 text-green-700 text-xs p-3 rounded-lg">Creates a <strong>Confirmed Order</strong> with a real order number. Source tagged as <strong>Incomplete Order</strong>.</div>
+        <div class="grid grid-cols-2 gap-3">
+            <div><label class="block text-xs font-medium text-gray-700 mb-1">Name</label><input type="text" name="conv_name" id="conv_name" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
+            <div><label class="block text-xs font-medium text-gray-700 mb-1">Phone *</label><input type="text" name="conv_phone" id="conv_phone" required class="w-full px-3 py-2 border rounded-lg text-sm"></div>
+        </div>
+        <div><label class="block text-xs font-medium text-gray-700 mb-1">Address</label><textarea name="conv_address" id="conv_address" rows="2" class="w-full px-3 py-2 border rounded-lg text-sm"></textarea></div>
+        <div class="grid grid-cols-2 gap-3">
+            <div><label class="block text-xs font-medium text-gray-700 mb-1">Shipping</label>
+                <select name="conv_shipping" class="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="inside_dhaka">Dhaka (৳<?= getSetting('shipping_inside_dhaka', 70) ?>)</option>
+                    <option value="dhaka_sub">Dhaka Sub (৳<?= getSetting('shipping_dhaka_sub', 100) ?>)</option>
+                    <option value="outside_dhaka" selected>Outside (৳<?= getSetting('shipping_outside_dhaka', 130) ?>)</option>
+                </select></div>
+            <div><label class="block text-xs font-medium text-gray-700 mb-1">Notes</label><input type="text" name="conv_notes" placeholder="Optional..." class="w-full px-3 py-2 border rounded-lg text-sm"></div>
+        </div>
+        <div><label class="block text-xs font-medium text-gray-700 mb-2">Cart Items</label>
+            <div id="conv_items" class="border rounded-lg divide-y text-sm"></div>
+            <div class="flex justify-between mt-2 text-sm font-bold"><span>Total:</span><span id="conv_total">৳0</span></div>
+        </div>
+        <button class="w-full bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 text-sm">✓ Create Confirmed Order</button>
+    </form>
+</div></div>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
