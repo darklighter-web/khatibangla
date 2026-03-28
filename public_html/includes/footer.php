@@ -1868,25 +1868,51 @@ document.getElementById('checkout-form')?.addEventListener('submit', function(e)
     });
 });
 // ── Incomplete Order Tracking (Issue #8) ──
+var _lastCartData = null;
+// Pre-fetch full cart data for tracking
+function _fetchCartForTracking() {
+    fetch(SITE_URL + '/api/cart.php?action=get').then(r=>r.json()).then(d => {
+        if (d.success && d.items) _lastCartData = d.items;
+    }).catch(()=>{});
+}
+try { _fetchCartForTracking(); } catch(e){}
+
 function trackIncomplete(step, data) {
     try {
         const form = document.getElementById('checkout-form');
         const name = form?.querySelector('[name="name"]')?.value || '';
         const phone = form?.querySelector('[name="phone"]')?.value || '';
         const address = form?.querySelector('[name="address"]')?.value || '';
-        const cartItems = document.querySelectorAll('.checkout-cart-item');
-        let cartJson = '[]';
         let total = 0;
-        try {
+        let cartJson = '[]';
+        
+        // Use full cart data from API if available
+        if (_lastCartData && _lastCartData.length) {
+            const items = _lastCartData.map(ci => {
+                const qty = parseInt(ci.quantity) || 1;
+                const price = parseFloat(ci.price) || 0;
+                total += qty * price;
+                return {
+                    product_id: ci.product_id, key: ci.key, qty: qty, price: price,
+                    name: ci.name || 'Product', variant_name: ci.variant_name || '',
+                    image: ci.image || '', regular_price: ci.regular_price || price
+                };
+            });
+            cartJson = JSON.stringify(items);
+        } else {
+            // Fallback: scrape from DOM
+            const cartItems = document.querySelectorAll('.checkout-cart-item');
             const items = [];
             cartItems.forEach(el => {
                 const qty = parseInt(el.querySelector('.item-qty')?.textContent) || 1;
                 const price = parseFloat(el.dataset.price) || 0;
-                items.push({key: el.dataset.key, qty, price});
+                const key = el.dataset.key || '';
+                const pid = parseInt(key.split('_')[0]) || 0;
+                items.push({product_id: pid, key: key, qty, price, name: 'Product'});
                 total += qty * price;
             });
             cartJson = JSON.stringify(items);
-        } catch(e) {}
+        }
         if (data && data.total) total = data.total;
         
         const body = new FormData();

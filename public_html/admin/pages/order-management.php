@@ -310,12 +310,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     'notes' => 'From incomplete order #' . $incId,
                 ]);
                 foreach ($cart as $ci) {
+                    // Resolve product_id — might be in product_id, id, or parse from key
                     $productId = intval($ci['product_id'] ?? $ci['id'] ?? 0);
+                    if (!$productId && !empty($ci['key'])) { $productId = intval(explode('_', $ci['key'])[0]); }
+                    
                     $price = floatval($ci['price'] ?? $ci['sale_price'] ?? 0);
                     $qty = intval($ci['qty'] ?? $ci['quantity'] ?? 1);
                     $variantName = $ci['variant_name'] ?? $ci['variant'] ?? null;
+                    $productName = $ci['name'] ?? $ci['product_name'] ?? null;
+                    
+                    // Lookup product from DB if name missing
+                    if ((!$productName || $productName === 'Product') && $productId) {
+                        try {
+                            $prd = $db->fetch("SELECT name, name_bn, regular_price, sale_price FROM products WHERE id = ?", [$productId]);
+                            if ($prd) {
+                                $productName = $prd['name_bn'] ?: $prd['name'];
+                                if (!$price) $price = floatval($prd['sale_price'] ?: $prd['regular_price']);
+                            }
+                        } catch (\Throwable $e) {}
+                    }
+                    if (!$productName) $productName = 'Product #' . $productId;
+                    
                     if (empty($variantName) && !empty($ci['attributes']) && is_array($ci['attributes'])) { $parts=[]; foreach($ci['attributes'] as $ak=>$av) $parts[]=ucfirst($ak).': '.$av; $variantName=implode(', ',$parts); }
-                    try { $db->insert('order_items', ['order_id'=>$orderId,'product_id'=>$productId,'product_name'=>$ci['name']??$ci['product_name']??'Product','variant_name'=>$variantName,'quantity'=>$qty,'price'=>$price,'subtotal'=>$price*$qty]); } catch (\Throwable $e) {}
+                    if ($productId && $price > 0) {
+                        try { $db->insert('order_items', ['order_id'=>$orderId,'product_id'=>$productId,'product_name'=>$productName,'variant_name'=>$variantName,'quantity'=>$qty,'price'=>$price,'subtotal'=>$price*$qty]); } catch (\Throwable $e) {}
+                    }
                 }
                 try { $db->insert('order_status_history', ['order_id'=>$orderId,'status'=>'incomplete','changed_by'=>getAdminId(),'note'=>'From incomplete #'.$incId]); } catch (\Throwable $e) {}
                 try { $db->insert('order_tags', ['order_id'=>$orderId,'tag_name'=>'INCOMPLETE_ORDER']); } catch (\Throwable $e) {}
@@ -373,13 +392,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 
                 foreach ($cart as $ci) {
                     $productId = intval($ci['product_id'] ?? $ci['id'] ?? 0);
+                    if (!$productId && !empty($ci['key'])) { $productId = intval(explode('_', $ci['key'])[0]); }
                     $price = floatval($ci['price'] ?? $ci['sale_price'] ?? 0);
                     $qty = intval($ci['qty'] ?? $ci['quantity'] ?? 1);
                     $variantName = $ci['variant_name'] ?? $ci['variant'] ?? null;
+                    $productName = $ci['name'] ?? $ci['product_name'] ?? null;
+                    if ((!$productName || $productName === 'Product') && $productId) {
+                        try { $prd = $db->fetch("SELECT name, name_bn, regular_price, sale_price FROM products WHERE id = ?", [$productId]); if ($prd) { $productName = $prd['name_bn'] ?: $prd['name']; if (!$price) $price = floatval($prd['sale_price'] ?: $prd['regular_price']); } } catch (\Throwable $e) {}
+                    }
+                    if (!$productName) $productName = 'Product #' . $productId;
                     if (empty($variantName) && !empty($ci['attributes']) && is_array($ci['attributes'])) {
                         $parts = []; foreach ($ci['attributes'] as $ak => $av) { $parts[] = ucfirst($ak) . ': ' . $av; } $variantName = implode(', ', $parts);
                     }
-                    try { $db->insert('order_items', ['order_id'=>$orderId,'product_id'=>$productId,'product_name'=>$ci['name']??$ci['product_name']??'Product','variant_name'=>$variantName,'quantity'=>$qty,'price'=>$price,'subtotal'=>$price*$qty]); } catch (\Throwable $e) {}
+                    if ($productId && $price > 0) {
+                        try { $db->insert('order_items', ['order_id'=>$orderId,'product_id'=>$productId,'product_name'=>$productName,'variant_name'=>$variantName,'quantity'=>$qty,'price'=>$price,'subtotal'=>$price*$qty]); } catch (\Throwable $e) {}
+                    }
                     if ($productId) { try { $db->query("UPDATE products SET stock_quantity = stock_quantity - ?, sales_count = sales_count + ? WHERE id = ?", [$qty, $qty, $productId]); } catch (\Throwable $e) {} }
                 }
                 

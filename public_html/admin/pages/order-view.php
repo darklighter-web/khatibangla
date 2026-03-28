@@ -1686,9 +1686,9 @@ async function addTagPrompt(){
 }
 function removeTag(t){fetch('<?=adminUrl("api/actions.php")?>',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'action=remove_tag&order_id=<?=$id?>&tag='+encodeURIComponent(t)}).then(()=>location.reload());}
 
-async function loadPathaCities(){try{const j=await(await fetch(PAPI+'?action=get_cities')).json();(j.data?.data||j.data||[]).forEach(c=>{const o=document.createElement('option');o.value=c.city_id;o.textContent=c.city_name;document.getElementById('pCityId').appendChild(o);});}catch(e){}}
-async function loadZones(cid){const s=document.getElementById('pZoneId');s.innerHTML='<option>Loading...</option>';s.disabled=true;document.getElementById('pAreaId').innerHTML='<option>Select Area</option>';document.getElementById('pAreaId').disabled=true;if(!cid)return;try{const j=await(await fetch(PAPI+'?action=get_zones&city_id='+cid)).json();s.innerHTML='<option value="">Select Zone</option>';(j.data?.data||j.data||[]).forEach(z=>{const o=document.createElement('option');o.value=z.zone_id;o.textContent=z.zone_name;s.appendChild(o);});s.disabled=false;}catch(e){}}
-async function loadAreas(zid){const s=document.getElementById('pAreaId');s.innerHTML='<option>Loading...</option>';s.disabled=true;if(!zid)return;try{const j=await(await fetch(PAPI+'?action=get_areas&zone_id='+zid)).json();s.innerHTML='<option value="">Select Area</option>';(j.data?.data||j.data||[]).forEach(a=>{const o=document.createElement('option');o.value=a.area_id;o.textContent=a.area_name;s.appendChild(o);});s.disabled=false;}catch(e){}}
+async function loadPathaCities(){try{const r=await fetch(PAPI+'?action=get_cities');if(!r.ok)return;const j=await r.json();(j.data?.data||j.data||[]).forEach(c=>{const o=document.createElement('option');o.value=c.city_id;o.textContent=c.city_name;document.getElementById('pCityId').appendChild(o);});}catch(e){}}
+async function loadZones(cid){const s=document.getElementById('pZoneId');s.innerHTML='<option>Loading...</option>';s.disabled=true;document.getElementById('pAreaId').innerHTML='<option>Select Area</option>';document.getElementById('pAreaId').disabled=true;if(!cid)return;try{const r=await fetch(PAPI+'?action=get_zones&city_id='+cid);if(!r.ok){s.innerHTML='<option value="">Select Zone</option>';s.disabled=false;return;}const j=await r.json();s.innerHTML='<option value="">Select Zone</option>';(j.data?.data||j.data||[]).forEach(z=>{const o=document.createElement('option');o.value=z.zone_id;o.textContent=z.zone_name;s.appendChild(o);});s.disabled=false;}catch(e){s.innerHTML='<option value="">Select Zone</option>';s.disabled=false;}}
+async function loadAreas(zid){const s=document.getElementById('pAreaId');s.innerHTML='<option>Loading...</option>';s.disabled=true;if(!zid)return;try{const r=await fetch(PAPI+'?action=get_areas&zone_id='+zid);if(!r.ok){s.innerHTML='<option value="">Select Area</option>';s.disabled=false;return;}const j=await r.json();s.innerHTML='<option value="">Select Area</option>';(j.data?.data||j.data||[]).forEach(a=>{const o=document.createElement('option');o.value=a.area_id;o.textContent=a.area_name;s.appendChild(o);});s.disabled=false;}catch(e){s.innerHTML='<option value="">Select Area</option>';s.disabled=false;}}
 function saveOrderLocation(){
     var cs=document.getElementById('pCityId'), zs=document.getElementById('pZoneId'), as2=document.getElementById('pAreaId');
     var cid=cs?.value||0, zid=zs?.value||0, aid=as2?.value||0;
@@ -1846,7 +1846,9 @@ async function autoDetectLocation(silent){
         }
 
         // ─── Step 1: Fetch Pathao cities ───
-        const j=await(await fetch(PAPI+'?action=get_cities')).json();
+        const cr=await fetch(PAPI+'?action=get_cities');
+        if(!cr.ok){if(!silent){res.className='mt-2 text-xs bg-red-50 text-red-700 p-2 rounded';res.textContent='⚠ Pathao API unavailable.';}return;}
+        let j; try{j=await cr.json();}catch(e){if(!silent){res.className='mt-2 text-xs bg-red-50 text-red-700 p-2 rounded';res.textContent='⚠ Pathao API returned invalid response.';}return;}
         const cities=j.data?.data||j.data||[];
         if(!cities.length){if(!silent){res.className='mt-2 text-xs bg-red-50 text-red-700 p-2 rounded';res.textContent='⚠ Could not load Pathao city list.';}return;}
 
