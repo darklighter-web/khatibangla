@@ -85,6 +85,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if ($action === 'update_status') {
         $orderId = intval($_POST['order_id']);
         $newStatus = sanitize($_POST['status']);
+        
+        // Enforce return flow
+        $currentOrder = $db->fetch("SELECT order_status FROM orders WHERE id=?", [$orderId]);
+        $curStat = $currentOrder['order_status'] ?? '';
+        if ($newStatus === 'returned' && $curStat !== 'pending_return') {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Order must be in Pending Return before confirming as Returned']);
+            exit;
+        }
+        
         $db->update('orders', ['order_status' => $newStatus, 'updated_at' => date('Y-m-d H:i:s')], 'id = ?', [$orderId]);
         try { $db->insert('order_status_history', ['order_id' => $orderId, 'status' => $newStatus, 'changed_by' => getAdminId(), 'note' => sanitize($_POST['notes'] ?? '')]); } catch (Exception $e) {}
         if ($newStatus === 'delivered') { try { awardOrderCredits($orderId); } catch (\Throwable $e) {} }
@@ -150,6 +160,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 // Skip if already in target status
                 if ($oldStatus === $status) {
                     $updated++;
+                    continue;
+                }
+                
+                // Enforce return flow: 'returned' can only be set from 'pending_return'
+                if ($status === 'returned' && $oldStatus !== 'pending_return') {
+                    $errors[] = "Order #{$oid}: Must be in Pending Return before confirming as Returned";
+                    continue;
+                }
+                
+                // Enforce pending_return: only from shipped/delivered/partial_delivered/on_hold
+                if ($status === 'pending_return' && !in_array($oldStatus, ['shipped', 'delivered', 'partial_delivered', 'on_hold'])) {
+                    $errors[] = "Order #{$oid}: Cannot move to Pending Return from {$oldStatus}";
                     continue;
                 }
                 
@@ -773,7 +795,8 @@ $_courierBarHidden = !$status || !in_array($status, $_courierVisibleStatuses);
             <button type="button" onclick="bStatus('ready_to_ship')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">📦 Ready to Ship</button>
             <button type="button" onclick="bStatus('shipped')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">🚚 Ship</button>
             <button type="button" onclick="bStatus('delivered')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">📦 Deliver</button>
-            <button type="button" onclick="bStatus('returned')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-orange-600">↩ Return</button>
+            <button type="button" onclick="bStatus('pending_return')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-amber-600">📦 Pending Return</button>
+            <button type="button" onclick="bStatus('returned')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-orange-600">↩ Confirm Return</button>
             <button type="button" onclick="bStatus('cancelled')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-red-600">✗ Cancel</button>
             <button type="button" onclick="openBulkStatusModal()" class="w-full text-left px-3 py-1.5 text-xs hover:bg-indigo-50 text-indigo-600 font-medium">🔄 Update Status (Any)</button>
             <?php else: ?>

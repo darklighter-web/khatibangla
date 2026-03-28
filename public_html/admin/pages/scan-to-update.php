@@ -52,17 +52,25 @@ if (isset($_POST['ajax_scan'])) {
         case 'shipping':
             $targetStatus = 'shipped';
             $statusLabel = 'Shipped';
-            $allowedFrom = ['processing', 'confirmed', 'pending', 'on_hold', 'advance_payment'];
+            $allowedFrom = ['processing', 'confirmed', 'pending', 'on_hold', 'advance_payment', 'ready_to_ship'];
+            break;
+        case 'pending_return':
+            // Parcel physically received back from courier — mark as pending return for admin review
+            $targetStatus = 'pending_return';
+            $statusLabel = 'Pending Return';
+            $allowedFrom = ['shipped', 'delivered', 'partial_delivered', 'on_hold'];
             break;
         case 'return':
+            // Admin confirms the return after reviewing — only from pending_return
             $targetStatus = 'returned';
             $statusLabel = 'Returned';
-            $allowedFrom = ['shipped', 'delivered', 'partial_delivered', 'pending_return'];
+            $allowedFrom = ['pending_return'];
             break;
         case 'rts':
-            $targetStatus = 'returned';
-            $statusLabel = 'RTS (Returned)';
-            $allowedFrom = ['shipped', 'pending_return'];
+            // Return To Sender — parcel received, mark pending return (not directly returned)
+            $targetStatus = 'pending_return';
+            $statusLabel = 'Pending Return (RTS)';
+            $allowedFrom = ['shipped', 'pending_return', 'on_hold'];
             break;
         case 'delivered':
             $targetStatus = 'delivered';
@@ -72,7 +80,7 @@ if (isset($_POST['ajax_scan'])) {
         case 'cancelled':
             $targetStatus = 'cancelled';
             $statusLabel = 'Cancelled';
-            $allowedFrom = ['pending', 'processing', 'confirmed', 'on_hold', 'no_response', 'good_but_no_response'];
+            $allowedFrom = ['pending', 'processing', 'confirmed', 'on_hold', 'no_response', 'good_but_no_response', 'pending_cancel'];
             break;
     }
 
@@ -152,11 +160,12 @@ $tab = $_GET['tab'] ?? 'shipping';
     <div class="flex gap-0">
         <?php
         $tabs = [
-            'shipping'  => ['Scan To Shipping', 'fa-truck', 'blue'],
-            'return'    => ['Scan To Return', 'fa-undo-alt', 'orange'],
-            'rts'       => ['Scan To RTS', 'fa-reply-all', 'red'],
-            'delivered' => ['Scan To Delivered', 'fa-check-circle', 'green'],
-            'cancelled' => ['Scan To Cancel', 'fa-times-circle', 'gray'],
+            'shipping'       => ['Scan To Shipping', 'fa-truck', 'blue'],
+            'pending_return' => ['Scan To Pending Return', 'fa-box-open', 'amber'],
+            'return'         => ['Confirm Return', 'fa-undo-alt', 'orange'],
+            'rts'            => ['Scan To RTS', 'fa-reply-all', 'red'],
+            'delivered'      => ['Scan To Delivered', 'fa-check-circle', 'green'],
+            'cancelled'      => ['Scan To Cancel', 'fa-times-circle', 'gray'],
         ];
         foreach ($tabs as $tKey => $tData):
             $isActive = ($tab === $tKey);
