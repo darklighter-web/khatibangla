@@ -300,7 +300,7 @@ try { $db->query("ALTER TABLE orders ADD COLUMN advance_amount DECIMAL(12,2) DEF
 // Manual side statuses: cancelled, returned, on_hold, no_response, good_but_no_response, advance_payment
 $mainFlow = ['processing', 'confirmed', 'ready_to_ship', 'shipped', 'delivered'];
 $courierStatuses = ['pending_return', 'pending_cancel', 'partial_delivered', 'lost'];
-$sideStatuses = ['cancelled', 'returned', 'on_hold', 'no_response', 'good_but_no_response', 'advance_payment', 'incomplete'];
+$sideStatuses = ['cancelled', 'returned', 'on_hold', 'no_response', 'good_but_no_response', 'advance_payment'];
 $allStatuses = array_merge($mainFlow, $courierStatuses, $sideStatuses);
 
 // Next logical action for each status
@@ -339,6 +339,8 @@ $limit = isset($_GET['per_page']) && in_array((int)$_GET['per_page'], $allowedLi
 if ($limit === 0) $limit = 999999; // "All"
 
 $where = '1=1'; $params = [];
+// Incomplete orders have their own page — never show in order management
+$where .= " AND o.order_status != 'incomplete'";
 if ($status) {
     if ($status === 'processing') {
         $where .= " AND o.order_status IN ('processing','pending')";
@@ -659,7 +661,7 @@ function sortIcon($col) {
                 ALL <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] tab-count-all <?= !$status ? 'bg-blue-100 text-blue-700 font-bold' : 'bg-gray-100 text-gray-500' ?>"><?= number_format($totalOrders) ?></span>
             </a>
             <?php 
-            $allTabStatuses = ['processing', 'confirmed', 'ready_to_ship', 'shipped', 'delivered', 'pending_return', 'returned', 'partial_delivered', 'cancelled', 'pending_cancel', 'on_hold', 'no_response', 'good_but_no_response', 'advance_payment', 'incomplete', 'lost'];
+            $allTabStatuses = ['processing', 'confirmed', 'ready_to_ship', 'shipped', 'delivered', 'pending_return', 'returned', 'partial_delivered', 'cancelled', 'pending_cancel', 'on_hold', 'no_response', 'good_but_no_response', 'advance_payment', 'lost'];
             foreach ($allTabStatuses as $s):
                 $tc = $tabConfig[$s] ?? ['icon'=>'','color'=>'gray','label'=>ucwords(str_replace('_',' ',$s))];
                 $cnt = $statusCounts[$s] ?? 0;

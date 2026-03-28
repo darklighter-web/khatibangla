@@ -223,6 +223,44 @@ $productImages = [];
 if (!empty($allPids)) { $uids = array_unique($allPids); $ph = implode(',', array_fill(0, count($uids), '?'));
     try { foreach ($db->fetchAll("SELECT id, featured_image, name, name_bn FROM products WHERE id IN ({$ph})", array_values($uids)) as $img) $productImages[$img['id']] = $img; } catch (\Throwable $e) {} }
 
+// ── Courier success rate for incomplete orders (same cache as order-management) ──
+try { $db->query("CREATE TABLE IF NOT EXISTS `customer_courier_stats` (`id` int(11) NOT NULL AUTO_INCREMENT,`phone_hash` varchar(32) NOT NULL,`phone_display` varchar(20) NOT NULL,`total_orders` int(11) NOT NULL DEFAULT 0,`delivered` int(11) NOT NULL DEFAULT 0,`cancelled` int(11) NOT NULL DEFAULT 0,`returned` int(11) NOT NULL DEFAULT 0,`success_rate` decimal(5,2) NOT NULL DEFAULT 0.00,`total_spent` decimal(12,2) NOT NULL DEFAULT 0.00,`courier_breakdown` text DEFAULT NULL,`fetched_at` datetime NOT NULL,`created_at` timestamp DEFAULT CURRENT_TIMESTAMP,`updated_at` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,PRIMARY KEY (`id`),UNIQUE KEY `idx_phone_hash` (`phone_hash`),KEY `idx_fetched` (`fetched_at`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3"); } catch (\Throwable $e) {}
+
+$incSuccessRates = [];
+$incPhones = array_unique(array_filter(array_column($incompletes, 'customer_phone')));
+if (!empty($incPhones)) {
+    $phoneHashes = [];
+    foreach ($incPhones as $phone) {
+        $clean = preg_replace('/[^0-9]/', '', $phone);
+        if (strlen($clean) >= 10) $phoneHashes[$phone] = md5(substr($clean, -11));
+    }
+    // Batch fetch from cache
+    if (!empty($phoneHashes)) {
+        $hashList = array_values($phoneHashes);
+        $ph2 = implode(',', array_fill(0, count($hashList), '?'));
+        $cachedRows = [];
+        try { $rows = $db->fetchAll("SELECT * FROM customer_courier_stats WHERE phone_hash IN ({$ph2}) AND fetched_at > DATE_SUB(NOW(), INTERVAL 12 HOUR)", $hashList); foreach ($rows as $r) $cachedRows[$r['phone_hash']] = $r; } catch (\Throwable $e) {}
+        
+        foreach ($phoneHashes as $phone => $hash) {
+            if (isset($cachedRows[$hash])) {
+                $c = $cachedRows[$hash];
+                $incSuccessRates[$phone] = ['total'=>intval($c['total_orders']),'delivered'=>intval($c['delivered']),'cancelled'=>intval($c['cancelled']),'returned'=>intval($c['returned']),'rate'=>floatval($c['success_rate']),'total_spent'=>floatval($c['total_spent']),'courier_breakdown'=>json_decode($c['courier_breakdown']??'[]',true)?:[]];
+            } else {
+                // Cache miss — compute from orders table
+                $pl = '%' . substr(preg_replace('/[^0-9]/', '', $phone), -11);
+                try {
+                    $sr = $db->fetch("SELECT COUNT(*) as total, SUM(CASE WHEN order_status='delivered' THEN 1 ELSE 0 END) as delivered, SUM(CASE WHEN order_status='cancelled' THEN 1 ELSE 0 END) as cancelled, SUM(CASE WHEN order_status='returned' THEN 1 ELSE 0 END) as returned, SUM(total) as total_spent FROM orders WHERE REPLACE(REPLACE(customer_phone,' ',''),'-','') LIKE ?", [$pl]);
+                    $t=intval($sr['total']??0);$d=intval($sr['delivered']??0);$cn=intval($sr['cancelled']??0);$ret=intval($sr['returned']??0);
+                    $rate=$t>0?round(($d/$t)*100,2):0;
+                    $incSuccessRates[$phone] = ['total'=>$t,'delivered'=>$d,'cancelled'=>$cn,'returned'=>$ret,'rate'=>$rate,'total_spent'=>floatval($sr['total_spent']??0),'courier_breakdown'=>[]];
+                    // Write to cache
+                    try { $db->query("INSERT INTO customer_courier_stats (phone_hash,phone_display,total_orders,delivered,cancelled,returned,success_rate,total_spent,courier_breakdown,fetched_at) VALUES (?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE total_orders=VALUES(total_orders),delivered=VALUES(delivered),cancelled=VALUES(cancelled),returned=VALUES(returned),success_rate=VALUES(success_rate),total_spent=VALUES(total_spent),fetched_at=VALUES(fetched_at)", [$hash,$phone,$t,$d,$cn,$ret,$rate,floatval($sr['total_spent']??0),'[]',date('Y-m-d H:i:s')]); } catch (\Throwable $e) {}
+                } catch (\Throwable $e) { $incSuccessRates[$phone] = ['total'=>0,'delivered'=>0,'cancelled'=>0,'returned'=>0,'rate'=>0,'total_spent'=>0,'courier_breakdown'=>[]]; }
+            }
+        }
+    }
+}
+
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
@@ -305,10 +343,16 @@ require_once __DIR__ . '/../includes/header.php';
     </td>
 
     <td>
+        <?php
+            $__incSr = $incSuccessRates[$inc['customer_phone'] ?? ''] ?? ['rate'=>0,'total'=>0,'delivered'=>0];
+            $__incRClr = $__incSr['rate']>=70?'#dcfce7':($__incSr['rate']>=40?'#fef9c3':'#fee2e2');
+            $__incRTxt = $__incSr['rate']>=70?'#166534':($__incSr['rate']>=40?'#854d0e':'#991b1b');
+        ?>
         <?php if (!empty($inc['customer_phone'])): ?>
         <div style="display:flex;align-items:center;gap:5px;margin-bottom:2px">
             <span style="color:#9ca3af;font-size:11px">📞</span>
             <span style="font-size:12px;color:#374151;font-weight:500"><?= e($inc['customer_phone']) ?></span>
+            <?php if($__incSr['total']>0):?><span style="display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;background:<?=$__incRClr?>;color:<?=$__incRTxt?>"><?=$__incSr['rate']?>%</span><?php endif;?>
             <a href="tel:<?= e($ph) ?>" style="color:#3b82f6;font-size:11px">📱</a>
             <a href="https://wa.me/88<?= $ph ?>" target="_blank" style="color:#22c55e;font-size:11px">💬</a>
         </div>
