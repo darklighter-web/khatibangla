@@ -92,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'customer_name' => $name, 'customer_phone' => $phone, 'customer_address' => $address,
                     'channel' => 'website', 'subtotal' => $subtotal, 'shipping_cost' => 0,
                     'discount_amount' => 0, 'total' => $subtotal, 'payment_method' => 'cod',
-                    'order_status' => 'processing',
+                    'order_status' => 'incomplete',
                     'notes' => 'From incomplete order #' . $id,
                 ]);
                 
@@ -116,7 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     } catch (\Throwable $e) {}
                 }
                 
-                try { $db->insert('order_status_history', ['order_id' => $orderId, 'status' => 'processing', 'changed_by' => getAdminId(), 'note' => 'From incomplete #' . $id]); } catch (\Throwable $e) {}
+                try { $db->insert('order_status_history', ['order_id' => $orderId, 'status' => 'incomplete', 'changed_by' => getAdminId(), 'note' => 'From incomplete #' . $id]); } catch (\Throwable $e) {}
                 $db->update('incomplete_orders', [$recCol => 1, 'recovered_order_id' => $orderId], 'id = ?', [$id]);
                 redirect(adminUrl("pages/order-view.php?order={$orderNumber}"));
                 exit;
