@@ -184,75 +184,133 @@ require_once __DIR__ . '/../includes/header.php';
     <button onclick="bulkDelete()" class="bg-white text-red-600 px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-red-50">🗑 Delete Selected</button>
 </div>
 
-<div class="bg-white rounded-xl shadow-sm border overflow-hidden">
-<div class="overflow-x-auto"><table class="w-full text-sm">
-<thead class="bg-gray-50"><tr>
-    <th class="px-3 py-3 w-10"><input type="checkbox" id="selectAllCb" onchange="toggleSelectAll(this.checked)" class="w-4 h-4 accent-red-600 cursor-pointer"></th>
-    <th class="px-4 py-3 text-left text-xs font-medium text-gray-600">Date</th>
-    <th class="px-4 py-3 text-left text-xs font-medium text-gray-600">Customer</th>
-    <th class="px-4 py-3 text-left text-xs font-medium text-gray-600">Cart Items</th>
-    <?php if ($hasCartTotal): ?><th class="px-4 py-3 text-left text-xs font-medium text-gray-600">Value</th><?php endif; ?>
-    <th class="px-4 py-3 text-left text-xs font-medium text-gray-600">Step</th>
-    <?php if ($hasFollowup): ?><th class="px-4 py-3 text-left text-xs font-medium text-gray-600">Follow-ups</th><?php endif; ?>
-    <th class="px-4 py-3 text-left text-xs font-medium text-gray-600">Actions</th>
+<div class="om-wrap">
+<style>
+.om-table th,.om-table td{padding:12px 8px;vertical-align:top;border-bottom:1px solid #f1f5f9;font-size:13px}
+.om-table th{background:#fafbfc;color:#6b7280;font-weight:600;font-size:12px;position:sticky;top:0;z-index:2;border-bottom:1px solid #e5e7eb;white-space:nowrap}
+.om-table tbody tr{transition:background .15s}
+.om-table tbody tr:hover{background:#f8fafb}
+.om-table{width:100%;border-collapse:collapse}
+</style>
+<table class="om-table">
+<thead><tr>
+    <th style="width:30px"><input type="checkbox" id="selectAllCb" onchange="toggleSelectAll(this.checked)" class="w-4 h-4 accent-red-600 cursor-pointer"></th>
+    <th>Created At</th>
+    <th>Customer</th>
+    <th>Note</th>
+    <th>Products</th>
+    <th>Step</th>
+    <th style="text-align:right">Value</th>
+    <?php if ($hasFollowup): ?><th>Follow-ups</th><?php endif; ?>
+    <th style="text-align:center">Actions</th>
 </tr></thead>
-<tbody class="divide-y">
+<tbody>
 <?php foreach ($incompletes as $inc):
     $cart = json_decode($inc['cart_data'] ?? '[]', true) ?: [];
     $isRec = intval($inc[$recCol] ?? 0);
-    $stepC = ['cart'=>'bg-yellow-100 text-yellow-700','info'=>'bg-blue-100 text-blue-700','shipping'=>'bg-indigo-100 text-indigo-700','payment'=>'bg-purple-100 text-purple-700','checkout_form'=>'bg-blue-100 text-blue-700'];
+    $stepC = ['cart'=>'#eab308','info'=>'#3b82f6','shipping'=>'#6366f1','payment'=>'#9333ea','checkout_form'=>'#3b82f6'];
     $ph = preg_replace('/[^0-9]/', '', $inc['customer_phone'] ?? '');
+    $cartTotal = 0;
+    foreach ($cart as $ci) { $cartTotal += floatval($ci['price'] ?? $ci['sale_price'] ?? 0) * intval($ci['qty'] ?? $ci['quantity'] ?? 1); }
+    if ($hasCartTotal && !empty($inc['cart_total'])) $cartTotal = floatval($inc['cart_total']);
 ?>
-<tr class="hover:bg-gray-50 <?= $isRec?'bg-green-50/30':'' ?>">
-    <td class="px-3 py-3"><input type="checkbox" class="row-cb w-4 h-4 accent-red-600 cursor-pointer" value="<?= $inc['id'] ?>" onchange="updateBulkBar()"></td>
-    <td class="px-4 py-3 whitespace-nowrap"><p class="text-xs text-gray-700"><?= date('d M Y', strtotime($inc['created_at'])) ?></p><p class="text-xs text-gray-400"><?= date('h:i a', strtotime($inc['created_at'])) ?></p></td>
-    <td class="px-4 py-3">
-        <?php if (!empty($inc['customer_name'])): ?><p class="text-sm font-medium"><?= e($inc['customer_name']) ?></p><?php endif; ?>
+<tr class="<?= $isRec?'bg-green-50/30':'' ?>">
+    <td style="vertical-align:middle"><input type="checkbox" class="row-cb w-4 h-4 accent-red-600 cursor-pointer" value="<?= $inc['id'] ?>" onchange="updateBulkBar()"></td>
+
+    <td style="white-space:nowrap">
+        <div style="font-size:13px;color:#374151"><?= date('d M, h:i a', strtotime($inc['created_at'])) ?></div>
+        <div style="font-size:11px;color:#9ca3af">ID: <?= $inc['id'] ?></div>
+    </td>
+
+    <td>
         <?php if (!empty($inc['customer_phone'])): ?>
-        <div class="flex items-center gap-1.5"><span class="text-xs text-gray-600"><?= e($inc['customer_phone']) ?></span>
-            <a href="tel:<?= e($ph) ?>" class="text-blue-500 text-xs"><i class="fas fa-phone"></i></a>
-            <a href="https://wa.me/88<?= $ph ?>" target="_blank" class="text-green-600 text-xs"><i class="fab fa-whatsapp"></i></a></div>
-        <?php if ($hasCustomerAddress && !empty($inc['customer_address'])): ?><p class="text-xs text-gray-400 truncate max-w-[150px]">📍 <?= e($inc['customer_address']) ?></p><?php endif; ?>
-        <?php else: ?><span class="text-xs text-gray-400">Unknown visitor</span><?php endif; ?>
-    </td>
-    <td class="px-4 py-3">
-        <?php if (!empty($cart)): ?>
-        <div class="flex items-center gap-1.5">
-            <?php foreach (array_slice($cart, 0, 2) as $ci): $pid=intval($ci['product_id']??$ci['id']??0); $pImg=$productImages[$pid]['featured_image']??''; ?>
-            <div class="w-8 h-8 rounded border bg-gray-50 overflow-hidden flex-shrink-0">
-                <?php if ($pImg): ?><img src="<?= imgSrc('products', $pImg) ?>" class="w-full h-full object-cover" loading="lazy">
-                <?php else: ?><div class="w-full h-full flex items-center justify-center text-gray-300 text-xs">📦</div><?php endif; ?>
-            </div>
-            <?php endforeach; ?>
-            <span class="text-xs text-gray-500"><?= count($cart) ?> item<?= count($cart)>1?'s':'' ?></span>
+        <div style="display:flex;align-items:center;gap:5px;margin-bottom:2px">
+            <span style="color:#9ca3af;font-size:11px">📞</span>
+            <span style="font-size:12px;color:#374151;font-weight:500"><?= e($inc['customer_phone']) ?></span>
+            <a href="tel:<?= e($ph) ?>" style="color:#3b82f6;font-size:11px">📱</a>
+            <a href="https://wa.me/88<?= $ph ?>" target="_blank" style="color:#22c55e;font-size:11px">💬</a>
         </div>
-        <?php else: ?><span class="text-xs text-gray-400">—</span><?php endif; ?>
+        <?php endif; ?>
+        <?php if (!empty($inc['customer_name'])): ?>
+        <div style="display:flex;align-items:center;gap:5px;margin-bottom:2px">
+            <span style="color:#9ca3af;font-size:11px">👤</span>
+            <span style="font-size:13px;font-weight:500;color:#374151"><?= e($inc['customer_name']) ?></span>
+        </div>
+        <?php endif; ?>
+        <?php if ($hasCustomerAddress && !empty($inc['customer_address'])): ?>
+        <div style="display:flex;align-items:center;gap:5px">
+            <span style="color:#9ca3af;font-size:11px">📍</span>
+            <span style="font-size:12px;color:#9ca3af"><?= e(mb_strimwidth($inc['customer_address'],0,30,'...')) ?></span>
+        </div>
+        <?php elseif(empty($inc['customer_name']) && empty($inc['customer_phone'])): ?>
+        <span style="font-size:12px;color:#d1d5db">Unknown visitor</span>
+        <?php endif; ?>
     </td>
-    <?php if ($hasCartTotal): ?><td class="px-4 py-3"><span class="font-bold text-sm">৳<?= number_format($inc['cart_total'] ?? 0) ?></span></td><?php endif; ?>
-    <td class="px-4 py-3"><span class="text-xs px-2 py-0.5 rounded-full <?= $stepC[$inc['step_reached']??'cart'] ?? 'bg-gray-100 text-gray-600' ?>"><?= ucfirst(str_replace('_', ' ', $inc['step_reached'] ?? 'cart')) ?></span></td>
-    <?php if ($hasFollowup): ?><td class="px-4 py-3"><span class="text-xs"><?= intval($inc['followup_count']??0) ?>×</span><?php if (!empty($inc['last_followup_at'])): ?> <span class="text-xs text-gray-400"><?= timeAgo($inc['last_followup_at']) ?></span><?php endif; ?></td><?php endif; ?>
-    <td class="px-4 py-3">
+
+    <td>
+        <div style="font-size:11px;color:#9ca3af;margin-bottom:2px"><?= timeAgo($inc['created_at']) ?></div>
+        <?php if (!empty($inc['ip_address']) || !empty($inc['device_ip'])): ?>
+        <div style="font-size:10px;color:#d1d5db">IP: <?= e($inc['device_ip'] ?? $inc['ip_address'] ?? '') ?></div>
+        <?php else: ?>
+        <span style="color:#d1d5db">-</span>
+        <?php endif; ?>
+    </td>
+
+    <td>
+        <?php if (!empty($cart)): ?>
+        <?php foreach (array_slice($cart, 0, 2) as $ci):
+            $pid=intval($ci['product_id']??$ci['id']??0); $pImg=$productImages[$pid]['featured_image']??''; ?>
+        <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">
+            <div style="width:32px;height:32px;border-radius:6px;border:1px solid #e5e7eb;overflow:hidden;flex-shrink:0;background:#f9fafb">
+                <?php if ($pImg): ?><img src="<?= imgSrc('products', $pImg) ?>" style="width:100%;height:100%;object-fit:cover" loading="lazy">
+                <?php else: ?><div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#d1d5db;font-size:14px">📦</div><?php endif; ?>
+            </div>
+            <div style="overflow:hidden">
+                <div style="font-size:12px;color:#374151;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px"><?= e($ci['name'] ?? $ci['product_name'] ?? 'Product') ?></div>
+                <div style="font-size:10px;color:#9ca3af"><?php if(!empty($ci['variant_name']??$ci['variant']??'')):?><?=e(mb_strimwidth($ci['variant_name']??$ci['variant']??'',0,18,'..'))?>·<?php endif;?>Qty: <?= intval($ci['qty']??$ci['quantity']??1) ?></div>
+            </div>
+        </div>
+        <?php endforeach; if(count($cart)>2): ?><div style="font-size:10px;color:#9ca3af">+<?= count($cart)-2 ?> more</div><?php endif; ?>
+        <?php else: ?><span style="color:#d1d5db">—</span><?php endif; ?>
+    </td>
+
+    <td>
+        <span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:12px;background:<?= ($stepC[$inc['step_reached']??'cart'] ?? '#9ca3af') ?>22;color:<?= $stepC[$inc['step_reached']??'cart'] ?? '#9ca3af' ?>"><?= ucfirst(str_replace('_', ' ', $inc['step_reached'] ?? 'Cart')) ?></span>
+    </td>
+
+    <td style="text-align:right;white-space:nowrap">
+        <div style="font-weight:700;color:#111827;font-size:13px">৳<?= number_format($cartTotal) ?></div>
+    </td>
+
+    <?php if ($hasFollowup): ?>
+    <td>
+        <span style="font-size:12px;color:#374151"><?= intval($inc['followup_count']??0) ?>×</span>
+        <?php if (!empty($inc['last_followup_at'])): ?><div style="font-size:10px;color:#9ca3af"><?= timeAgo($inc['last_followup_at']) ?></div><?php endif; ?>
+    </td>
+    <?php endif; ?>
+
+    <td style="text-align:center;vertical-align:middle">
         <?php if (!$isRec): ?>
-        <div class="flex flex-wrap gap-1">
-            <button onclick='viewDetails(<?= json_encode($inc, JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE) ?>, <?= json_encode($cart, JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE) ?>)' class="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded hover:bg-gray-200">👁 Details</button>
+        <div style="display:flex;align-items:center;justify-content:center;gap:4px;flex-wrap:wrap">
+            <button onclick='viewDetails(<?= json_encode($inc, JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE) ?>, <?= json_encode($cart, JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE) ?>)' style="font-size:11px;background:#f3f4f6;color:#374151;padding:5px 10px;border-radius:6px;border:none;cursor:pointer;font-weight:500">Details</button>
             <?php if (!empty($inc['customer_phone'])): ?>
-            <button onclick='convertOrder(<?= json_encode($inc, JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE) ?>, <?= json_encode($cart, JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE) ?>)' class="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700">✓ Confirm</button>
+            <button onclick='convertOrder(<?= json_encode($inc, JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE) ?>, <?= json_encode($cart, JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE) ?>)' style="font-size:11px;background:#16a34a;color:#fff;padding:5px 10px;border-radius:6px;border:none;cursor:pointer;font-weight:600">✓ Confirm</button>
             <?php endif; ?>
             <?php if ($hasFollowup): ?>
-            <form method="POST" class="inline"><input type="hidden" name="action" value="followup"><input type="hidden" name="id" value="<?= $inc['id'] ?>">
-                <button class="text-xs bg-orange-50 text-orange-600 px-2 py-1 rounded hover:bg-orange-100">📞</button></form>
+            <form method="POST" style="display:inline"><input type="hidden" name="action" value="followup"><input type="hidden" name="id" value="<?= $inc['id'] ?>">
+                <button style="font-size:11px;background:#fff7ed;color:#ea580c;padding:5px 8px;border-radius:6px;border:none;cursor:pointer">📞</button></form>
             <?php endif; ?>
-            <form method="POST" class="inline" onsubmit="return confirm('Delete?')"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= $inc['id'] ?>">
-                <button class="text-xs bg-red-50 text-red-500 px-2 py-1 rounded hover:bg-red-100">🗑</button></form>
+            <form method="POST" style="display:inline" onsubmit="return confirm('Delete?')"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= $inc['id'] ?>">
+                <button style="font-size:11px;background:#fef2f2;color:#dc2626;padding:5px 8px;border-radius:6px;border:none;cursor:pointer">🗑</button></form>
         </div>
         <?php else: ?>
-        <span class="text-xs text-green-600">✅ Recovered<?php if (!empty($inc['recovered_order_id'])): ?> → <a href="<?= adminUrl('pages/order-view.php?id='.$inc['recovered_order_id']) ?>" class="text-blue-600 underline font-medium">View Order</a><?php endif; ?></span>
+        <span style="font-size:12px;color:#16a34a">✅ Recovered<?php if (!empty($inc['recovered_order_id'])): ?> → <a href="<?= adminUrl('pages/order-view.php?id='.$inc['recovered_order_id']) ?>" style="color:#2563eb;text-decoration:underline;font-weight:500">View</a><?php endif; ?></span>
         <?php endif; ?>
     </td>
 </tr>
 <?php endforeach; ?>
-<?php if (empty($incompletes)): ?><tr><td colspan="9" class="px-4 py-12 text-center text-gray-400"><div class="text-4xl mb-2">🛒</div><p>No incomplete orders found.</p></td></tr><?php endif; ?>
-</tbody></table></div></div>
+<?php if (empty($incompletes)): ?><tr><td colspan="9" style="padding:48px;text-align:center;color:#9ca3af"><div style="font-size:32px;margin-bottom:8px">🛒</div><p>No incomplete orders found.</p></td></tr><?php endif; ?>
+</tbody></table></div>
 
 <!-- ═══ DETAILS MODAL ═══ -->
 <div id="detailsModal" class="fixed inset-0 z-50 hidden bg-black/50 flex items-center justify-center p-4" onclick="this.classList.add('hidden')">
