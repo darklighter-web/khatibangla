@@ -123,6 +123,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $updateData['order_number'] = $realOrderNumber;
                 $db->insert('order_status_history', ['order_id'=>$id,'status'=>'confirmed','changed_by'=>getAdminId(),'note'=>'Confirmed: TEMP → ' . $realOrderNumber]);
                 logActivity(getAdminId(), 'confirm_order', 'orders', $id, "Confirmed: {$order['order_number']} → {$realOrderNumber}");
+                
+                // Delete from incomplete_orders table
+                $tempIncId = intval(str_replace('TEMP-', '', $order['order_number']));
+                if ($tempIncId > 0) {
+                    try { $db->query("UPDATE incomplete_orders SET is_recovered = 1, recovered_order_id = ? WHERE id = ?", [$id, $tempIncId]); } catch (\Throwable $e) {}
+                    try { $db->query("UPDATE incomplete_orders SET recovered = 1, recovered_order_id = ? WHERE id = ?", [$id, $tempIncId]); } catch (\Throwable $e) {}
+                }
+                
+                // Tag as incomplete order source
+                try { $db->insert('order_tags', ['order_id'=>$id,'tag_name'=>'INCOMPLETE_ORDER']); } catch (\Throwable $e) {}
             } else {
                 $db->insert('order_status_history', ['order_id'=>$id,'status'=>'confirmed','changed_by'=>getAdminId(),'note'=>'Order confirmed']);
                 logActivity(getAdminId(), 'confirm_order', 'orders', $id, 'Confirmed order');

@@ -306,7 +306,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     'customer_name' => $name, 'customer_phone' => $phone, 'customer_address' => $address,
                     'channel' => 'website', 'subtotal' => $subtotal, 'shipping_cost' => 0,
                     'discount_amount' => 0, 'total' => $subtotal, 'payment_method' => 'cod',
-                    'order_status' => 'processing',
+                    'order_status' => 'incomplete',
                     'notes' => 'From incomplete order #' . $incId,
                 ]);
                 foreach ($cart as $ci) {
@@ -317,7 +317,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     if (empty($variantName) && !empty($ci['attributes']) && is_array($ci['attributes'])) { $parts=[]; foreach($ci['attributes'] as $ak=>$av) $parts[]=ucfirst($ak).': '.$av; $variantName=implode(', ',$parts); }
                     try { $db->insert('order_items', ['order_id'=>$orderId,'product_id'=>$productId,'product_name'=>$ci['name']??$ci['product_name']??'Product','variant_name'=>$variantName,'quantity'=>$qty,'price'=>$price,'subtotal'=>$price*$qty]); } catch (\Throwable $e) {}
                 }
-                try { $db->insert('order_status_history', ['order_id'=>$orderId,'status'=>'processing','changed_by'=>getAdminId(),'note'=>'From incomplete #'.$incId]); } catch (\Throwable $e) {}
+                try { $db->insert('order_status_history', ['order_id'=>$orderId,'status'=>'incomplete','changed_by'=>getAdminId(),'note'=>'From incomplete #'.$incId]); } catch (\Throwable $e) {}
                 try { $db->insert('order_tags', ['order_id'=>$orderId,'tag_name'=>'INCOMPLETE_ORDER']); } catch (\Throwable $e) {}
                 $db->update('incomplete_orders', [$recCol2 => 1, 'recovered_order_id' => $orderId], 'id = ?', [$incId]);
                 header('Location: ' . adminUrl("pages/order-view.php?order={$tempNum}"));
