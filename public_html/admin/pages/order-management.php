@@ -275,75 +275,72 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         try { $db->fetch("SELECT is_recovered FROM incomplete_orders LIMIT 1"); } catch (\Throwable $e) { $recCol2 = 'recovered'; }
         $inc = $db->fetch("SELECT * FROM incomplete_orders WHERE id = ?", [$incId]);
         if ($inc) {
-            // Already converted? Redirect to existing order
+            $tempNum = 'TEMP-' . $incId;
+            
+            // Check if TEMP order already exists
+            $existingTemp = $db->fetch("SELECT id FROM orders WHERE order_number = ?", [$tempNum]);
+            if ($existingTemp) {
+                $itemCount = intval($db->fetch("SELECT COUNT(*) as c FROM order_items WHERE order_id = ?", [$existingTemp['id']])['c'] ?? 0);
+                if ($itemCount > 0) {
+                    $db->update('incomplete_orders', [$recCol2 => 1, 'recovered_order_id' => $existingTemp['id']], 'id = ?', [$incId]);
+                    header('Location: ' . adminUrl("pages/order-view.php?order=" . urlencode($tempNum))); exit;
+                }
+                // Bad order (0 items) — delete and recreate
+                try { $db->delete('order_items', 'order_id = ?', [$existingTemp['id']]); } catch (\Throwable $e) {}
+                try { $db->delete('order_status_history', 'order_id = ?', [$existingTemp['id']]); } catch (\Throwable $e) {}
+                try { $db->delete('order_tags', 'order_id = ?', [$existingTemp['id']]); } catch (\Throwable $e) {}
+                try { $db->delete('orders', 'id = ?', [$existingTemp['id']]); } catch (\Throwable $e) {}
+            }
+            
+            // Check recovered_order_id pointing to a good order
             if (!empty($inc['recovered_order_id'])) {
-                $eo = $db->fetch("SELECT order_number FROM orders WHERE id = ?", [$inc['recovered_order_id']]);
-                if ($eo) { header('Location: ' . adminUrl("pages/order-view.php?order=" . urlencode($eo['order_number']))); exit; }
+                $recOrd = $db->fetch("SELECT id, order_number FROM orders WHERE id = ? AND order_status NOT IN ('cancelled')", [$inc['recovered_order_id']]);
+                if ($recOrd && intval($db->fetch("SELECT COUNT(*) as c FROM order_items WHERE order_id = ?", [$recOrd['id']])['c'] ?? 0) > 0) {
+                    header('Location: ' . adminUrl("pages/order-view.php?order=" . urlencode($recOrd['order_number']))); exit;
+                }
             }
-            // TEMP order already exists?
-            $tempOrder = $db->fetch("SELECT id, order_number FROM orders WHERE order_number = ?", ['TEMP-' . $incId]);
-            if ($tempOrder) {
-                $db->update('incomplete_orders', [$recCol2 => 1, 'recovered_order_id' => $tempOrder['id']], 'id = ?', [$incId]);
-                header('Location: ' . adminUrl("pages/order-view.php?order=" . urlencode($tempOrder['order_number']))); exit;
+            
+            // Parse and resolve cart items
+            $cart = json_decode($inc['cart_data'] ?? '[]', true) ?: [];
+            if (empty($cart)) { header('Location: ' . adminUrl('pages/order-management.php?status=incomplete&msg=error&detail=Empty+cart')); exit; }
+            
+            $resolvedItems = [];
+            foreach ($cart as $ci) {
+                $productId = intval($ci['product_id'] ?? $ci['id'] ?? 0);
+                if (!$productId && !empty($ci['key'])) { $productId = intval(explode('_', (string)$ci['key'])[0]); }
+                if (!$productId) continue;
+                $price = floatval($ci['price'] ?? $ci['sale_price'] ?? $ci['regular_price'] ?? 0);
+                $qty = intval($ci['qty'] ?? $ci['quantity'] ?? 1);
+                $variantName = $ci['variant_name'] ?? $ci['variant'] ?? null;
+                $productName = $ci['name'] ?? $ci['product_name'] ?? null;
+                // Always lookup from products table
+                try { $prd = $db->fetch("SELECT name, name_bn, regular_price, sale_price FROM products WHERE id = ?", [$productId]);
+                    if ($prd) { if (!$productName || $productName === 'Product') $productName = $prd['name_bn'] ?: $prd['name']; if (!$price) $price = floatval($prd['sale_price'] ?: $prd['regular_price']); }
+                } catch (\Throwable $e) {}
+                if (!$productName) $productName = 'Product #' . $productId;
+                if (empty($variantName) && !empty($ci['attributes']) && is_array($ci['attributes'])) { $p2=[]; foreach($ci['attributes'] as $ak=>$av) $p2[]=ucfirst($ak).': '.$av; $variantName=implode(', ',$p2); }
+                $resolvedItems[] = ['product_id'=>$productId,'product_name'=>$productName,'variant_name'=>$variantName,'quantity'=>$qty,'price'=>$price,'subtotal'=>round($price*$qty,2)];
             }
+            if (empty($resolvedItems)) { header('Location: ' . adminUrl('pages/order-management.php?status=incomplete&msg=error&detail=No+valid+products+in+cart')); exit; }
+            
+            $subtotal = array_sum(array_column($resolvedItems, 'subtotal'));
+            $name = $inc['customer_name'] ?? 'Unknown'; $phone = $inc['customer_phone'] ?? ''; $address = $inc['customer_address'] ?? '';
+            $customerId = null;
+            if ($phone) { $cust = $db->fetch("SELECT id FROM customers WHERE phone = ?", [$phone]);
+                if ($cust) $customerId = $cust['id'];
+                else { try { $customerId = $db->insert('customers', ['name'=>$name,'phone'=>$phone,'address'=>$address,'total_orders'=>1]); } catch (\Throwable $e) { $c2=$db->fetch("SELECT id FROM customers WHERE phone = ?",[$phone]); $customerId=$c2['id']??null; } }
+            }
+            
             try {
-                $name = $inc['customer_name'] ?? 'Unknown';
-                $phone = $inc['customer_phone'] ?? '';
-                $address = $inc['customer_address'] ?? '';
-                $cart = json_decode($inc['cart_data'] ?? '[]', true) ?: [];
-                if (empty($cart)) { header('Location: ' . adminUrl('pages/order-management.php?status=incomplete')); exit; }
-                $subtotal = 0;
-                foreach ($cart as $ci) { $subtotal += floatval($ci['price'] ?? $ci['sale_price'] ?? 0) * intval($ci['qty'] ?? $ci['quantity'] ?? 1); }
-                $customerId = null;
-                if ($phone) {
-                    $customer = $db->fetch("SELECT id FROM customers WHERE phone = ?", [$phone]);
-                    if ($customer) { $customerId = $customer['id']; }
-                    else { try { $customerId = $db->insert('customers', ['name' => $name, 'phone' => $phone, 'address' => $address, 'total_orders' => 1]); } catch (\Throwable $e) { $c2 = $db->fetch("SELECT id FROM customers WHERE phone = ?", [$phone]); $customerId = $c2['id'] ?? null; } }
-                }
-                $tempNum = 'TEMP-' . $incId;
-                $orderId = $db->insert('orders', [
-                    'order_number' => $tempNum, 'customer_id' => $customerId,
-                    'customer_name' => $name, 'customer_phone' => $phone, 'customer_address' => $address,
-                    'channel' => 'website', 'subtotal' => $subtotal, 'shipping_cost' => 0,
-                    'discount_amount' => 0, 'total' => $subtotal, 'payment_method' => 'cod',
-                    'order_status' => 'incomplete',
-                    'notes' => 'From incomplete order #' . $incId,
-                ]);
-                foreach ($cart as $ci) {
-                    // Resolve product_id — might be in product_id, id, or parse from key
-                    $productId = intval($ci['product_id'] ?? $ci['id'] ?? 0);
-                    if (!$productId && !empty($ci['key'])) { $productId = intval(explode('_', $ci['key'])[0]); }
-                    
-                    $price = floatval($ci['price'] ?? $ci['sale_price'] ?? 0);
-                    $qty = intval($ci['qty'] ?? $ci['quantity'] ?? 1);
-                    $variantName = $ci['variant_name'] ?? $ci['variant'] ?? null;
-                    $productName = $ci['name'] ?? $ci['product_name'] ?? null;
-                    
-                    // Lookup product from DB if name missing
-                    if ((!$productName || $productName === 'Product') && $productId) {
-                        try {
-                            $prd = $db->fetch("SELECT name, name_bn, regular_price, sale_price FROM products WHERE id = ?", [$productId]);
-                            if ($prd) {
-                                $productName = $prd['name_bn'] ?: $prd['name'];
-                                if (!$price) $price = floatval($prd['sale_price'] ?: $prd['regular_price']);
-                            }
-                        } catch (\Throwable $e) {}
-                    }
-                    if (!$productName) $productName = 'Product #' . $productId;
-                    
-                    if (empty($variantName) && !empty($ci['attributes']) && is_array($ci['attributes'])) { $parts=[]; foreach($ci['attributes'] as $ak=>$av) $parts[]=ucfirst($ak).': '.$av; $variantName=implode(', ',$parts); }
-                    if ($productId && $price > 0) {
-                        try { $db->insert('order_items', ['order_id'=>$orderId,'product_id'=>$productId,'product_name'=>$productName,'variant_name'=>$variantName,'quantity'=>$qty,'price'=>$price,'subtotal'=>$price*$qty]); } catch (\Throwable $e) {}
-                    }
-                }
+                $orderId = $db->insert('orders', ['order_number'=>$tempNum,'customer_id'=>$customerId,'customer_name'=>$name,'customer_phone'=>$phone,'customer_address'=>$address,'channel'=>'website','subtotal'=>$subtotal,'shipping_cost'=>0,'discount_amount'=>0,'total'=>$subtotal,'payment_method'=>'cod','order_status'=>'incomplete','notes'=>'From incomplete order #'.$incId]);
+                $ok = 0;
+                foreach ($resolvedItems as $ri) { try { $db->insert('order_items', ['order_id'=>$orderId,'product_id'=>$ri['product_id'],'product_name'=>$ri['product_name'],'variant_name'=>$ri['variant_name'],'quantity'=>$ri['quantity'],'price'=>$ri['price'],'subtotal'=>$ri['subtotal']]); $ok++; } catch (\Throwable $e) {} }
+                if ($ok === 0) { try { $db->delete('orders', 'id = ?', [$orderId]); } catch (\Throwable $e) {} header('Location: ' . adminUrl('pages/order-management.php?status=incomplete&msg=error&detail=Failed+to+insert+order+items')); exit; }
                 try { $db->insert('order_status_history', ['order_id'=>$orderId,'status'=>'incomplete','changed_by'=>getAdminId(),'note'=>'From incomplete #'.$incId]); } catch (\Throwable $e) {}
                 try { $db->insert('order_tags', ['order_id'=>$orderId,'tag_name'=>'INCOMPLETE_ORDER']); } catch (\Throwable $e) {}
                 $db->update('incomplete_orders', [$recCol2 => 1, 'recovered_order_id' => $orderId], 'id = ?', [$incId]);
-                header('Location: ' . adminUrl("pages/order-view.php?order={$tempNum}"));
-                exit;
-            } catch (\Throwable $e) {
-                header('Location: ' . adminUrl('pages/order-management.php?status=incomplete&msg=error&detail=' . urlencode($e->getMessage()))); exit;
-            }
+                header('Location: ' . adminUrl("pages/order-view.php?order={$tempNum}")); exit;
+            } catch (\Throwable $e) { header('Location: ' . adminUrl('pages/order-management.php?status=incomplete&msg=error&detail=' . urlencode($e->getMessage()))); exit; }
         }
     }
     
@@ -945,6 +942,7 @@ function sortIcon($col) {
 <!-- Courier Sub-Tabs (from confirmed onwards, always rendered for AJAX) -->
 <?php
 $_courierVisibleStatuses = ['confirmed','ready_to_ship','shipped','delivered','pending_return','returned','partial_delivered','cancelled','pending_cancel','on_hold','lost'];
+if ($_isIncompleteView) $_courierVisibleStatuses = []; // Hide courier tabs for incomplete
 $_courierBarHidden = !$status || !in_array($status, $_courierVisibleStatuses);
 ?>
 <div class="bg-white rounded-lg border mb-3 overflow-hidden om-courier-bar <?= $_courierBarHidden ? 'hidden' : '' ?>">
