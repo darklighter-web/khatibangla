@@ -49,70 +49,81 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($act === 'open_as_order' && $id) {
         $inc = $db->fetch("SELECT * FROM incomplete_orders WHERE id = ?", [$id]);
         if ($inc) {
-            // If already converted, just redirect to the existing order
+            // If already converted, redirect to existing order
             if (!empty($inc['recovered_order_id'])) {
-                redirect(adminUrl("pages/order-view.php?id={$inc['recovered_order_id']}"));
+                $existingOrder = $db->fetch("SELECT order_number FROM orders WHERE id = ?", [$inc['recovered_order_id']]);
+                if ($existingOrder) { redirect(adminUrl("pages/order-view.php?order=" . urlencode($existingOrder['order_number']))); exit; }
+            }
+            
+            // Check if a TEMP order already exists for this incomplete
+            $tempOrder = $db->fetch("SELECT id, order_number FROM orders WHERE order_number = ?", ['TEMP-' . $id]);
+            if ($tempOrder) {
+                // Already created, just redirect
+                $db->update('incomplete_orders', [$recCol => 1, 'recovered_order_id' => $tempOrder['id']], 'id = ?', [$id]);
+                redirect(adminUrl("pages/order-view.php?order=" . urlencode($tempOrder['order_number'])));
                 exit;
             }
             
-            $name = $inc['customer_name'] ?? 'Unknown';
-            $phone = $inc['customer_phone'] ?? '';
-            $address = $inc['customer_address'] ?? '';
-            $cart = json_decode($inc['cart_data'] ?? '[]', true) ?: [];
-            
-            if (empty($cart)) { redirect(adminUrl('pages/incomplete-orders.php?msg=empty_cart')); exit; }
-            
-            $subtotal = 0;
-            foreach ($cart as $ci) {
-                $price = floatval($ci['price'] ?? $ci['sale_price'] ?? $ci['regular_price'] ?? 0);
-                $qty = intval($ci['qty'] ?? $ci['quantity'] ?? 1);
-                $subtotal += $price * $qty;
-            }
-            
-            $total = $subtotal; // shipping added later by admin in order-view
-            
-            $customerId = null;
-            if (!empty($phone)) {
-                $customer = $db->fetch("SELECT * FROM customers WHERE phone = ?", [$phone]);
-                if ($customer) { $customerId = $customer['id']; }
-                else { $customerId = $db->insert('customers', ['name' => $name, 'phone' => $phone, 'address' => $address, 'total_orders' => 1]); }
-            }
-            
-            $orderNumber = 'TEMP-' . $id; // Temporary ID — real one generated on confirmation
-            $orderId = $db->insert('orders', [
-                'order_number' => $orderNumber, 'customer_id' => $customerId,
-                'customer_name' => $name, 'customer_phone' => $phone, 'customer_address' => $address,
-                'channel' => 'website', 'subtotal' => $subtotal, 'shipping_cost' => 0,
-                'discount_amount' => 0, 'total' => $total, 'payment_method' => 'cod',
-                'order_status' => 'processing',
-                'notes' => 'From incomplete order #' . $id,
-                'ip_address' => $inc['ip_address'] ?? '',
-            ]);
-            
-            foreach ($cart as $ci) {
-                $productId = intval($ci['product_id'] ?? $ci['id'] ?? 0);
-                $price = floatval($ci['price'] ?? $ci['sale_price'] ?? $ci['regular_price'] ?? 0);
-                $qty = intval($ci['qty'] ?? $ci['quantity'] ?? 1);
-                $variantName = $ci['variant_name'] ?? $ci['variant'] ?? null;
-                // Build variant from attributes if not set
-                if (empty($variantName) && !empty($ci['attributes'])) {
-                    $parts = [];
-                    foreach ($ci['attributes'] as $ak => $av) { $parts[] = ucfirst($ak) . ': ' . $av; }
-                    $variantName = implode(', ', $parts);
+            try {
+                $name = $inc['customer_name'] ?? 'Unknown';
+                $phone = $inc['customer_phone'] ?? '';
+                $address = $inc['customer_address'] ?? '';
+                $cart = json_decode($inc['cart_data'] ?? '[]', true) ?: [];
+                
+                if (empty($cart)) { redirect(adminUrl('pages/incomplete-orders.php?msg=empty_cart')); exit; }
+                
+                $subtotal = 0;
+                foreach ($cart as $ci) {
+                    $price = floatval($ci['price'] ?? $ci['sale_price'] ?? $ci['regular_price'] ?? 0);
+                    $qty = intval($ci['qty'] ?? $ci['quantity'] ?? 1);
+                    $subtotal += $price * $qty;
                 }
-                $db->insert('order_items', [
-                    'order_id' => $orderId, 'product_id' => $productId,
-                    'product_name' => $ci['name'] ?? $ci['product_name'] ?? 'Product',
-                    'variant_name' => $variantName,
-                    'quantity' => $qty, 'price' => $price, 'subtotal' => $price * $qty,
+                
+                $customerId = null;
+                if (!empty($phone)) {
+                    $customer = $db->fetch("SELECT * FROM customers WHERE phone = ?", [$phone]);
+                    if ($customer) { $customerId = $customer['id']; }
+                    else { try { $customerId = $db->insert('customers', ['name' => $name, 'phone' => $phone, 'address' => $address, 'total_orders' => 1]); } catch (\Throwable $e) { $customer = $db->fetch("SELECT id FROM customers WHERE phone = ?", [$phone]); $customerId = $customer['id'] ?? null; } }
+                }
+                
+                $orderNumber = 'TEMP-' . $id;
+                $orderId = $db->insert('orders', [
+                    'order_number' => $orderNumber, 'customer_id' => $customerId,
+                    'customer_name' => $name, 'customer_phone' => $phone, 'customer_address' => $address,
+                    'channel' => 'website', 'subtotal' => $subtotal, 'shipping_cost' => 0,
+                    'discount_amount' => 0, 'total' => $subtotal, 'payment_method' => 'cod',
+                    'order_status' => 'processing',
+                    'notes' => 'From incomplete order #' . $id,
                 ]);
+                
+                foreach ($cart as $ci) {
+                    $productId = intval($ci['product_id'] ?? $ci['id'] ?? 0);
+                    $price = floatval($ci['price'] ?? $ci['sale_price'] ?? $ci['regular_price'] ?? 0);
+                    $qty = intval($ci['qty'] ?? $ci['quantity'] ?? 1);
+                    $variantName = $ci['variant_name'] ?? $ci['variant'] ?? null;
+                    if (empty($variantName) && !empty($ci['attributes']) && is_array($ci['attributes'])) {
+                        $parts = [];
+                        foreach ($ci['attributes'] as $ak => $av) { $parts[] = ucfirst($ak) . ': ' . $av; }
+                        $variantName = implode(', ', $parts);
+                    }
+                    try {
+                        $db->insert('order_items', [
+                            'order_id' => $orderId, 'product_id' => $productId,
+                            'product_name' => $ci['name'] ?? $ci['product_name'] ?? 'Product',
+                            'variant_name' => $variantName,
+                            'quantity' => $qty, 'price' => $price, 'subtotal' => $price * $qty,
+                        ]);
+                    } catch (\Throwable $e) {}
+                }
+                
+                try { $db->insert('order_status_history', ['order_id' => $orderId, 'status' => 'processing', 'changed_by' => getAdminId(), 'note' => 'From incomplete #' . $id]); } catch (\Throwable $e) {}
+                $db->update('incomplete_orders', [$recCol => 1, 'recovered_order_id' => $orderId], 'id = ?', [$id]);
+                redirect(adminUrl("pages/order-view.php?order={$orderNumber}"));
+                exit;
+            } catch (\Throwable $e) {
+                redirect(adminUrl('pages/incomplete-orders.php?msg=error&detail=' . urlencode($e->getMessage())));
+                exit;
             }
-            
-            $db->insert('order_status_history', ['order_id' => $orderId, 'status' => 'processing', 'changed_by' => getAdminId(), 'note' => 'Auto-created from incomplete order #' . $id]);
-            $db->update('incomplete_orders', [$recCol => 1, 'recovered_order_id' => $orderId], 'id = ?', [$id]);
-            logActivity(getAdminId(), 'convert_incomplete', 'orders', $orderId, "Incomplete #{$id} → Order #{$orderNumber} (processing)");
-            redirect(adminUrl("pages/order-view.php?order={$orderNumber}"));
-            exit;
         }
     }
     
@@ -215,9 +226,9 @@ if (!empty($allPids)) { $uids = array_unique($allPids); $ph = implode(',', array
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
-<?php if (isset($_GET['msg'])): $isErr = in_array($_GET['msg'],['no_phone','empty_cart']); ?>
+<?php if (isset($_GET['msg'])): $isErr = in_array($_GET['msg'],['no_phone','empty_cart','error']); ?>
 <div class="bg-<?= $isErr?'red':'green' ?>-50 border border-<?= $isErr?'red':'green' ?>-200 text-<?= $isErr?'red':'green' ?>-700 px-4 py-3 rounded-lg mb-4 text-sm">
-    <?= ['recovered'=>'✓ Marked as recovered.','followup'=>'✓ Follow-up logged.','deleted'=>'✓ Deleted.','bulk_deleted'=>'✓ Deleted '.intval($_GET['count']??0).' incomplete orders.','no_phone'=>'✗ Cannot convert: no phone number.','empty_cart'=>'✗ Cannot convert: cart is empty.'][$_GET['msg']] ?? '✓ Done.' ?>
+    <?= ['recovered'=>'✓ Marked as recovered.','followup'=>'✓ Follow-up logged.','deleted'=>'✓ Deleted.','bulk_deleted'=>'✓ Deleted '.intval($_GET['count']??0).' incomplete orders.','no_phone'=>'✗ Cannot convert: no phone number.','empty_cart'=>'✗ Cannot convert: cart is empty.','error'=>'✗ Error: '.e($_GET['detail']??'Unknown error')][$_GET['msg']] ?? '✓ Done.' ?>
 </div>
 <?php endif; ?>
 
