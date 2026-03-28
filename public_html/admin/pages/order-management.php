@@ -306,6 +306,7 @@ $allStatuses = array_merge($mainFlow, $courierStatuses, $sideStatuses);
 // Next logical action for each status
 $nextAction = [
     'processing' => ['status' => 'confirmed', 'label' => 'Confirm', 'icon' => '✅', 'color' => 'blue'],
+    'incomplete' => ['status' => 'confirmed', 'label' => 'Confirm', 'icon' => '✅', 'color' => 'blue'],
     'confirmed'  => ['status' => 'ready_to_ship', 'label' => 'Ready to Ship', 'icon' => '📦', 'color' => 'violet'],
     'ready_to_ship' => ['status' => 'shipped', 'label' => 'Ship', 'icon' => '🚚', 'color' => 'purple'],
     'shipped'    => ['status' => 'delivered',  'label' => 'Deliver', 'icon' => '📦', 'color' => 'green'],
