@@ -45,88 +45,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect(adminUrl('pages/incomplete-orders.php?msg=bulk_deleted&count=' . $deleted));
     }
     
-    // ── Auto-convert incomplete → processing order (triggered by "Open" button) ──
-    if ($act === 'open_as_order' && $id) {
-        $inc = $db->fetch("SELECT * FROM incomplete_orders WHERE id = ?", [$id]);
-        if ($inc) {
-            // If already converted, redirect to existing order
-            if (!empty($inc['recovered_order_id'])) {
-                $existingOrder = $db->fetch("SELECT order_number FROM orders WHERE id = ?", [$inc['recovered_order_id']]);
-                if ($existingOrder) { redirect(adminUrl("pages/order-view.php?order=" . urlencode($existingOrder['order_number']))); exit; }
-            }
-            
-            // Check if a TEMP order already exists for this incomplete
-            $tempOrder = $db->fetch("SELECT id, order_number FROM orders WHERE order_number = ?", ['TEMP-' . $id]);
-            if ($tempOrder) {
-                // Already created, just redirect
-                $db->update('incomplete_orders', [$recCol => 1, 'recovered_order_id' => $tempOrder['id']], 'id = ?', [$id]);
-                redirect(adminUrl("pages/order-view.php?order=" . urlencode($tempOrder['order_number'])));
-                exit;
-            }
-            
-            try {
-                $name = $inc['customer_name'] ?? 'Unknown';
-                $phone = $inc['customer_phone'] ?? '';
-                $address = $inc['customer_address'] ?? '';
-                $cart = json_decode($inc['cart_data'] ?? '[]', true) ?: [];
-                
-                if (empty($cart)) { redirect(adminUrl('pages/incomplete-orders.php?msg=empty_cart')); exit; }
-                
-                $subtotal = 0;
-                foreach ($cart as $ci) {
-                    $price = floatval($ci['price'] ?? $ci['sale_price'] ?? $ci['regular_price'] ?? 0);
-                    $qty = intval($ci['qty'] ?? $ci['quantity'] ?? 1);
-                    $subtotal += $price * $qty;
-                }
-                
-                $customerId = null;
-                if (!empty($phone)) {
-                    $customer = $db->fetch("SELECT * FROM customers WHERE phone = ?", [$phone]);
-                    if ($customer) { $customerId = $customer['id']; }
-                    else { try { $customerId = $db->insert('customers', ['name' => $name, 'phone' => $phone, 'address' => $address, 'total_orders' => 1]); } catch (\Throwable $e) { $customer = $db->fetch("SELECT id FROM customers WHERE phone = ?", [$phone]); $customerId = $customer['id'] ?? null; } }
-                }
-                
-                $orderNumber = 'TEMP-' . $id;
-                $orderId = $db->insert('orders', [
-                    'order_number' => $orderNumber, 'customer_id' => $customerId,
-                    'customer_name' => $name, 'customer_phone' => $phone, 'customer_address' => $address,
-                    'channel' => 'website', 'subtotal' => $subtotal, 'shipping_cost' => 0,
-                    'discount_amount' => 0, 'total' => $subtotal, 'payment_method' => 'cod',
-                    'order_status' => 'incomplete',
-                    'notes' => 'From incomplete order #' . $id,
-                ]);
-                
-                foreach ($cart as $ci) {
-                    $productId = intval($ci['product_id'] ?? $ci['id'] ?? 0);
-                    $price = floatval($ci['price'] ?? $ci['sale_price'] ?? $ci['regular_price'] ?? 0);
-                    $qty = intval($ci['qty'] ?? $ci['quantity'] ?? 1);
-                    $variantName = $ci['variant_name'] ?? $ci['variant'] ?? null;
-                    if (empty($variantName) && !empty($ci['attributes']) && is_array($ci['attributes'])) {
-                        $parts = [];
-                        foreach ($ci['attributes'] as $ak => $av) { $parts[] = ucfirst($ak) . ': ' . $av; }
-                        $variantName = implode(', ', $parts);
-                    }
-                    try {
-                        $db->insert('order_items', [
-                            'order_id' => $orderId, 'product_id' => $productId,
-                            'product_name' => $ci['name'] ?? $ci['product_name'] ?? 'Product',
-                            'variant_name' => $variantName,
-                            'quantity' => $qty, 'price' => $price, 'subtotal' => $price * $qty,
-                        ]);
-                    } catch (\Throwable $e) {}
-                }
-                
-                try { $db->insert('order_status_history', ['order_id' => $orderId, 'status' => 'incomplete', 'changed_by' => getAdminId(), 'note' => 'From incomplete #' . $id]); } catch (\Throwable $e) {}
-                $db->update('incomplete_orders', [$recCol => 1, 'recovered_order_id' => $orderId], 'id = ?', [$id]);
-                redirect(adminUrl("pages/order-view.php?order={$orderNumber}"));
-                exit;
-            } catch (\Throwable $e) {
-                redirect(adminUrl('pages/incomplete-orders.php?msg=error&detail=' . urlencode($e->getMessage())));
-                exit;
-            }
-        }
-    }
-    
     // ── Convert incomplete → real confirmed order ──
     if ($act === 'convert_to_order' && $id) {
         $inc = $db->fetch("SELECT * FROM incomplete_orders WHERE id = ?", [$id]);
@@ -416,11 +334,17 @@ require_once __DIR__ . '/../includes/header.php';
     <?php endif; ?>
 
     <td style="text-align:center;vertical-align:middle">
+        <?php
+            $__incAge = time() - strtotime($inc['created_at']);
+            $__isTooNew = $__incAge < 420; // 7 minutes
+            $__ageMin = round($__incAge / 60);
+        ?>
         <?php if (!$isRec): ?>
         <div style="display:flex;align-items:center;justify-content:center;gap:4px;flex-wrap:wrap">
-            <form method="POST" style="display:inline"><input type="hidden" name="action" value="open_as_order"><input type="hidden" name="id" value="<?= $inc['id'] ?>">
-                <button style="display:inline-flex;align-items:center;gap:3px;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:500;color:#16a34a;background:transparent;border:none;cursor:pointer;text-decoration:none" onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='transparent'">Open <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></button>
-            </form>
+            <button onclick='viewDetails(<?= json_encode($inc, JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE) ?>, <?= json_encode($cart, JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE) ?>)' style="font-size:11px;background:#f3f4f6;color:#374151;padding:5px 10px;border-radius:6px;border:none;cursor:pointer;font-weight:500">Details</button>
+            <?php if (!empty($inc['customer_phone'])): ?>
+            <button onclick='confirmIncomplete(<?= json_encode($inc, JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE) ?>, <?= json_encode($cart, JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE) ?>, <?= $__isTooNew ? 'true' : 'false' ?>, <?= $__ageMin ?>)' style="font-size:11px;background:#16a34a;color:#fff;padding:5px 10px;border-radius:6px;border:none;cursor:pointer;font-weight:600">✓ Confirm</button>
+            <?php endif; ?>
             <?php if ($hasFollowup): ?>
             <form method="POST" style="display:inline"><input type="hidden" name="action" value="followup"><input type="hidden" name="id" value="<?= $inc['id'] ?>">
                 <button style="font-size:11px;background:#fff7ed;color:#ea580c;padding:5px 8px;border-radius:6px;border:none;cursor:pointer" title="Log follow-up">📞</button></form>
@@ -429,9 +353,7 @@ require_once __DIR__ . '/../includes/header.php';
                 <button style="font-size:11px;background:#fef2f2;color:#dc2626;padding:5px 8px;border-radius:6px;border:none;cursor:pointer" title="Delete">🗑</button></form>
         </div>
         <?php else: ?>
-        <form method="POST" style="display:inline"><input type="hidden" name="action" value="open_as_order"><input type="hidden" name="id" value="<?= $inc['id'] ?>">
-            <button style="display:inline-flex;align-items:center;gap:3px;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:500;color:#16a34a;background:transparent;border:none;cursor:pointer" onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='transparent'">Open <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></button>
-        </form>
+        <span style="font-size:12px;color:#16a34a">✅ Recovered<?php if (!empty($inc['recovered_order_id'])): ?> → <a href="<?= adminUrl('pages/order-view.php?id='.$inc['recovered_order_id']) ?>" style="color:#2563eb;text-decoration:underline;font-weight:500">View</a><?php endif; ?></span>
         <?php endif; ?>
     </td>
 </tr>
@@ -519,6 +441,18 @@ function viewDetails(inc, cart){
     
     document.getElementById('detailsContent').innerHTML=h;
     document.getElementById('detailsModal').classList.remove('hidden');
+}
+
+async function confirmIncomplete(inc, cart, isTooNew, ageMin) {
+    if (isTooNew) {
+        var ok = await window._confirmAsync(
+            '⚠️ This incomplete order is only ' + ageMin + ' minute(s) old!\n\n' +
+            'The customer may still be filling out the form right now.\n' +
+            'Are you sure you want to create this order?'
+        );
+        if (!ok) return;
+    }
+    convertOrder(inc, cart);
 }
 
 function convertOrder(inc, cart){
