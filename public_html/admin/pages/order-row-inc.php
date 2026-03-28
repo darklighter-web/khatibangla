@@ -46,7 +46,7 @@
     <td style="text-align:center;vertical-align:middle">
         <?php if(!$isRec):?>
         <div style="display:flex;align-items:center;justify-content:center;gap:4px">
-            <button onclick='viewDetails(<?=json_encode($inc,JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE)?>,<?=json_encode($cart,JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE)?>)' style="font-size:11px;background:#f3f4f6;color:#374151;padding:5px 10px;border-radius:6px;border:none;cursor:pointer;font-weight:500">Details</button>
+            <button onclick='openIncomplete(<?=json_encode($inc,JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE)?>,<?=json_encode($cart,JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE)?>,<?=$__isTooNew?'true':'false'?>,<?=$__ageMin?>)' style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#16a34a;background:transparent;padding:5px 10px;border-radius:6px;border:none;cursor:pointer;font-weight:500">Open <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></button>
             <?php if(!empty($inc['customer_phone'])):?>
             <button onclick='confirmIncomplete(<?=json_encode($inc,JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE)?>,<?=json_encode($cart,JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE)?>,<?=$__isTooNew?'true':'false'?>,<?=$__ageMin?>)' style="font-size:11px;background:#16a34a;color:#fff;padding:5px 10px;border-radius:6px;border:none;cursor:pointer;font-weight:600">✓ Confirm</button>
             <?php endif;?>

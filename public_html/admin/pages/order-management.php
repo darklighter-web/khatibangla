@@ -268,6 +268,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         echo json_encode(['success'=>true]); exit;
     }
     
+    // ── Open incomplete → creates processing order with TEMP ID, opens order-view ──
+    if ($action === 'open_incomplete') {
+        $incId = intval($_POST['inc_id'] ?? 0);
+        $recCol2 = 'is_recovered';
+        try { $db->fetch("SELECT is_recovered FROM incomplete_orders LIMIT 1"); } catch (\Throwable $e) { $recCol2 = 'recovered'; }
+        $inc = $db->fetch("SELECT * FROM incomplete_orders WHERE id = ?", [$incId]);
+        if ($inc) {
+            // Already converted? Redirect to existing order
+            if (!empty($inc['recovered_order_id'])) {
+                $eo = $db->fetch("SELECT order_number FROM orders WHERE id = ?", [$inc['recovered_order_id']]);
+                if ($eo) { header('Location: ' . adminUrl("pages/order-view.php?order=" . urlencode($eo['order_number']))); exit; }
+            }
+            // TEMP order already exists?
+            $tempOrder = $db->fetch("SELECT id, order_number FROM orders WHERE order_number = ?", ['TEMP-' . $incId]);
+            if ($tempOrder) {
+                $db->update('incomplete_orders', [$recCol2 => 1, 'recovered_order_id' => $tempOrder['id']], 'id = ?', [$incId]);
+                header('Location: ' . adminUrl("pages/order-view.php?order=" . urlencode($tempOrder['order_number']))); exit;
+            }
+            try {
+                $name = $inc['customer_name'] ?? 'Unknown';
+                $phone = $inc['customer_phone'] ?? '';
+                $address = $inc['customer_address'] ?? '';
+                $cart = json_decode($inc['cart_data'] ?? '[]', true) ?: [];
+                if (empty($cart)) { header('Location: ' . adminUrl('pages/order-management.php?status=incomplete')); exit; }
+                $subtotal = 0;
+                foreach ($cart as $ci) { $subtotal += floatval($ci['price'] ?? $ci['sale_price'] ?? 0) * intval($ci['qty'] ?? $ci['quantity'] ?? 1); }
+                $customerId = null;
+                if ($phone) {
+                    $customer = $db->fetch("SELECT id FROM customers WHERE phone = ?", [$phone]);
+                    if ($customer) { $customerId = $customer['id']; }
+                    else { try { $customerId = $db->insert('customers', ['name' => $name, 'phone' => $phone, 'address' => $address, 'total_orders' => 1]); } catch (\Throwable $e) { $c2 = $db->fetch("SELECT id FROM customers WHERE phone = ?", [$phone]); $customerId = $c2['id'] ?? null; } }
+                }
+                $tempNum = 'TEMP-' . $incId;
+                $orderId = $db->insert('orders', [
+                    'order_number' => $tempNum, 'customer_id' => $customerId,
+                    'customer_name' => $name, 'customer_phone' => $phone, 'customer_address' => $address,
+                    'channel' => 'website', 'subtotal' => $subtotal, 'shipping_cost' => 0,
+                    'discount_amount' => 0, 'total' => $subtotal, 'payment_method' => 'cod',
+                    'order_status' => 'processing',
+                    'notes' => 'From incomplete order #' . $incId,
+                ]);
+                foreach ($cart as $ci) {
+                    $productId = intval($ci['product_id'] ?? $ci['id'] ?? 0);
+                    $price = floatval($ci['price'] ?? $ci['sale_price'] ?? 0);
+                    $qty = intval($ci['qty'] ?? $ci['quantity'] ?? 1);
+                    $variantName = $ci['variant_name'] ?? $ci['variant'] ?? null;
+                    if (empty($variantName) && !empty($ci['attributes']) && is_array($ci['attributes'])) { $parts=[]; foreach($ci['attributes'] as $ak=>$av) $parts[]=ucfirst($ak).': '.$av; $variantName=implode(', ',$parts); }
+                    try { $db->insert('order_items', ['order_id'=>$orderId,'product_id'=>$productId,'product_name'=>$ci['name']??$ci['product_name']??'Product','variant_name'=>$variantName,'quantity'=>$qty,'price'=>$price,'subtotal'=>$price*$qty]); } catch (\Throwable $e) {}
+                }
+                try { $db->insert('order_status_history', ['order_id'=>$orderId,'status'=>'processing','changed_by'=>getAdminId(),'note'=>'From incomplete #'.$incId]); } catch (\Throwable $e) {}
+                try { $db->insert('order_tags', ['order_id'=>$orderId,'tag_name'=>'INCOMPLETE_ORDER']); } catch (\Throwable $e) {}
+                $db->update('incomplete_orders', [$recCol2 => 1, 'recovered_order_id' => $orderId], 'id = ?', [$incId]);
+                header('Location: ' . adminUrl("pages/order-view.php?order={$tempNum}"));
+                exit;
+            } catch (\Throwable $e) {
+                header('Location: ' . adminUrl('pages/order-management.php?status=incomplete')); exit;
+            }
+        }
+    }
+    
     // ── Convert incomplete order → confirmed order ──
     if ($action === 'convert_incomplete') {
         $incId = intval($_POST['inc_id'] ?? 0);
@@ -396,7 +456,11 @@ try {
         if ($st === 'pending') $statusCounts['processing'] = ($statusCounts['processing'] ?? 0) + intval($scr['cnt']);
     }
 } catch (\Throwable $e) {}
-// Add incomplete count from incomplete_orders table
+// Incomplete count from incomplete_orders table
+$incompleteCount = 0;
+$_incRecCol = 'is_recovered';
+try { $db->fetch("SELECT is_recovered FROM incomplete_orders LIMIT 1"); } catch(\Throwable $e) { $_incRecCol = 'recovered'; }
+try { $incompleteCount = intval($db->fetch("SELECT COUNT(*) as cnt FROM incomplete_orders WHERE {$_incRecCol} = 0")['cnt'] ?? 0); } catch(Exception $e){}
 $statusCounts['incomplete'] = $incompleteCount;
 $totalOrders = array_sum($statusCounts);
 
@@ -607,10 +671,6 @@ foreach ($courierList as $cn) {
 
 $defaultCourier = getSetting('default_courier', 'pathao');
 $adminUsers = $db->fetchAll("SELECT id, full_name FROM admin_users WHERE is_active = 1 ORDER BY full_name");
-$incompleteCount = 0;
-$_incRecCol = 'is_recovered';
-try { $db->fetch("SELECT is_recovered FROM incomplete_orders LIMIT 1"); } catch(\Throwable $e) { $_incRecCol = 'recovered'; }
-try { $incompleteCount = intval($db->fetch("SELECT COUNT(*) as cnt FROM incomplete_orders WHERE {$_incRecCol} = 0")['cnt'] ?? 0); } catch(Exception $e){}
 
 // Today's summary
 $todaySummary = $db->fetch("SELECT COUNT(*) as total, COALESCE(SUM(total),0) as revenue FROM orders WHERE DATE(created_at) = CURDATE()");
@@ -813,15 +873,8 @@ function sortIcon($col) {
 <div class="bg-white rounded-lg border mb-3 overflow-hidden">
     <div class="overflow-x-auto">
         <div class="flex items-center min-w-max border-b">
-            <a href="<?= adminUrl('pages/order-management.php') ?>"
-               data-status-tab=""
-               onclick="event.preventDefault();OM.go({status:'',courier:'',page:1})"
-               class="px-4 py-2.5 text-xs font-medium border-b-2 transition om-status-tab <?= !$status ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700' ?>">
-                ALL <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] tab-count-all <?= !$status ? 'bg-blue-100 text-blue-700 font-bold' : 'bg-gray-100 text-gray-500' ?>"><?= number_format($totalOrders) ?></span>
-            </a>
-            <?php 
-            $allTabStatuses = ['processing', 'confirmed', 'ready_to_ship', 'shipped', 'delivered', 'pending_return', 'returned', 'partial_delivered', 'cancelled', 'pending_cancel', 'on_hold', 'no_response', 'good_but_no_response', 'advance_payment', 'lost'];
-            // Incomplete tab (first, before processing) — data from incomplete_orders table
+            <?php
+            // Incomplete tab (first)
             $__incIsActive = ($status === 'incomplete');
             ?>
             <a href="?status=incomplete"
@@ -831,6 +884,7 @@ function sortIcon($col) {
                 INCOMPLETE <span class="px-1.5 py-0.5 rounded text-[10px] tab-count <?= $__incIsActive ? 'bg-blue-100 text-blue-700 font-bold' : 'bg-gray-100 text-gray-500' ?>"><?= number_format($incompleteCount) ?></span>
             </a>
             <?php
+            $allTabStatuses = ['processing', 'confirmed', 'ready_to_ship', 'shipped', 'delivered', 'pending_return', 'returned', 'partial_delivered', 'cancelled', 'pending_cancel', 'on_hold', 'no_response', 'good_but_no_response', 'advance_payment', 'lost'];
             foreach ($allTabStatuses as $s):
                 $tc = $tabConfig[$s] ?? ['icon'=>'','color'=>'gray','label'=>ucwords(str_replace('_',' ',$s))];
                 $cnt = $statusCounts[$s] ?? 0;
@@ -844,6 +898,13 @@ function sortIcon($col) {
                 <?= $tc['label'] ?> <span class="px-1.5 py-0.5 rounded text-[10px] tab-count <?= $isActive ? 'bg-blue-100 text-blue-700 font-bold' : 'bg-gray-100 text-gray-500' ?>"><?= number_format($cnt) ?></span>
             </a>
             <?php endforeach; ?>
+            <!-- ALL tab (last/rightmost) — click opens Processing view -->
+            <a href="<?= adminUrl('pages/order-management.php') ?>"
+               data-status-tab=""
+               onclick="event.preventDefault();OM.go({status:'processing',courier:'',page:1})"
+               class="px-4 py-2.5 text-xs font-medium border-b-2 transition om-status-tab ml-auto <?= !$status ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700' ?>">
+                ALL <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] tab-count-all <?= !$status ? 'bg-blue-100 text-blue-700 font-bold' : 'bg-gray-100 text-gray-500' ?>"><?= number_format($totalOrders) ?></span>
+            </a>
         </div>
     </div>
 </div>
@@ -1947,6 +2008,17 @@ OM._fetch = async function(params) {
 
 // ── Rate Popup: Refresh (rebuild from DB) & Fetch All (call courier APIs) ──
 // ── Incomplete Order Functions ──
+async function openIncomplete(inc, cart, isTooNew, ageMin) {
+    if (isTooNew) {
+        var ok = await window._confirmAsync('⚠️ This incomplete order is only '+ageMin+' minute(s) old!\n\nThe customer may still be typing.\nAre you sure you want to open it?');
+        if (!ok) return;
+    }
+    // Submit form to create processing order and redirect to order-view
+    var f = document.createElement('form'); f.method='POST'; f.style.display='none';
+    var a = document.createElement('input'); a.name='action'; a.value='open_incomplete'; f.appendChild(a);
+    var i = document.createElement('input'); i.name='inc_id'; i.value=inc.id; f.appendChild(i);
+    document.body.appendChild(f); f.submit();
+}
 function showIncProducts(cart, ref) {
     if (!cart || !cart.length) { alert('No products in cart'); return; }
     var items = cart.map(function(ci) { return { name: ci.name || ci.product_name || 'Product', variant: ci.variant_name || ci.variant || '', qty: parseInt(ci.qty || ci.quantity || 1), price: parseFloat(ci.price || ci.sale_price || 0), image: '', sku: '' }; });
