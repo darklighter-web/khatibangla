@@ -575,14 +575,23 @@ function sortIcon($col) {
 }
 ?>
 <style>
-.om-table th,.om-table td{padding:12px 8px;vertical-align:top;border-bottom:1px solid #f1f5f9;font-size:13px}
-.om-table th{background:#fafbfc;color:#6b7280;font-weight:600;font-size:12px;position:sticky;top:0;z-index:2;border-bottom:1px solid #e5e7eb;user-select:none;white-space:nowrap;padding:12px 8px}
+/* Base table */
+.om-table th,.om-table td{padding:8px 6px;vertical-align:top;border-bottom:1px solid #f1f5f9;font-size:12px}
+.om-table th{background:#fafbfc;color:#6b7280;font-weight:600;font-size:12px;position:sticky;top:0;z-index:2;border-bottom:1px solid #e5e7eb;user-select:none;white-space:nowrap;padding:10px 8px}
 .om-table th a{color:inherit;text-decoration:none}
-.om-table tbody tr{transition:background .15s;border-bottom:1px solid #f3f4f6}
-.om-table tbody tr:hover{background:#f8fafc}
-.om-table .cust-name{font-weight:500;color:#374151;font-size:13px}
-.om-table .cust-phone{font-size:12px;color:#374151;font-weight:500}
-.om-table .cust-addr{font-size:12px;color:#9ca3af;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
+.om-table tbody tr{transition:background .15s}
+.om-table tbody tr:hover{background:#f8fafb}
+/* Pre-confirmation rows: spacious */
+.om-table tbody tr.om-pre td{padding:12px 8px;font-size:13px}
+.om-table tbody tr.om-pre .cust-name{font-weight:500;color:#374151;font-size:13px}
+.om-table tbody tr.om-pre .cust-phone{font-size:12px;color:#374151;font-weight:500}
+.om-table tbody tr.om-pre .cust-addr{font-size:12px;color:#9ca3af}
+/* Post-confirmation rows: compact */
+.om-table tbody tr.om-post td{padding:6px 6px;font-size:12px}
+.om-table tbody tr.om-post .cust-name{font-weight:600;color:#1e293b;font-size:12px}
+.om-table tbody tr.om-post .cust-phone{font-size:11px;color:#64748b}
+.om-table tbody tr.om-post .cust-addr{font-size:10px;color:#94a3b8}
+/* Shared */
 .om-wrap{overflow-x:auto;border:1px solid #e5e7eb;border-radius:8px;background:#fff}
 .om-table{width:100%;border-collapse:collapse}
 .om-table td{word-break:break-word}
