@@ -396,6 +396,8 @@ try {
         if ($st === 'pending') $statusCounts['processing'] = ($statusCounts['processing'] ?? 0) + intval($scr['cnt']);
     }
 } catch (\Throwable $e) {}
+// Add incomplete count from incomplete_orders table
+$statusCounts['incomplete'] = $incompleteCount;
 $totalOrders = array_sum($statusCounts);
 
 // ── Filters ──
@@ -606,7 +608,9 @@ foreach ($courierList as $cn) {
 $defaultCourier = getSetting('default_courier', 'pathao');
 $adminUsers = $db->fetchAll("SELECT id, full_name FROM admin_users WHERE is_active = 1 ORDER BY full_name");
 $incompleteCount = 0;
-try { $incompleteCount = $db->fetch("SELECT COUNT(*) as cnt FROM incomplete_orders WHERE recovered = 0 AND created_at > DATE_SUB(NOW(), INTERVAL 7 DAY)")['cnt']; } catch(Exception $e){}
+$_incRecCol = 'is_recovered';
+try { $db->fetch("SELECT is_recovered FROM incomplete_orders LIMIT 1"); } catch(\Throwable $e) { $_incRecCol = 'recovered'; }
+try { $incompleteCount = intval($db->fetch("SELECT COUNT(*) as cnt FROM incomplete_orders WHERE {$_incRecCol} = 0")['cnt'] ?? 0); } catch(Exception $e){}
 
 // Today's summary
 $todaySummary = $db->fetch("SELECT COUNT(*) as total, COALESCE(SUM(total),0) as revenue FROM orders WHERE DATE(created_at) = CURDATE()");
@@ -638,6 +642,45 @@ $_isFrag = !empty($_GET['_frag']) && $_SERVER['REQUEST_METHOD'] === 'GET';
 if ($_isFrag) {
     // Render table rows
     ob_start();
+    
+    if ($_isIncompleteView) {
+        // ═══ INCOMPLETE FRAGMENT — render from incomplete_orders ═══
+        foreach ($incOrders as $inc) {
+            $cart = json_decode($inc['cart_data'] ?? '[]', true) ?: [];
+            $ph = preg_replace('/[^0-9]/', '', $inc['customer_phone'] ?? '');
+            $isRec = intval($inc[$recCol] ?? 0);
+            $cartTotal = 0;
+            foreach ($cart as $ci) { $cartTotal += floatval($ci['price'] ?? $ci['sale_price'] ?? 0) * intval($ci['qty'] ?? $ci['quantity'] ?? 1); }
+            $sr = $incSuccessRates[$inc['customer_phone'] ?? ''] ?? ['total'=>0,'delivered'=>0,'rate'=>0,'cancelled'=>0,'returned'=>0,'courier_breakdown'=>[]];
+            $__rClr=$sr['rate']>=70?'#22c55e':($sr['rate']>=40?'#eab308':'#ef4444');
+            $__rTxt=$sr['rate']>=70?'#16a34a':($sr['rate']>=40?'#ca8a04':'#dc2626');
+            $__circ=100.53;$__dash=($sr['rate']/100)*$__circ;$__gap=$__circ-$__dash;
+            $__incAge = time() - strtotime($inc['created_at']); $__isTooNew = $__incAge < 420; $__ageMin = round($__incAge / 60);
+            $stepC = ['cart'=>'#eab308','info'=>'#3b82f6','shipping'=>'#6366f1','payment'=>'#9333ea','checkout_form'=>'#3b82f6'];
+            $stepClr = $stepC[$inc['step_reached']??'cart'] ?? '#9ca3af';
+            include __DIR__ . '/order-row-inc.php';
+        }
+        if (empty($incOrders)) echo '<tr><td colspan="15" style="text-align:center;padding:40px 20px;color:#94a3b8"><div style="font-size:28px;margin-bottom:8px">🛒</div>No incomplete orders</td></tr>';
+        $__rowsHtml = ob_get_clean();
+        
+        ob_start();
+        if ($incTotalPages > 1) {
+            echo '<div class="flex items-center justify-between mt-3 px-1">';
+            echo '<p class="text-xs text-gray-500">Page <strong>'.$incPage.'</strong> of '.$incTotalPages.' · '.number_format($incTotal).' incomplete</p>';
+            echo '<div class="flex gap-1">';
+            if ($incPage > 1) echo '<button class="om-page-btn px-2.5 py-1 text-xs rounded bg-white border hover:bg-gray-50" onclick="OM.go({page:'.($incPage-1).'})">←</button>';
+            for ($i=max(1,$incPage-2);$i<=min($incTotalPages,$incPage+2);$i++) { $cls=$i===$incPage?'bg-blue-600 text-white border-blue-600':'bg-white border hover:bg-gray-50'; echo '<button class="om-page-btn px-2.5 py-1 text-xs rounded '.$cls.'" onclick="OM.go({page:'.$i.'})">'.$i.'</button>'; }
+            if ($incPage < $incTotalPages) echo '<button class="om-page-btn px-2.5 py-1 text-xs rounded bg-white border hover:bg-gray-50" onclick="OM.go({page:'.($incPage+1).'})">→</button>';
+            echo '</div></div>';
+        }
+        $__paginHtml = ob_get_clean();
+        
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['rows'=>$__rowsHtml,'pagination'=>$__paginHtml,'total'=>(int)$incTotal,'page'=>(int)$incPage,'totalPages'=>(int)$incTotalPages,'statusCounts'=>$statusCounts,'courierCounts'=>$courierCounts??[]]);
+        exit;
+    }
+    
+    // ═══ REGULAR FRAGMENT — render from orders table ═══
     $__tplFile = __DIR__ . '/order-row-tpl.php';
     foreach ($orders as $order) {
         $sr        = $successRates[$order['customer_phone']] ?? ['total'=>0,'delivered'=>0,'rate'=>0,'cancelled'=>0,'returned'=>0,'total_spent'=>0,'courier_breakdown'=>[]];
