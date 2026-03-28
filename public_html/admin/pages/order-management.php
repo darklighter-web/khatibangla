@@ -323,7 +323,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 header('Location: ' . adminUrl("pages/order-view.php?order={$tempNum}"));
                 exit;
             } catch (\Throwable $e) {
-                header('Location: ' . adminUrl('pages/order-management.php?status=incomplete')); exit;
+                header('Location: ' . adminUrl('pages/order-management.php?status=incomplete&msg=error&detail=' . urlencode($e->getMessage()))); exit;
             }
         }
     }
@@ -863,7 +863,13 @@ function sortIcon($col) {
 .om-action-cell{text-align:center;vertical-align:middle!important;padding-top:0!important;padding-bottom:0!important}
 </style>
 
-<?php if (isset($_GET['msg'])): ?><div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4 text-sm">✓ <?= $_GET['msg'] === 'updated' ? 'Status updated.' : ($_GET['msg'] === 'bulk_updated' ? 'Bulk update completed.' : 'Action completed.') ?></div><?php endif; ?>
+<?php if (isset($_GET['msg'])): $__isErr = $_GET['msg'] === 'error'; ?>
+<div class="<?= $__isErr ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700' ?> border px-4 py-3 rounded-lg mb-4 text-sm">
+    <?php if ($__isErr): ?>✗ Error<?php if(!empty($_GET['detail'])):?>: <?= e($_GET['detail']) ?><?php endif;?>
+    <?php else: ?>✓ <?= $_GET['msg'] === 'updated' ? 'Status updated.' : ($_GET['msg'] === 'bulk_updated' ? 'Bulk update completed.' : 'Action completed.') ?>
+    <?php endif; ?>
+</div>
+<?php endif; ?>
 
 <?php if (empty($_isProcessingView)): ?>
 <?php endif; /* _isProcessingView stats */ ?>
