@@ -104,9 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'order_id' => $orderId, 'product_id' => $productId,
                     'product_name' => $ci['name'] ?? $ci['product_name'] ?? 'Product',
                     'variant_name' => $variantName,
-                    'sku' => $ci['sku'] ?? null,
                     'quantity' => $qty, 'price' => $price, 'subtotal' => $price * $qty,
-                    'featured_image' => $ci['image'] ?? $ci['featured_image'] ?? null,
                 ]);
             }
             
