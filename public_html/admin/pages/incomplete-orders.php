@@ -229,6 +229,7 @@ require_once __DIR__ . '/../includes/header.php';
 .om-table tbody tr{transition:background .15s}
 .om-table tbody tr:hover{background:#f8fafb}
 .om-table{width:100%;border-collapse:collapse}
+.rate-badge{display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px}
 </style>
 <table class="om-table">
 <thead><tr>
@@ -238,7 +239,8 @@ require_once __DIR__ . '/../includes/header.php';
     <th>Note</th>
     <th>Products</th>
     <th>Step</th>
-    <th style="text-align:right">Value</th>
+    <th style="text-align:right">Total</th>
+    <th>Success Rate</th>
     <?php if ($hasFollowup): ?><th>Follow-ups</th><?php endif; ?>
     <th style="text-align:center">Actions</th>
 </tr></thead>
@@ -251,26 +253,31 @@ require_once __DIR__ . '/../includes/header.php';
     $cartTotal = 0;
     foreach ($cart as $ci) { $cartTotal += floatval($ci['price'] ?? $ci['sale_price'] ?? 0) * intval($ci['qty'] ?? $ci['quantity'] ?? 1); }
     if ($hasCartTotal && !empty($inc['cart_total'])) $cartTotal = floatval($inc['cart_total']);
+    // Success rate data
+    $__sr = $incSuccessRates[$inc['customer_phone'] ?? ''] ?? ['rate'=>0,'total'=>0,'delivered'=>0,'cancelled'=>0,'returned'=>0];
+    $__rClr = $__sr['rate']>=70?'#22c55e':($__sr['rate']>=40?'#eab308':'#ef4444');
+    $__rTxt = $__sr['rate']>=70?'#16a34a':($__sr['rate']>=40?'#854d0e':'#dc2626');
+    $__circ=100.53;$__dash=($__sr['rate']/100)*$__circ;$__gap=$__circ-$__dash;
+    // Age check
+    $__incAge = time() - strtotime($inc['created_at']);
+    $__isTooNew = $__incAge < 420;
+    $__ageMin = round($__incAge / 60);
 ?>
 <tr class="<?= $isRec?'bg-green-50/30':'' ?>">
     <td style="vertical-align:middle"><input type="checkbox" class="row-cb w-4 h-4 accent-red-600 cursor-pointer" value="<?= $inc['id'] ?>" onchange="updateBulkBar()"></td>
 
+    <!-- Created At -->
     <td style="white-space:nowrap">
         <div style="font-size:13px;color:#374151"><?= date('d M, h:i a', strtotime($inc['created_at'])) ?></div>
-        <div style="font-size:11px;color:#9ca3af">ID: <?= $inc['id'] ?></div>
+        <div style="font-size:11px;color:#9ca3af">TEMP-<?= $inc['id'] ?></div>
     </td>
 
+    <!-- Customer (same as processing panel) -->
     <td>
-        <?php
-            $__incSr = $incSuccessRates[$inc['customer_phone'] ?? ''] ?? ['rate'=>0,'total'=>0,'delivered'=>0];
-            $__incRClr = $__incSr['rate']>=70?'#dcfce7':($__incSr['rate']>=40?'#fef9c3':'#fee2e2');
-            $__incRTxt = $__incSr['rate']>=70?'#166534':($__incSr['rate']>=40?'#854d0e':'#991b1b');
-        ?>
         <?php if (!empty($inc['customer_phone'])): ?>
         <div style="display:flex;align-items:center;gap:5px;margin-bottom:2px">
             <span style="color:#9ca3af;font-size:11px">📞</span>
             <span style="font-size:12px;color:#374151;font-weight:500"><?= e($inc['customer_phone']) ?></span>
-            <?php if($__incSr['total']>0):?><span style="display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;background:<?=$__incRClr?>;color:<?=$__incRTxt?>"><?=$__incSr['rate']?>%</span><?php endif;?>
             <a href="tel:<?= e($ph) ?>" style="color:#3b82f6;font-size:11px">📱</a>
             <a href="https://wa.me/88<?= $ph ?>" target="_blank" style="color:#22c55e;font-size:11px">💬</a>
         </div>
@@ -284,48 +291,75 @@ require_once __DIR__ . '/../includes/header.php';
         <?php if ($hasCustomerAddress && !empty($inc['customer_address'])): ?>
         <div style="display:flex;align-items:center;gap:5px">
             <span style="color:#9ca3af;font-size:11px">📍</span>
-            <span style="font-size:12px;color:#9ca3af"><?= e(mb_strimwidth($inc['customer_address'],0,30,'...')) ?></span>
+            <span style="font-size:12px;color:#9ca3af"><?= e(mb_strimwidth($inc['customer_address'],0,28,'...')) ?></span>
         </div>
         <?php elseif(empty($inc['customer_name']) && empty($inc['customer_phone'])): ?>
         <span style="font-size:12px;color:#d1d5db">Unknown visitor</span>
         <?php endif; ?>
     </td>
 
+    <!-- Note -->
     <td>
-        <div style="font-size:11px;color:#9ca3af;margin-bottom:2px"><?= timeAgo($inc['created_at']) ?></div>
+        <div style="font-size:11px;color:#9ca3af;margin-bottom:2px">Updated <?= timeAgo($inc['created_at']) ?></div>
         <?php if (!empty($inc['ip_address']) || !empty($inc['device_ip'])): ?>
         <div style="font-size:10px;color:#d1d5db">IP: <?= e($inc['device_ip'] ?? $inc['ip_address'] ?? '') ?></div>
-        <?php else: ?>
-        <span style="color:#d1d5db">-</span>
         <?php endif; ?>
+        <?php if ($__isTooNew): ?><div style="font-size:10px;color:#f59e0b;font-weight:600;margin-top:2px">⚠️ <?= $__ageMin ?>m ago — may be typing</div><?php endif; ?>
     </td>
 
+    <!-- Products (same as processing panel) -->
     <td>
+        <div style="display:inline-flex;align-items:center;gap:3px;margin-bottom:3px">
+            <span style="width:7px;height:7px;border-radius:50%;display:inline-block;background:<?= $stepC[$inc['step_reached']??'cart'] ?? '#9ca3af' ?>"></span>
+            <span style="display:inline-block;font-size:9px;font-weight:600;padding:1px 6px;border-radius:12px;background:<?= ($stepC[$inc['step_reached']??'cart'] ?? '#9ca3af') ?>22;color:<?= $stepC[$inc['step_reached']??'cart'] ?? '#9ca3af' ?>"><?= strtoupper(str_replace('_', ' ', $inc['step_reached'] ?? 'CART')) ?></span>
+        </div>
         <?php if (!empty($cart)): ?>
         <?php foreach (array_slice($cart, 0, 2) as $ci):
-            $pid=intval($ci['product_id']??$ci['id']??0); $pImg=$productImages[$pid]['featured_image']??''; ?>
-        <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">
+            $pid=intval($ci['product_id']??$ci['id']??0); $pImg=$productImages[$pid]['featured_image']??'';
+            $pName = $ci['name'] ?? $ci['product_name'] ?? ($productImages[$pid]['name'] ?? 'Product'); ?>
+        <div style="display:flex;align-items:center;gap:5px;margin-top:3px">
             <div style="width:32px;height:32px;border-radius:6px;border:1px solid #e5e7eb;overflow:hidden;flex-shrink:0;background:#f9fafb">
                 <?php if ($pImg): ?><img src="<?= imgSrc('products', $pImg) ?>" style="width:100%;height:100%;object-fit:cover" loading="lazy">
                 <?php else: ?><div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#d1d5db;font-size:14px">📦</div><?php endif; ?>
             </div>
             <div style="overflow:hidden">
-                <div style="font-size:12px;color:#374151;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px"><?= e($ci['name'] ?? $ci['product_name'] ?? 'Product') ?></div>
-                <div style="font-size:10px;color:#9ca3af"><?php if(!empty($ci['variant_name']??$ci['variant']??'')):?><?=e(mb_strimwidth($ci['variant_name']??$ci['variant']??'',0,18,'..'))?>·<?php endif;?>Qty: <?= intval($ci['qty']??$ci['quantity']??1) ?></div>
+                <div style="font-size:12px;color:#374151;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px"><?= e($pName) ?></div>
+                <div style="font-size:10px;color:#9ca3af;white-space:nowrap"><?php if(!empty($ci['variant_name']??$ci['variant']??'')):?><?=e(mb_strimwidth($ci['variant_name']??$ci['variant']??'',0,16,'..'))?>·<?php endif;?>Qty: <?= intval($ci['qty']??$ci['quantity']??1) ?></div>
             </div>
         </div>
-        <?php endforeach; if(count($cart)>2): ?><div style="font-size:10px;color:#9ca3af">+<?= count($cart)-2 ?> more</div><?php endif; ?>
+        <?php endforeach; if(count($cart)>2): ?><div style="font-size:10px;color:#9ca3af;margin-top:2px">+<?= count($cart)-2 ?> more</div><?php endif; ?>
         <?php else: ?><span style="color:#d1d5db">—</span><?php endif; ?>
     </td>
 
+    <!-- Step -->
     <td>
         <span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:12px;background:<?= ($stepC[$inc['step_reached']??'cart'] ?? '#9ca3af') ?>22;color:<?= $stepC[$inc['step_reached']??'cart'] ?? '#9ca3af' ?>"><?= ucfirst(str_replace('_', ' ', $inc['step_reached'] ?? 'Cart')) ?></span>
     </td>
 
+    <!-- Total -->
     <td style="text-align:right;white-space:nowrap">
         <div style="font-weight:700;color:#111827;font-size:13px">৳<?= number_format($cartTotal) ?></div>
     </td>
 
+    <!-- Success Rate (donut — same as processing panel) -->
+    <td style="white-space:nowrap">
+        <?php if($__sr['total'] > 0): ?>
+        <div style="display:flex;align-items:center;gap:6px">
+            <svg width="36" height="36" viewBox="0 0 36 36" style="flex-shrink:0;transform:rotate(-90deg)">
+                <circle cx="18" cy="18" r="16" fill="none" stroke="#e5e7eb" stroke-width="3"/>
+                <circle cx="18" cy="18" r="16" fill="none" stroke="<?=$__rClr?>" stroke-width="3" stroke-dasharray="<?=$__dash?> <?=$__gap?>" stroke-linecap="round"/>
+            </svg>
+            <div style="line-height:1.3">
+                <div style="font-size:11px;font-weight:700;color:<?=$__rTxt?>">Success: <?=$__sr['rate']?>%</div>
+                <div style="font-size:10px;color:#6b7280">Order: <?=$__sr['delivered']?>/<?=$__sr['total']?></div>
+            </div>
+        </div>
+        <?php else: ?>
+        <span style="color:#d1d5db;font-size:12px">0</span>
+        <?php endif; ?>
+    </td>
+
+    <!-- Follow-ups -->
     <?php if ($hasFollowup): ?>
     <td>
         <span style="font-size:12px;color:#374151"><?= intval($inc['followup_count']??0) ?>×</span>
@@ -333,12 +367,8 @@ require_once __DIR__ . '/../includes/header.php';
     </td>
     <?php endif; ?>
 
+    <!-- Actions (same style as processing panel) -->
     <td style="text-align:center;vertical-align:middle">
-        <?php
-            $__incAge = time() - strtotime($inc['created_at']);
-            $__isTooNew = $__incAge < 420; // 7 minutes
-            $__ageMin = round($__incAge / 60);
-        ?>
         <?php if (!$isRec): ?>
         <div style="display:flex;align-items:center;justify-content:center;gap:4px;flex-wrap:wrap">
             <button onclick='viewDetails(<?= json_encode($inc, JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE) ?>, <?= json_encode($cart, JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE) ?>)' style="font-size:11px;background:#f3f4f6;color:#374151;padding:5px 10px;border-radius:6px;border:none;cursor:pointer;font-weight:500">Details</button>
@@ -358,7 +388,7 @@ require_once __DIR__ . '/../includes/header.php';
     </td>
 </tr>
 <?php endforeach; ?>
-<?php if (empty($incompletes)): ?><tr><td colspan="9" style="padding:48px;text-align:center;color:#9ca3af"><div style="font-size:32px;margin-bottom:8px">🛒</div><p>No incomplete orders found.</p></td></tr><?php endif; ?>
+<?php if (empty($incompletes)): ?><tr><td colspan="10" style="padding:48px;text-align:center;color:#9ca3af"><div style="font-size:32px;margin-bottom:8px">🛒</div><p>No incomplete orders found.</p></td></tr><?php endif; ?>
 </tbody></table></div>
 
 <!-- ═══ DETAILS MODAL ═══ -->
