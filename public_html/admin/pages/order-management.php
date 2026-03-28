@@ -300,7 +300,7 @@ try { $db->query("ALTER TABLE orders ADD COLUMN advance_amount DECIMAL(12,2) DEF
 // Manual side statuses: cancelled, returned, on_hold, no_response, good_but_no_response, advance_payment
 $mainFlow = ['processing', 'confirmed', 'ready_to_ship', 'shipped', 'delivered'];
 $courierStatuses = ['pending_return', 'pending_cancel', 'partial_delivered', 'lost'];
-$sideStatuses = ['cancelled', 'returned', 'on_hold', 'no_response', 'good_but_no_response', 'advance_payment'];
+$sideStatuses = ['cancelled', 'returned', 'on_hold', 'no_response', 'good_but_no_response', 'advance_payment', 'incomplete'];
 $allStatuses = array_merge($mainFlow, $courierStatuses, $sideStatuses);
 
 // Next logical action for each status
@@ -504,6 +504,7 @@ $tabConfig = [
     'pending_cancel'=>['icon'=>'⏳','color'=>'pink','label'=>'PENDING CANCEL'],
     'partial_delivered'=>['icon'=>'📦½','color'=>'cyan','label'=>'PARTIAL'],
     'lost'       => ['icon'=>'❌','color'=>'stone','label'=>'LOST'],
+    'incomplete' => ['icon'=>'⚠️','color'=>'slate','label'=>'INCOMPLETE'],
     'cancelled'  => ['icon'=>'✗','color'=>'red','label'=>'CANCELLED'],
     'returned'   => ['icon'=>'↩','color'=>'orange','label'=>'RETURNED'],
     'on_hold'    => ['icon'=>'⏸','color'=>'gray','label'=>'ON HOLD'],
@@ -529,8 +530,8 @@ if ($_isFrag) {
         $oStatus   = $order['order_status'] === 'pending' ? 'processing' : $order['order_status'];
         $nxt       = $nextAction[$oStatus] ?? null;
         $creditUsed= floatval($order['store_credit_used'] ?? 0);
-        $statusColors=['processing'=>'bg-yellow-100 text-yellow-700','confirmed'=>'bg-blue-100 text-blue-700','ready_to_ship'=>'bg-violet-100 text-violet-700','shipped'=>'bg-purple-100 text-purple-700','delivered'=>'bg-green-100 text-green-700','cancelled'=>'bg-red-100 text-red-700','returned'=>'bg-orange-100 text-orange-700','pending_return'=>'bg-amber-100 text-amber-700','pending_cancel'=>'bg-pink-100 text-pink-700','partial_delivered'=>'bg-cyan-100 text-cyan-700','on_hold'=>'bg-gray-100 text-gray-700','no_response'=>'bg-rose-100 text-rose-700','good_but_no_response'=>'bg-teal-100 text-teal-700','advance_payment'=>'bg-emerald-100 text-emerald-700'];
-        $statusDots=['processing'=>'#eab308','confirmed'=>'#3b82f6','ready_to_ship'=>'#8b5cf6','shipped'=>'#9333ea','delivered'=>'#22c55e','cancelled'=>'#ef4444','returned'=>'#f97316','pending_return'=>'#f59e0b','on_hold'=>'#6b7280'];
+        $statusColors=['processing'=>'bg-yellow-100 text-yellow-700','confirmed'=>'bg-blue-100 text-blue-700','ready_to_ship'=>'bg-violet-100 text-violet-700','shipped'=>'bg-purple-100 text-purple-700','delivered'=>'bg-green-100 text-green-700','cancelled'=>'bg-red-100 text-red-700','returned'=>'bg-orange-100 text-orange-700','pending_return'=>'bg-amber-100 text-amber-700','pending_cancel'=>'bg-pink-100 text-pink-700','partial_delivered'=>'bg-cyan-100 text-cyan-700','on_hold'=>'bg-gray-100 text-gray-700','no_response'=>'bg-rose-100 text-rose-700','good_but_no_response'=>'bg-teal-100 text-teal-700','advance_payment'=>'bg-emerald-100 text-emerald-700','incomplete'=>'bg-slate-100 text-slate-700'];
+        $statusDots=['processing'=>'#eab308','confirmed'=>'#3b82f6','ready_to_ship'=>'#8b5cf6','shipped'=>'#9333ea','delivered'=>'#22c55e','cancelled'=>'#ef4444','returned'=>'#f97316','pending_return'=>'#f59e0b','on_hold'=>'#6b7280','incomplete'=>'#64748b'];
         $sDot   = $statusDots[$oStatus] ?? '#94a3b8';
         $sBadge = $statusColors[$oStatus] ?? 'bg-gray-100 text-gray-600';
         $__cn   = strtolower($order['courier_name'] ?? ($order['shipping_method'] ?? ''));
@@ -657,7 +658,7 @@ function sortIcon($col) {
                 ALL <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] tab-count-all <?= !$status ? 'bg-blue-100 text-blue-700 font-bold' : 'bg-gray-100 text-gray-500' ?>"><?= number_format($totalOrders) ?></span>
             </a>
             <?php 
-            $allTabStatuses = ['processing', 'confirmed', 'ready_to_ship', 'shipped', 'delivered', 'pending_return', 'returned', 'partial_delivered', 'cancelled', 'pending_cancel', 'on_hold', 'no_response', 'good_but_no_response', 'advance_payment', 'lost'];
+            $allTabStatuses = ['processing', 'confirmed', 'ready_to_ship', 'shipped', 'delivered', 'pending_return', 'returned', 'partial_delivered', 'cancelled', 'pending_cancel', 'on_hold', 'no_response', 'good_but_no_response', 'advance_payment', 'incomplete', 'lost'];
             foreach ($allTabStatuses as $s):
                 $tc = $tabConfig[$s] ?? ['icon'=>'','color'=>'gray','label'=>ucwords(str_replace('_',' ',$s))];
                 $cnt = $statusCounts[$s] ?? 0;
@@ -887,8 +888,8 @@ foreach ($orders as $order):
     $oStatus = $order['order_status'] === 'pending' ? 'processing' : $order['order_status'];
     $nxt = $nextAction[$oStatus] ?? null;
     $creditUsed = floatval($order['store_credit_used'] ?? 0);
-    $statusColors=['processing'=>'bg-yellow-100 text-yellow-700','confirmed'=>'bg-blue-100 text-blue-700','ready_to_ship'=>'bg-violet-100 text-violet-700','shipped'=>'bg-purple-100 text-purple-700','delivered'=>'bg-green-100 text-green-700','cancelled'=>'bg-red-100 text-red-700','returned'=>'bg-orange-100 text-orange-700','pending_return'=>'bg-amber-100 text-amber-700','pending_cancel'=>'bg-pink-100 text-pink-700','partial_delivered'=>'bg-cyan-100 text-cyan-700','on_hold'=>'bg-gray-100 text-gray-700','no_response'=>'bg-rose-100 text-rose-700','good_but_no_response'=>'bg-teal-100 text-teal-700','advance_payment'=>'bg-emerald-100 text-emerald-700'];
-    $statusDots=['processing'=>'#eab308','confirmed'=>'#3b82f6','ready_to_ship'=>'#8b5cf6','shipped'=>'#9333ea','delivered'=>'#22c55e','cancelled'=>'#ef4444','returned'=>'#f97316','pending_return'=>'#f59e0b','on_hold'=>'#6b7280'];
+    $statusColors=['processing'=>'bg-yellow-100 text-yellow-700','confirmed'=>'bg-blue-100 text-blue-700','ready_to_ship'=>'bg-violet-100 text-violet-700','shipped'=>'bg-purple-100 text-purple-700','delivered'=>'bg-green-100 text-green-700','cancelled'=>'bg-red-100 text-red-700','returned'=>'bg-orange-100 text-orange-700','pending_return'=>'bg-amber-100 text-amber-700','pending_cancel'=>'bg-pink-100 text-pink-700','partial_delivered'=>'bg-cyan-100 text-cyan-700','on_hold'=>'bg-gray-100 text-gray-700','no_response'=>'bg-rose-100 text-rose-700','good_but_no_response'=>'bg-teal-100 text-teal-700','advance_payment'=>'bg-emerald-100 text-emerald-700','incomplete'=>'bg-slate-100 text-slate-700'];
+    $statusDots=['processing'=>'#eab308','confirmed'=>'#3b82f6','ready_to_ship'=>'#8b5cf6','shipped'=>'#9333ea','delivered'=>'#22c55e','cancelled'=>'#ef4444','returned'=>'#f97316','pending_return'=>'#f59e0b','on_hold'=>'#6b7280','incomplete'=>'#64748b'];
     $sDot = $statusDots[$oStatus] ?? '#94a3b8';
     $sBadge = $statusColors[$oStatus] ?? 'bg-gray-100 text-gray-600';
     $__cn = strtolower($order['courier_name'] ?? ($order['shipping_method'] ?? ''));
