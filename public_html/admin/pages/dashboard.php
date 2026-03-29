@@ -298,11 +298,6 @@ $deliveryRate    = $shippedPeriod > 0 ? round(($deliveredPeriod / $shippedPeriod
     </div>
     <?php endforeach; ?>
 </div>
-            <?php endif; ?>
-        </div>
-        <?php endforeach; ?>
-    </div>
-</div>
 
 <!-- ═══════════════════════════════════════════ -->
 <!-- WEB ORDER REPORT + ORDERS BY SOURCE (doughnuts) -->
