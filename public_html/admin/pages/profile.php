@@ -25,11 +25,21 @@ if ($getAction === 'exit_view_as') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     if ($action === 'update_profile') {
-        $db->update('admin_users', [
+        $updateData = [
             'full_name' => sanitize($_POST['full_name']),
             'email' => sanitize($_POST['email']),
             'phone' => sanitize($_POST['phone']),
-        ], 'id = ?', [$adminId]);
+        ];
+        // Handle avatar upload
+        if (!empty($_FILES['avatar']['name']) && $_FILES['avatar']['error'] === UPLOAD_ERR_OK) {
+            $avatar = uploadFile($_FILES['avatar'], 'avatars');
+            if ($avatar) $updateData['avatar'] = $avatar;
+        }
+        // Handle avatar remove
+        if (!empty($_POST['remove_avatar'])) {
+            $updateData['avatar'] = null;
+        }
+        $db->update('admin_users', $updateData, 'id = ?', [$adminId]);
         $_SESSION['admin_name'] = sanitize($_POST['full_name']);
         redirect(adminUrl('pages/profile.php?msg=updated'));
     }
@@ -80,8 +90,14 @@ $msgMap = [
     <!-- Profile Card -->
     <div class="lg:col-span-1 space-y-4">
         <div class="bg-white rounded-xl border shadow-sm p-6 text-center">
-            <div class="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-3xl mx-auto mb-4">
-                <?= strtoupper(substr($admin['full_name'], 0, 1)) ?>
+            <div class="relative inline-block mb-4">
+                <?php if (!empty($admin['avatar'])): ?>
+                <img src="<?= uploadUrl($admin['avatar']) ?>" class="w-20 h-20 rounded-full object-cover mx-auto border-2 border-gray-100">
+                <?php else: ?>
+                <div class="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-3xl mx-auto">
+                    <?= strtoupper(substr($admin['full_name'], 0, 1)) ?>
+                </div>
+                <?php endif; ?>
             </div>
             <h3 class="font-semibold text-xl"><?= e($admin['full_name']) ?></h3>
             <p class="text-sm text-gray-500">@<?= e($admin['username']) ?></p>
@@ -178,8 +194,26 @@ $msgMap = [
         <!-- Update Profile -->
         <div class="bg-white rounded-xl border shadow-sm p-5">
             <h3 class="font-semibold text-gray-800 mb-4"><i class="fas fa-user-edit mr-2 text-blue-500"></i>Edit Profile</h3>
-            <form method="POST" class="space-y-4">
+            <form method="POST" enctype="multipart/form-data" class="space-y-4">
                 <input type="hidden" name="action" value="update_profile">
+                <!-- Avatar Upload -->
+                <div>
+                    <label class="block text-sm font-medium mb-2">Profile Picture</label>
+                    <div class="flex items-center gap-4">
+                        <?php if (!empty($admin['avatar'])): ?>
+                        <img src="<?= uploadUrl($admin['avatar']) ?>" class="w-14 h-14 rounded-full object-cover border">
+                        <?php else: ?>
+                        <div class="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center text-gray-400 text-xl font-bold"><?= strtoupper(substr($admin['full_name'], 0, 1)) ?></div>
+                        <?php endif; ?>
+                        <div class="flex-1">
+                            <input type="file" name="avatar" accept="image/jpeg,image/png,image/webp" class="w-full text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-blue-50 file:text-blue-600 hover:file:bg-blue-100">
+                            <p class="text-[10px] text-gray-400 mt-1">JPG, PNG or WebP. Max 2MB.</p>
+                        </div>
+                        <?php if (!empty($admin['avatar'])): ?>
+                        <label class="flex items-center gap-1.5 text-xs text-red-500 cursor-pointer"><input type="checkbox" name="remove_avatar" value="1" class="w-3 h-3"> Remove</label>
+                        <?php endif; ?>
+                    </div>
+                </div>
                 <div class="grid grid-cols-2 gap-4">
                     <div><label class="block text-sm font-medium mb-1">Full Name</label><input type="text" name="full_name" value="<?= e($admin['full_name']) ?>" required class="border rounded-lg px-3 py-2 text-sm w-full"></div>
                     <div><label class="block text-sm font-medium mb-1">Username</label><input type="text" value="<?= e($admin['username']) ?>" disabled class="border rounded-lg px-3 py-2 text-sm w-full bg-gray-50 text-gray-400"></div>

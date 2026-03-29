@@ -168,7 +168,7 @@ $channelColors = [
 <div class="panel-card mb-6" style="background:linear-gradient(135deg,var(--th-primary) 0%,var(--th-secondary) 100%);border:none">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div style="display:flex;align-items:center;gap:14px">
-            <div style="width:48px;height:48px;border-radius:12px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#fff"><?= strtoupper(substr($adminName, 0, 1)) ?></div>
+            <?php if ($adminAvatar): ?><img src="<?= uploadUrl($adminAvatar) ?>" style="width:48px;height:48px;border-radius:12px;object-fit:cover;border:2px solid rgba(255,255,255,.3)"><?php else: ?><div style="width:48px;height:48px;border-radius:12px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#fff"><?= strtoupper(substr($adminName, 0, 1)) ?></div><?php endif; ?>
             <div>
                 <h2 style="font-size:18px;font-weight:700;color:#fff;margin:0">Welcome back, <?= e($adminName) ?></h2>
                 <p style="font-size:12px;color:rgba(255,255,255,.75);margin-top:2px">ID: <?= $adminId ?> · <?= ucwords(str_replace('_', ' ', $adminRole)) ?> · <?= date('l, d F Y') ?></p>

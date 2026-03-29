@@ -14,9 +14,12 @@ $db = Database::getInstance();
 
 // ── Theme System (light / dark / ui) ──
 $adminTheme = 'ui';
+$adminAvatar = '';
+try { $db->query("ALTER TABLE admin_users ADD COLUMN avatar VARCHAR(255) DEFAULT NULL"); } catch (\Throwable $e) {}
 try {
-    $t = $db->fetch("SELECT admin_theme FROM admin_users WHERE id = ?", [getAdminId()]);
+    $t = $db->fetch("SELECT admin_theme, avatar FROM admin_users WHERE id = ?", [getAdminId()]);
     if ($t && !empty($t['admin_theme'])) $adminTheme = $t['admin_theme'];
+    if ($t && !empty($t['avatar'])) $adminAvatar = $t['avatar'];
 } catch (\Throwable $e) {}
 if (!in_array($adminTheme, ['light', 'dark', 'ui'])) $adminTheme = 'ui';
 $isDark = ($adminTheme === 'dark');
@@ -345,7 +348,7 @@ $icons = [
             </a>
             <div class="relative">
                 <button onclick="this.nextElementSibling.classList.toggle('hidden')" class="flex items-center gap-1.5 px-2 py-1 rounded-lg <?= $tc['profileBtn'] ?> transition">
-                    <div class="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-white text-[10px] font-bold"><?= strtoupper(substr(getAdminName(),0,1)) ?></div>
+                    <?php if ($adminAvatar): ?><img src="<?= uploadUrl($adminAvatar) ?>" class="w-6 h-6 rounded-full object-cover"><?php else: ?><div class="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-white text-[10px] font-bold"><?= strtoupper(substr(getAdminName(),0,1)) ?></div><?php endif; ?>
                     <svg class="w-3 h-3 <?= $tc['profileChevron'] ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                 </button>
                 <div class="hidden absolute right-0 mt-2 w-48 <?= $tc['dropdown'] ?> rounded-lg shadow-lg py-1 z-[100]">
