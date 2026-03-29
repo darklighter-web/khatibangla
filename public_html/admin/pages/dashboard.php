@@ -6,6 +6,10 @@ require_once __DIR__ . '/../includes/header.php';
 
 $db = Database::getInstance();
 $adminId = getAdminId();
+$adminName = getAdminName();
+$adminUser = null;
+try { $adminUser = $db->fetch("SELECT id, full_name, username, role_id, email, last_login FROM admin_users WHERE id = ?", [$adminId]); } catch (\Throwable $e) {}
+$adminRole = $_SESSION['admin_role'] ?? 'admin';
 
 // ── Date Filtering (Overview) ──
 $dateFrom = $_GET['from'] ?? date('Y-m-d');
@@ -159,6 +163,25 @@ $channelColors = [
     'instagram'=>'#ec4899','landing_page'=>'#f59e0b','unknown'=>'#eab308','direct'=>'#1e293b','exchange'=>'#1e293b'
 ];
 ?>
+
+<!-- Welcome Header -->
+<div class="panel-card mb-6" style="background:linear-gradient(135deg,var(--th-primary) 0%,<?=$__pc?>dd 100%);border:none">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <div style="display:flex;align-items:center;gap:14px">
+            <div style="width:48px;height:48px;border-radius:12px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#fff"><?= strtoupper(substr($adminName, 0, 1)) ?></div>
+            <div>
+                <h2 style="font-size:18px;font-weight:700;color:#fff;margin:0">Welcome back, <?= e($adminName) ?></h2>
+                <p style="font-size:12px;color:rgba(255,255,255,.75);margin-top:2px">ID: <?= $adminId ?> · <?= ucwords(str_replace('_', ' ', $adminRole)) ?> · <?= date('l, d F Y') ?></p>
+            </div>
+        </div>
+        <?php if ($adminUser && !empty($adminUser['last_login'])): ?>
+        <div style="text-align:right">
+            <p style="font-size:10px;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.05em">Last Login</p>
+            <p style="font-size:13px;color:#fff;font-weight:500"><?= date('d M, h:i A', strtotime($adminUser['last_login'])) ?></p>
+        </div>
+        <?php endif; ?>
+    </div>
+</div>
 
 <?php if (!isSuperAdmin()): ?>
 <!-- ═══════ EMPLOYEE SESSION PANEL ═══════ -->

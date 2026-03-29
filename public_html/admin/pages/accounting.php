@@ -294,7 +294,7 @@ $msg = $_GET['msg'] ?? '';
 <?php endif; ?>
 
 <!-- Date Range Bar -->
-<div class="bg-white rounded-xl border shadow-sm p-4 mb-5">
+<div class="panel-card mb-5">
     <div class="flex flex-wrap items-center gap-2">
         <?php
         $ranges = ['today'=>'Today','yesterday'=>'Yesterday','7d'=>'7D','30d'=>'30D','this_month'=>'This Month','last_month'=>'Last Month','this_year'=>date('Y'),'lifetime'=>'All Time'];
@@ -321,39 +321,39 @@ function applyCustomRange() {
 
 <!-- KPI Cards — 2 rows -->
 <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-    <div class="bg-white rounded-xl border p-4">
+    <div class="panel-card">
         <p class="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Confirmed Revenue</p>
         <p class="text-xl font-bold text-blue-700">৳<?= number_format($confirmedRevenue) ?></p>
         <p class="text-[10px] text-gray-400 mt-1"><?= $confirmedCount ?> orders <?php if ($revenueChange != 0): ?><span class="<?= $revenueChange >= 0 ? 'text-green-600' : 'text-red-500' ?>"><?= $revenueChange >= 0 ? '↑' : '↓' ?><?= abs($revenueChange) ?>%</span><?php endif; ?></p>
     </div>
-    <div class="bg-white rounded-xl border p-4">
+    <div class="panel-card">
         <p class="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Collected (Delivered)</p>
         <p class="text-xl font-bold text-green-600">৳<?= number_format($collectedRevenue) ?></p>
         <p class="text-[10px] text-gray-400 mt-1"><?= $deliveredCount ?> delivered</p>
     </div>
-    <div class="bg-white rounded-xl border p-4">
+    <div class="panel-card">
         <p class="text-[10px] text-gray-400 uppercase tracking-wider mb-1">In Pipeline</p>
         <p class="text-xl font-bold text-amber-600">৳<?= number_format($pipelineRevenue) ?></p>
         <p class="text-[10px] text-gray-400 mt-1"><?= $pipelineCount ?> in transit</p>
     </div>
-    <div class="bg-white rounded-xl border p-4">
+    <div class="panel-card">
         <p class="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Lost (Cancel/Return)</p>
         <p class="text-xl font-bold text-red-500">৳<?= number_format($lostRevenue) ?></p>
         <p class="text-[10px] text-gray-400 mt-1"><?= $lostCount ?> orders · <?= $successRate ?>% success</p>
     </div>
 </div>
 <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-    <div class="bg-white rounded-xl border p-4">
+    <div class="panel-card">
         <p class="text-[10px] text-gray-400 uppercase tracking-wider mb-1">COGS</p>
         <p class="text-xl font-bold text-orange-600">৳<?= number_format($cogs) ?></p>
         <p class="text-[10px] text-gray-400 mt-1">Product cost</p>
     </div>
-    <div class="bg-white rounded-xl border p-4">
+    <div class="panel-card">
         <p class="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Gross Profit</p>
         <p class="text-xl font-bold <?= $grossProfit >= 0 ? 'text-green-600' : 'text-red-600' ?>">৳<?= number_format($grossProfit) ?></p>
         <p class="text-[10px] <?= $grossMargin >= 30 ? 'text-green-600' : 'text-amber-600' ?> mt-1"><?= $grossMargin ?>% margin</p>
     </div>
-    <div class="bg-white rounded-xl border p-4">
+    <div class="panel-card">
         <p class="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Total Expenses</p>
         <p class="text-xl font-bold text-red-600">৳<?= number_format($totalExpenses) ?></p>
         <?php if ($expenseChange != 0): ?><p class="text-[10px] mt-1 <?= $expenseChange <= 0 ? 'text-green-600' : 'text-red-500' ?>"><?= $expenseChange >= 0 ? '↑' : '↓' ?><?= abs($expenseChange) ?>%</p><?php endif; ?>
