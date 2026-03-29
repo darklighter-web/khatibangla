@@ -5,8 +5,8 @@ require_once __DIR__ . '/includes/auth.php';
 // Handle logout
 if (isset($_GET['action']) && $_GET['action'] === 'logout') {
     adminLogout();
-    // Clear gate cookie on logout
-    setcookie('_adm_gate', '', ['expires' => time() - 3600, 'path' => '/']);
+    // Keep the gate cookie so admin can access login page after logout
+    // (gate cookie is a security measure to hide login from public, not from admins)
     header('Location: login.php');
     exit;
 }
