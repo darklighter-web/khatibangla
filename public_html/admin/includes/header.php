@@ -233,11 +233,47 @@ $icons = [
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr" defer></script>
     <style>
-        body{font-family:'Inter',sans-serif}
+        <?php
+        // Theme colors from settings
+        $__pc = getSetting('primary_color', '#E53E3E');
+        $__sc = getSetting('secondary_color', '#1E293B');
+        $__ac = getSetting('accent_color', '#38A169');
+        ?>
+        :root{--th-primary:<?=$__pc?>;--th-secondary:<?=$__sc?>;--th-accent:<?=$__ac?>;--th-primary-light:<?=$__pc?>15;--th-primary-soft:<?=$__pc?>25}
+        body{font-family:'Inter',system-ui,-apple-system,sans-serif}
         .sidebar-scroll::-webkit-scrollbar{width:4px}
         .sidebar-scroll::-webkit-scrollbar-thumb{background:rgba(128,128,128,0.3);border-radius:4px}
         #themeDropdown{display:none}
         #themeDropdown.show{display:block}
+        /* ── SmartHR-inspired Panel Styles ── */
+        .panel-card{background:#fff;border-radius:14px;border:1px solid #f0f0f5;padding:1.5rem;transition:box-shadow .2s;position:relative;overflow:hidden}
+        .panel-card:hover{box-shadow:0 4px 20px rgba(0,0,0,.04)}
+        .panel-card .card-title{font-size:13px;font-weight:600;color:#374151;letter-spacing:-.01em}
+        .panel-card .card-value{font-size:1.75rem;font-weight:700;color:#1a1a2e;letter-spacing:-.02em;line-height:1.2}
+        .panel-card .card-sub{font-size:11px;color:#9ca3af;margin-top:2px}
+        .stat-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+        .stat-icon svg{width:20px;height:20px}
+        .panel-grid{display:grid;gap:1rem;margin-bottom:1.5rem}
+        .panel-grid-2{grid-template-columns:repeat(2,1fr)}
+        .panel-grid-3{grid-template-columns:repeat(3,1fr)}
+        .panel-grid-4{grid-template-columns:repeat(4,1fr)}
+        @media(max-width:768px){.panel-grid-3,.panel-grid-4{grid-template-columns:repeat(2,1fr)}}
+        /* Data table refinements for reporting pages */
+        .data-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+        .data-table thead th{background:#fafbfc;color:#6b7280;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:10px 12px;border-bottom:1px solid #f0f0f5}
+        .data-table tbody td{padding:12px;border-bottom:1px solid #f8f8fb;color:#374151}
+        .data-table tbody tr:hover{background:#fafbfe}
+        .data-table tbody tr:last-child td{border-bottom:none}
+        /* Progress bars */
+        .progress-bar{height:6px;border-radius:3px;background:#f1f5f9;overflow:hidden}
+        .progress-bar .fill{height:100%;border-radius:3px;transition:width .6s ease}
+        /* Badge refinements */
+        .badge-sm{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;letter-spacing:.02em}
+        /* Section headers */
+        .section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
+        .section-header h3{font-size:15px;font-weight:700;color:#1a1a2e;letter-spacing:-.01em}
+        .section-header .view-all{font-size:12px;color:var(--th-primary);font-weight:500;text-decoration:none}
+        .section-header .view-all:hover{text-decoration:underline}
         <?= $tc['css'] ?>
     </style>
 </head>

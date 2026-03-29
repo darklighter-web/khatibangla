@@ -162,7 +162,7 @@ $channelColors = [
 
 <?php if (!isSuperAdmin()): ?>
 <!-- ═══════ EMPLOYEE SESSION PANEL ═══════ -->
-<div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
+<div class="panel-card mb-6">
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
             <h3 class="text-sm font-semibold text-gray-700 mb-1">🕐 আজকের সেশন</h3>
@@ -217,10 +217,10 @@ $deliveryRate    = $shippedPeriod > 0 ? round(($deliveredPeriod / $shippedPeriod
 
 <!-- Team Attendance -->
 <?php if (!empty($teamAttendance)): ?>
-<div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
-    <div class="flex items-center justify-between mb-4">
-        <h3 class="text-sm font-semibold text-gray-700">👥 টিম উপস্থিতি — আজ</h3>
-        <a href="<?= adminUrl('pages/employees.php?tab=performance') ?>" class="text-xs text-blue-600 hover:underline">Full Report →</a>
+<div class="panel-card mb-6">
+    <div class="section-header">
+        <h3>👥 টিম উপস্থিতি — আজ</h3>
+        <a href="<?= adminUrl('pages/employees.php?tab=performance') ?>" class="view-all">Full Report →</a>
     </div>
     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
         <?php foreach ($teamAttendance as $ta):
@@ -258,46 +258,46 @@ $deliveryRate    = $shippedPeriod > 0 ? round(($deliveredPeriod / $shippedPeriod
 <?php endif; ?>
 
 <!-- ═══════════════════════════════════════════ -->
-<!-- OVERVIEW (matching reference) -->
+<!-- OVERVIEW (SmartHR-inspired) -->
 <!-- ═══════════════════════════════════════════ -->
-<div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
-    <div class="flex items-center justify-between mb-5">
-        <h3 class="text-base font-bold text-gray-800">Overview</h3>
-        <div class="flex items-center gap-2">
-            <select onchange="window.location=updateParam('sf',this.value)" class="text-xs border rounded-lg px-2.5 py-1.5 text-gray-600">
-                <option value="approved" <?= $statusFilter==='approved'?'selected':'' ?>>Approved</option>
-                <option value="all" <?= $statusFilter==='all'?'selected':'' ?>>All Orders</option>
-            </select>
-            <div data-kb-datepicker data-from-param="from" data-to-param="to" data-preserve-params="sf,wp,sp,ssf"></div>
-        </div>
+<div class="section-header">
+    <h3>Overview</h3>
+    <div class="flex items-center gap-2">
+        <select onchange="window.location=updateParam('sf',this.value)" class="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 text-gray-600 bg-white">
+            <option value="approved" <?= $statusFilter==='approved'?'selected':'' ?>>Approved</option>
+            <option value="all" <?= $statusFilter==='all'?'selected':'' ?>>All Orders</option>
+        </select>
+        <div data-kb-datepicker data-from-param="from" data-to-param="to" data-preserve-params="sf,wp,sp,ssf"></div>
     </div>
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <?php
-        $cards = [
-            ['Total Orders', $dStats['orders'], $chgOrders, '#10b981', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>'],
-            ['Total Sales', '৳'.number_format($dStats['revenue']), $chgRevenue, '#ef4444', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>'],
-            ['Profit', '৳'.number_format($dStats['profit']), $chgProfit, '#3b82f6', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z"/>'],
-            ['Pending Web Orders', $dStats['pending_web'], null, '#f59e0b', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>'],
-        ];
-        foreach ($cards as $c):
-            $isUp = ($c[2] ?? 0) >= 0;
-            $pctVal = $c[2];
-        ?>
-        <div class="bg-white rounded-xl p-4 border border-gray-100">
-            <div class="flex items-center justify-between mb-3">
-                <p class="text-xs text-gray-500 font-medium"><?= $c[0] ?></p>
-                <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:<?= $c[3] ?>20">
-                    <svg class="w-4 h-4" fill="none" stroke="<?= $c[3] ?>" viewBox="0 0 24 24"><?= $c[4] ?></svg>
-                </div>
+</div>
+<div class="panel-grid panel-grid-4 mb-6">
+    <?php
+    $cards = [
+        ['Total Orders', $dStats['orders'], $chgOrders, '#FF6B35', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>'],
+        ['Total Sales', '৳'.number_format($dStats['revenue']), $chgRevenue, '#3B82F6', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>'],
+        ['Profit', '৳'.number_format($dStats['profit']), $chgProfit, '#10B981', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>'],
+        ['Pending Orders', $dStats['pending_web'], null, '#F59E0B', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>'],
+    ];
+    foreach ($cards as $c):
+        $isUp = ($c[2] ?? 0) >= 0; $pctVal = $c[2];
+    ?>
+    <div class="panel-card">
+        <div class="flex items-start justify-between mb-3">
+            <div class="stat-icon" style="background:<?= $c[3] ?>15">
+                <svg fill="none" stroke="<?= $c[3] ?>" viewBox="0 0 24 24"><?= $c[4] ?></svg>
             </div>
-            <p class="text-2xl font-bold text-gray-800"><?= $c[1] ?></p>
             <?php if ($pctVal !== null): ?>
-            <div class="flex items-center gap-1 mt-1.5">
-                <svg class="w-3.5 h-3.5 <?= $isUp ? 'text-green-500' : 'text-red-500' ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="<?= $isUp ? 'M5 10l7-7m0 0l7 7m-7-7v18' : 'M19 14l-7 7m0 0l-7-7m7 7V3' ?>"/>
-                </svg>
-                <span class="text-xs font-semibold <?= $isUp ? 'text-green-500' : 'text-red-500' ?>"><?= abs($pctVal) ?>%</span>
+            <div class="flex items-center gap-1 px-2 py-0.5 rounded-full <?= $isUp ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500' ?>" style="font-size:11px;font-weight:600">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="<?= $isUp ? 'M5 10l7-7m0 0l7 7m-7-7v18' : 'M19 14l-7 7m0 0l-7-7m7 7V3' ?>"/></svg>
+                <?= abs($pctVal) ?>%
             </div>
+            <?php endif; ?>
+        </div>
+        <p class="card-sub"><?= $c[0] ?></p>
+        <p class="card-value"><?= $c[1] ?></p>
+    </div>
+    <?php endforeach; ?>
+</div>
             <?php endif; ?>
         </div>
         <?php endforeach; ?>
@@ -308,11 +308,11 @@ $deliveryRate    = $shippedPeriod > 0 ? round(($deliveredPeriod / $shippedPeriod
 <!-- WEB ORDER REPORT + ORDERS BY SOURCE (doughnuts) -->
 <!-- ═══════════════════════════════════════════ -->
 <div class="grid md:grid-cols-2 gap-6 mb-6">
-    <!-- Web Order Report (by status) — own period, ALL statuses -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-        <div class="flex items-center justify-between mb-4">
-            <h3 class="text-sm font-bold text-gray-800">Web Order Report</h3>
-            <select onchange="window.location=updateParam('wp',this.value)" class="text-xs border rounded-lg px-2 py-1.5 text-gray-600">
+    <!-- Web Order Report -->
+    <div class="panel-card">
+        <div class="section-header">
+            <h3>Web Order Report</h3>
+            <select onchange="window.location=updateParam('wp',this.value)" class="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 text-gray-600 bg-white">
                 <option value="7" <?= $webPeriod==='7'?'selected':'' ?>>7D</option>
                 <option value="30" <?= $webPeriod==='30'?'selected':'' ?>>30D</option>
                 <option value="90" <?= $webPeriod==='90'?'selected':'' ?>>90D</option>
@@ -347,9 +347,9 @@ $deliveryRate    = $shippedPeriod > 0 ? round(($deliveredPeriod / $shippedPeriod
     </div>
 
     <!-- Orders by Source — own period + own approved filter -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+    <div class="panel-card">
         <div class="flex items-center justify-between mb-4">
-            <h3 class="text-sm font-bold text-gray-800">Orders by Source</h3>
+            <h3 class="card-title" style="font-size:14px;font-weight:700;color:#1a1a2e">Orders by Source</h3>
             <div class="flex items-center gap-2">
                 <select onchange="window.location=updateParam('ssf',this.value)" class="text-xs border rounded-lg px-2 py-1.5 text-gray-600">
                     <option value="approved" <?= $srcFilter==='approved'?'selected':'' ?>>Approved</option>
@@ -399,34 +399,40 @@ $deliveryRate    = $shippedPeriod > 0 ? round(($deliveredPeriod / $shippedPeriod
 </div>
 
 <!-- Order Pipeline -->
-<div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
-    <h3 class="text-sm font-semibold text-gray-700 mb-4">Order Pipeline</h3>
-    <div class="grid grid-cols-4 md:grid-cols-8 gap-3 text-center">
+<div class="panel-card mb-6">
+    <div class="section-header" style="margin-bottom:1.25rem">
+        <h3>Order Pipeline</h3>
+        <span class="card-sub"><?= $dateLabel ?></span>
+    </div>
+    <div class="grid grid-cols-4 md:grid-cols-8 gap-3">
         <?php
         $pipeline = [
-            ['Pending',$stats['pending_orders'],'text-yellow-600 bg-yellow-50'],
-            ['Confirmed',$stats['confirmed_orders'],'text-blue-600 bg-blue-50'],
-            ['Processing',$stats['processing_orders'],'text-indigo-600 bg-indigo-50'],
-            ['Shipped',$stats['shipped_orders'],'text-purple-600 bg-purple-50'],
-            ['Delivered',$stats['delivered_orders'],'text-green-600 bg-green-50'],
-            ['Cancelled',$stats['cancelled_orders'],'text-red-600 bg-red-50'],
-            ['Returned',$stats['returned_orders'],'text-orange-600 bg-orange-50'],
-            ['Fake',$stats['fake_orders'],'text-gray-600 bg-gray-50'],
+            ['Pending',$stats['pending_orders'],'#eab308','#fefce8'],
+            ['Confirmed',$stats['confirmed_orders'],'#3b82f6','#eff6ff'],
+            ['Ready',$stats['processing_orders'],'#6366f1','#eef2ff'],
+            ['Shipped',$stats['shipped_orders'],'#8b5cf6','#f5f3ff'],
+            ['Delivered',$stats['delivered_orders'],'#10b981','#ecfdf5'],
+            ['Cancelled',$stats['cancelled_orders'],'#ef4444','#fef2f2'],
+            ['Returned',$stats['returned_orders'],'#f97316','#fff7ed'],
+            ['Fake',$stats['fake_orders'],'#6b7280','#f9fafb'],
         ];
         foreach ($pipeline as $p): ?>
-        <div class="<?= $p[2] ?> rounded-lg p-3"><p class="text-xl font-bold"><?= $p[1] ?></p><p class="text-xs mt-1"><?= $p[0] ?></p></div>
+        <div style="background:<?=$p[3]?>;border-radius:12px;padding:14px 12px;text-align:center;border:1px solid <?=$p[2]?>15">
+            <p style="font-size:1.5rem;font-weight:700;color:<?=$p[2]?>;line-height:1"><?= $p[1] ?></p>
+            <p style="font-size:10px;color:<?=$p[2]?>;margin-top:6px;font-weight:500;opacity:.8"><?= $p[0] ?></p>
+        </div>
         <?php endforeach; ?>
     </div>
 </div>
 
 <!-- Sales Chart + Delivery Meter -->
 <div class="grid md:grid-cols-2 gap-6 mb-6">
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-        <h3 class="text-sm font-semibold text-gray-700 mb-4">Sales — <?= $dateLabel ?></h3>
+    <div class="panel-card">
+        <h3 class="card-title" style="font-size:14px;font-weight:700;color:#1a1a2e;margin-bottom:1rem">Sales — <?= $dateLabel ?></h3>
         <div style="position:relative;height:180px;"><canvas id="salesChart"></canvas></div>
     </div>
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-        <h3 class="text-sm font-semibold text-gray-700 mb-4">Delivery Success Meter</h3>
+    <div class="panel-card">
+        <h3 class="card-title" style="font-size:14px;font-weight:700;color:#1a1a2e;margin-bottom:1rem">Delivery Success Meter</h3>
         <div class="flex items-center justify-center py-2">
             <div class="relative w-32 h-32">
                 <svg class="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
@@ -439,49 +445,53 @@ $deliveryRate    = $shippedPeriod > 0 ? round(($deliveredPeriod / $shippedPeriod
                 </div>
             </div>
         </div>
-        <div class="grid grid-cols-3 gap-3 mt-3 text-center text-sm">
-            <div><p class="font-semibold text-green-600"><?= $deliveredPeriod ?></p><p class="text-xs text-gray-500">Delivered</p></div>
-            <div><p class="font-semibold text-purple-600"><?= $shippedPeriod ?></p><p class="text-xs text-gray-500">Shipped</p></div>
-            <div><p class="font-semibold text-orange-600"><?= $returnedPeriod ?></p><p class="text-xs text-gray-500">Returned</p></div>
+        <div class="grid grid-cols-3 gap-3 mt-4 text-center">
+            <div style="background:#ecfdf5;border-radius:10px;padding:10px"><p style="font-size:18px;font-weight:700;color:#10b981"><?= $deliveredPeriod ?></p><p style="font-size:10px;color:#059669;margin-top:2px">Delivered</p></div>
+            <div style="background:#f5f3ff;border-radius:10px;padding:10px"><p style="font-size:18px;font-weight:700;color:#8b5cf6"><?= $shippedPeriod ?></p><p style="font-size:10px;color:#7c3aed;margin-top:2px">Shipped</p></div>
+            <div style="background:#fff7ed;border-radius:10px;padding:10px"><p style="font-size:18px;font-weight:700;color:#f97316"><?= $returnedPeriod ?></p><p style="font-size:10px;color:#ea580c;margin-top:2px">Returned</p></div>
         </div>
     </div>
 </div>
 
 <!-- Info Grid -->
 <div class="grid md:grid-cols-3 gap-6 mb-6">
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-        <h3 class="text-sm font-semibold text-gray-700 mb-4">Inventory Alerts</h3>
-        <div class="space-y-3">
-            <div class="flex items-center justify-between"><span class="text-sm text-gray-600">Total Products</span><span class="font-semibold"><?= $stats['total_products'] ?></span></div>
-            <div class="flex items-center justify-between"><span class="text-sm text-red-600">Low Stock</span><span class="font-semibold text-red-600"><?= $stats['low_stock'] ?></span></div>
-            <div class="flex items-center justify-between"><span class="text-sm text-gray-600">Total Customers</span><span class="font-semibold"><?= $stats['total_customers'] ?></span></div>
-            <div class="flex items-center justify-between"><span class="text-sm text-gray-600">Blocked</span><span class="font-semibold text-red-600"><?= $stats['blocked_customers'] ?></span></div>
+    <div class="panel-card">
+        <div class="section-header"><h3>Inventory Alerts</h3></div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#f8fafc;border-radius:10px"><div style="display:flex;align-items:center;gap:8px"><div class="stat-icon" style="width:32px;height:32px;border-radius:8px;background:#3b82f615"><svg width="16" height="16" fill="none" stroke="#3b82f6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg></div><span style="font-size:13px;color:#374151">Total Products</span></div><span style="font-size:15px;font-weight:700;color:#1a1a2e"><?= $stats['total_products'] ?></span></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#fef2f2;border-radius:10px"><div style="display:flex;align-items:center;gap:8px"><div style="width:32px;height:32px;border-radius:8px;background:#ef444415;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" fill="none" stroke="#ef4444" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg></div><span style="font-size:13px;color:#dc2626;font-weight:500">Low Stock</span></div><span style="font-size:15px;font-weight:700;color:#dc2626"><?= $stats['low_stock'] ?></span></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#f8fafc;border-radius:10px"><div style="display:flex;align-items:center;gap:8px"><div style="width:32px;height:32px;border-radius:8px;background:#8b5cf615;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" fill="none" stroke="#8b5cf6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg></div><span style="font-size:13px;color:#374151">Customers</span></div><span style="font-size:15px;font-weight:700;color:#1a1a2e"><?= $stats['total_customers'] ?></span></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#f8fafc;border-radius:10px"><div style="display:flex;align-items:center;gap:8px"><div style="width:32px;height:32px;border-radius:8px;background:#ef444415;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" fill="none" stroke="#ef4444" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg></div><span style="font-size:13px;color:#374151">Blocked</span></div><span style="font-size:15px;font-weight:700;color:#dc2626"><?= $stats['blocked_customers'] ?></span></div>
         </div>
     </div>
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-        <h3 class="text-sm font-semibold text-gray-700 mb-4">Fraud Prevention</h3>
-        <div class="space-y-3">
-            <div class="flex items-center justify-between"><span class="text-sm text-gray-600">Fake Orders</span><span class="font-semibold text-red-600"><?= $stats['fake_orders'] ?></span></div>
-            <div class="flex items-center justify-between"><span class="text-sm text-gray-600">Blocked Customers</span><span class="font-semibold"><?= $stats['blocked_customers'] ?></span></div>
-            <div class="flex items-center justify-between"><span class="text-sm text-gray-600">Incomplete Orders</span><span class="font-semibold text-yellow-600"><?= $stats['incomplete_orders'] ?></span></div>
+    <div class="panel-card">
+        <div class="section-header"><h3>Fraud Prevention</h3></div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#fef2f2;border-radius:10px"><div style="display:flex;align-items:center;gap:8px"><div style="width:32px;height:32px;border-radius:8px;background:#ef444415;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" fill="none" stroke="#ef4444" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg></div><span style="font-size:13px;color:#dc2626;font-weight:500">Fake Orders</span></div><span style="font-size:15px;font-weight:700;color:#dc2626"><?= $stats['fake_orders'] ?></span></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#f8fafc;border-radius:10px"><div style="display:flex;align-items:center;gap:8px"><div style="width:32px;height:32px;border-radius:8px;background:#6b728015;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" fill="none" stroke="#6b7280" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg></div><span style="font-size:13px;color:#374151">Blocked Customers</span></div><span style="font-size:15px;font-weight:700;color:#1a1a2e"><?= $stats['blocked_customers'] ?></span></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#fefce8;border-radius:10px"><div style="display:flex;align-items:center;gap:8px"><div style="width:32px;height:32px;border-radius:8px;background:#eab30815;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" fill="none" stroke="#eab308" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div><span style="font-size:13px;color:#854d0e;font-weight:500">Incomplete Orders</span></div><span style="font-size:15px;font-weight:700;color:#854d0e"><?= $stats['incomplete_orders'] ?></span></div>
         </div>
     </div>
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-        <h3 class="text-sm font-semibold text-gray-700 mb-4">Top Products — <?= $dateLabel ?></h3>
-        <div class="space-y-3">
-            <?php foreach (array_slice($topProducts, 0, 5) as $tp): ?>
-            <div class="flex items-center justify-between"><span class="text-sm text-gray-600 truncate mr-2"><?= e($tp['name']) ?></span><span class="text-xs font-medium text-green-600 whitespace-nowrap"><?= $tp['sold'] ?> sold</span></div>
-            <?php endforeach; if (empty($topProducts)): ?><p class="text-sm text-gray-400">No sales data</p><?php endif; ?>
+    <div class="panel-card">
+        <div class="section-header"><h3>Top Products — <?= $dateLabel ?></h3></div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+            <?php foreach (array_slice($topProducts, 0, 5) as $idx => $tp): ?>
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:#f8fafc;border-radius:8px">
+                <span style="width:22px;height:22px;border-radius:6px;background:var(--th-primary-light);color:var(--th-primary);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center"><?= $idx+1 ?></span>
+                <span style="flex:1;font-size:13px;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?= e($tp['name']) ?></span>
+                <span style="font-size:12px;font-weight:600;color:#10b981;white-space:nowrap"><?= $tp['sold'] ?> sold</span>
+            </div>
+            <?php endforeach; if (empty($topProducts)): ?><p style="font-size:13px;color:#9ca3af;text-align:center;padding:20px 0">No sales data</p><?php endif; ?>
         </div>
     </div>
 </div>
 
 <!-- Area Analytics -->
-<div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
+<div class="panel-card mb-6">
     <div class="flex items-center justify-between mb-5">
         <div class="flex items-center gap-3">
             <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center"><span class="text-white text-sm">📊</span></div>
-            <div><h3 class="text-sm font-bold text-gray-800">Delivery Area Analytics</h3><p class="text-[11px] text-gray-400" id="areaSubtitle">Loading...</p></div>
+            <div><h3 class="card-title" style="font-size:14px;font-weight:700;color:#1a1a2e">Delivery Area Analytics</h3><p class="text-[11px] text-gray-400" id="areaSubtitle">Loading...</p></div>
         </div>
         <div class="flex items-center gap-2">
             <select id="dashAreaDays" onchange="loadDashAreaAnalytics()" class="px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-600 bg-gray-50">
@@ -521,11 +531,11 @@ $deliveryRate    = $shippedPeriod > 0 ? round(($deliveredPeriod / $shippedPeriod
 </div>
 
 <!-- Recent Orders -->
-<div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-    <div class="flex items-center justify-between mb-4"><h3 class="text-sm font-semibold text-gray-700">Recent Orders</h3><a href="<?= adminUrl('pages/order-management.php') ?>" class="text-sm text-blue-600 hover:underline">View All</a></div>
+<div class="panel-card">
+    <div class="section-header"><h3>Recent Orders</h3><a href="<?= adminUrl('pages/order-management.php') ?>" class="view-all">View All →</a></div>
     <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-            <thead><tr class="text-left text-gray-500 border-b"><th class="pb-3 font-medium">Order</th><th class="pb-3 font-medium">Customer</th><th class="pb-3 font-medium">Phone</th><th class="pb-3 font-medium">Total</th><th class="pb-3 font-medium">Status</th><th class="pb-3 font-medium">Date</th></tr></thead>
+        <table class="data-table">
+            <thead><tr><th>Order</th><th>Customer</th><th>Phone</th><th>Total</th><th>Status</th><th>Date</th></tr></thead>
             <tbody class="divide-y">
                 <?php foreach ($recentOrders as $order): ?>
                 <tr class="hover:bg-gray-50">
