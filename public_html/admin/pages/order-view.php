@@ -51,6 +51,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'save_order' || $action === 'confirm_order') {
+        // ── Post-shipping immutability: block edits to shipped/delivered/returned orders ──
+        $immutableStatuses = ['shipped', 'delivered', 'returned', 'partial_delivered'];
+        if ($action === 'save_order' && in_array($order['order_status'], $immutableStatuses)) {
+            if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) || (strpos($_SERVER['HTTP_ACCEPT'] ?? '', 'json') !== false)) {
+                while (ob_get_level()) ob_end_clean();
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'Cannot edit order after shipping. Status: ' . $order['order_status']]);
+                exit;
+            }
+            if (!empty($_POST['_iframe'])) {
+                while (ob_get_level()) ob_end_clean();
+                echo '<html><body><script>window.parent.postMessage({type:"orderError",errors:["Cannot edit order after shipping"]},"*");</script></body></html>';
+                exit;
+            }
+            redirect(adminUrl("pages/order-view.php?id={$id}&msg=validation_error&detail=" . urlencode('Cannot edit order after shipping. Status: ' . $order['order_status'])));
+        }
         // Conflict check: ensure we still hold the lock before saving
         try {
             $__currentLock = $db->fetch("SELECT admin_user_id FROM order_locks WHERE order_id = ? AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 90 SECOND)", [$id]);
@@ -115,6 +131,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ];
 
         if ($action === 'confirm_order' && in_array($order['order_status'], ['pending','processing','incomplete'])) {
+            // ── Strict validation: reject confirmation if required fields are missing ──
+            $confirmErrors = [];
+            if (empty(trim($name))) $confirmErrors[] = 'Customer name is required';
+            if (empty(trim($phone))) $confirmErrors[] = 'Phone number is required';
+            if (empty(trim($address))) $confirmErrors[] = 'Delivery address is required';
+            if (empty($productIds) || count(array_filter($productIds)) === 0) $confirmErrors[] = 'At least one product is required';
+            if ($total <= 0 && $advance <= 0) $confirmErrors[] = 'Order total must be greater than zero';
+            // Validate phone format (BD phone)
+            $cleanPhone = preg_replace('/[^0-9]/', '', $phone);
+            if (strlen($cleanPhone) < 10 || strlen($cleanPhone) > 15) $confirmErrors[] = 'Invalid phone number';
+            
+            if (!empty($confirmErrors)) {
+                // Return validation errors
+                if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) || (strpos($_SERVER['HTTP_ACCEPT'] ?? '', 'json') !== false)) {
+                    while (ob_get_level()) ob_end_clean();
+                    header('Content-Type: application/json');
+                    echo json_encode(['success' => false, 'validation_errors' => $confirmErrors, 'message' => implode(', ', $confirmErrors)]);
+                    exit;
+                }
+                // For iframe submit (order-view form)
+                if (!empty($_POST['_iframe'])) {
+                    while (ob_get_level()) ob_end_clean();
+                    echo '<html><body><script>window.parent.postMessage({type:"orderError",errors:' . json_encode($confirmErrors) . '},"*");</script></body></html>';
+                    exit;
+                }
+                // Fallback: redirect with error
+                redirect(adminUrl("pages/order-view.php?id={$id}&msg=validation_error&detail=" . urlencode(implode(', ', $confirmErrors))));
+            }
+            
             $updateData['order_status'] = 'confirmed';
             
             // If this is a TEMP order (from incomplete), generate real order number on confirmation
@@ -574,7 +619,7 @@ exit; endif; /* end lockBlocked */ ?>
 
 <?php if (isset($_GET['msg'])): ?>
 <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4 text-sm">
-    <?= ['status_updated'=>'✓ Status updated.','updated'=>'✓ Order saved.','marked_fake'=>'⚠ Marked as fake.','confirmed'=>'✅ Order confirmed.','note_added'=>'✓ Note added.'][$_GET['msg']] ?? '✓ Done.' ?>
+    <?= ['status_updated'=>'✓ Status updated.','updated'=>'✓ Order saved.','marked_fake'=>'⚠ Marked as fake.','confirmed'=>'✅ Order confirmed.','note_added'=>'✓ Note added.','validation_error'=>'❌ ' . htmlspecialchars($_GET['detail'] ?? 'Missing required fields')][$_GET['msg']] ?? '✓ Done.' ?>
 </div>
 <?php endif; ?>
 
@@ -684,10 +729,42 @@ exit; endif; /* end lockBlocked */ ?>
 </div>
 
 <!-- ══════════════════════════ MAIN LAYOUT ══════════════════════════ -->
+<?php
+$_isShippedLocked = in_array($order['order_status'], ['shipped', 'delivered', 'returned', 'partial_delivered']);
+if ($_isShippedLocked): ?>
+<div class="bg-amber-50 border border-amber-300 text-amber-800 px-4 py-3 rounded-lg mb-4 text-sm flex items-center gap-2">
+    <i class="fas fa-lock text-amber-500"></i>
+    <span><strong>Read-only:</strong> This order is <strong><?= ucfirst($order['order_status']) ?></strong> and cannot be edited. Only status changes via the status dropdown are allowed.</span>
+</div>
+<?php endif; ?>
 <form method="POST" id="orderForm">
 <div class="flex flex-col lg:flex-row gap-5">
 
     <!-- ────────── LEFT COLUMN ────────── -->
+<?php if ($_isShippedLocked): ?>
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+    // Disable all editable inputs in the order form (except status dropdown and courier actions)
+    const form = document.getElementById('orderForm');
+    if(!form) return;
+    form.querySelectorAll('input:not([type="hidden"]):not([name="action"]), textarea, select:not([name="order_status_change"])').forEach(el => {
+        // Allow status dropdown, courier selectors, and note fields
+        const nm = el.name || '';
+        if(['order_status_change'].includes(nm)) return;
+        if(el.closest('#courierSection') || el.closest('#statusChangeSection') || el.closest('.panel-notes-area')) return;
+        el.disabled = true;
+        el.style.opacity = '0.6';
+        el.style.cursor = 'not-allowed';
+    });
+    // Hide confirm/save buttons for locked orders
+    form.querySelectorAll('button[value="save_order"], button[value="confirm_order"]').forEach(btn => {
+        btn.disabled = true;
+        btn.style.opacity = '0.4';
+        btn.title = 'Cannot edit after shipping';
+    });
+});
+</script>
+<?php endif; ?>
     <div class="flex-1 min-w-0 space-y-4">
 
         <!-- ▸ Rate Cards -->
@@ -1096,7 +1173,29 @@ exit; endif; /* end lockBlocked */ ?>
         <!-- ▸ Action Button -->
         <div class="pb-2">
             <?php if ($isPending): ?>
-            <button type="submit" name="action" value="confirm_order" class="w-full bg-emerald-500 text-white py-3.5 rounded-xl text-base font-bold hover:bg-emerald-600 transition shadow">Create Order (<span id="confirmTotal"><?= number_format($order['total'],2) ?></span>)</button>
+            <button type="submit" name="action" value="confirm_order" onclick="return validateConfirmOrder(event)" class="w-full bg-emerald-500 text-white py-3.5 rounded-xl text-base font-bold hover:bg-emerald-600 transition shadow">Create Order (<span id="confirmTotal"><?= number_format($order['total'],2) ?></span>)</button>
+<script>
+function validateConfirmOrder(e){
+    const form = e.target.closest('form');
+    const errs = [];
+    const name = (form.querySelector('[name="customer_name"]')?.value||'').trim();
+    const phone = (form.querySelector('[name="customer_phone"]')?.value||'').trim();
+    const addr = (form.querySelector('[name="customer_address"]')?.value||'').trim();
+    const items = form.querySelectorAll('[name="item_product_id[]"]');
+    if(!name) errs.push('Customer name');
+    if(!phone || phone.replace(/[^0-9]/g,'').length < 10) errs.push('Valid phone number');
+    if(!addr) errs.push('Delivery address');
+    if(!items.length) errs.push('At least one product');
+    if(errs.length){
+        e.preventDefault();
+        const msg = '❌ Cannot confirm order. Missing:\n• ' + errs.join('\n• ');
+        if(window._confirmAsync){ window._confirmAsync(msg,{title:'Validation Error',confirmText:'OK',showCancel:false}); }
+        else{ alert(msg); }
+        return false;
+    }
+    return true;
+}
+</script>
             <button type="submit" name="action" value="save_order" class="w-full mt-2 bg-gray-100 text-gray-600 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 transition">💾 Save Without Confirming</button>
             <?php else: ?>
             <button type="submit" name="action" value="save_order" class="w-full bg-emerald-500 text-white py-3 rounded-xl text-base font-bold hover:bg-emerald-600 transition shadow">💾 Save Changes (৳<span id="saveTotal"><?= number_format($order['total']) ?></span>)</button>
@@ -1944,20 +2043,46 @@ async function autoDetectLocation(silent){
         const zones=zj.data?.data||zj.data||[];
         let mz=null;
 
-        // Score zones similarly
+        // Score zones — number-aware to prevent "Mirpur 14" matching "Mirpur 1"
         let scoredZones = zones.map(z=>{
             const zn=norm(z.zone_name);
             let s=0;
-            if(aliasAddr.includes(zn)) s+=100;
-            // First word match (>=4 chars)
-            const fw=zn.split(' ')[0];
-            if(fw.length>=4 && aliasAddr.includes(fw)) s+=60;
-            // Word intersection
-            const zWords=zn.split(' ').filter(w=>w.length>=3);
-            const matched=zWords.filter(w=>aliasAddr.includes(w));
+
+            // ── Exact full zone name as a bounded word/phrase in address ──
+            // Use word-boundary regex to prevent "mirpur 1" matching inside "mirpur 14"
+            const znEsc = zn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const exactRe = new RegExp('(?:^|\\s)' + znEsc + '(?:\\s|$)');
+            if(exactRe.test(aliasAddr)) s+=200;
+            // Looser: substring match (lower priority — catches "mirpur-1" etc.)
+            else if(aliasAddr.includes(zn)) s+=100;
+
+            const zWords=zn.split(' ').filter(w=>w.length>=1);
+            const fw=zWords[0]||'';
+
+            // ── Numbered zone handling (e.g. "Mirpur 14", "Sector 7") ──
+            // If zone has a number component, require the number to match too
+            const zNum = zn.match(/\d+/);
+            if(zNum && s < 200){
+                // Check if address has "<first_word> <exact_number>" as bounded match
+                const numRe = new RegExp('(?:^|\\s)' + fw.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '\\s*[-]?\\s*' + zNum[0] + '(?:\\s|$|[^0-9])');
+                if(numRe.test(aliasAddr)) s+=180;
+                // If address has the first word but a DIFFERENT number, penalize
+                else if(fw.length>=4 && aliasAddr.includes(fw)){
+                    const otherNum = aliasAddr.match(new RegExp(fw.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '\\s*[-]?\\s*(\\d+)'));
+                    if(otherNum && otherNum[1] !== zNum[0]) s-=50; // wrong number penalty
+                    else if(!otherNum) s+=40; // first word match, no number in address
+                }
+            } else if(!zNum){
+                // Non-numbered zone: first word match is fine
+                if(fw.length>=4 && aliasAddr.includes(fw)) s+=60;
+            }
+
+            // Word intersection (skip short number-only tokens)
+            const matched=zWords.filter(w=>w.length>=3 && aliasAddr.includes(w));
             if(matched.length>0) s+=matched.length*25;
-            // Fuzzy first word
-            if(s===0 && fw.length>=4){
+
+            // Fuzzy first word (only for non-numbered or when no other match)
+            if(s<=0 && fw.length>=4){
                 const addrWords=aliasAddr.split(' ');
                 for(const aw of addrWords){
                     if(editDist(aw,fw)<=1) s+=20;

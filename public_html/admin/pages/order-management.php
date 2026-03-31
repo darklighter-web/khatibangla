@@ -163,6 +163,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     continue;
                 }
                 
+                // ── Validate required fields when confirming ──
+                if ($status === 'confirmed' && in_array($oldStatus, ['processing', 'pending', 'incomplete'])) {
+                    $orderDetail = $db->fetch("SELECT customer_name, customer_phone, customer_address FROM orders WHERE id=?", [$oid]);
+                    $itemCount = intval($db->fetch("SELECT COUNT(*) as cnt FROM order_items WHERE order_id=?", [$oid])['cnt'] ?? 0);
+                    $missingFields = [];
+                    if (empty(trim($orderDetail['customer_name'] ?? ''))) $missingFields[] = 'name';
+                    if (empty(trim($orderDetail['customer_phone'] ?? '')) || strlen(preg_replace('/[^0-9]/', '', $orderDetail['customer_phone'] ?? '')) < 10) $missingFields[] = 'phone';
+                    if (empty(trim($orderDetail['customer_address'] ?? ''))) $missingFields[] = 'address';
+                    if ($itemCount === 0) $missingFields[] = 'products';
+                    if (!empty($missingFields)) {
+                        $errors[] = "Order #{$oid}: Cannot confirm — missing: " . implode(', ', $missingFields);
+                        continue;
+                    }
+                }
+                
+                // ── Post-shipping immutability: prevent reverting shipped/delivered orders to pre-ship statuses ──
+                $postShipStatuses = ['shipped', 'delivered', 'partial_delivered'];
+                $preShipStatuses = ['pending', 'processing', 'confirmed', 'ready_to_ship', 'incomplete'];
+                if (in_array($oldStatus, $postShipStatuses) && in_array($status, $preShipStatuses)) {
+                    $errors[] = "Order #{$oid}: Cannot revert from '{$oldStatus}' to '{$status}' — order already shipped";
+                    continue;
+                }
+                
                 // Enforce return flow: 'returned' can only be set from 'pending_return'
                 if ($status === 'returned' && $oldStatus !== 'pending_return') {
                     $errors[] = "Order #{$oid}: Must be in Pending Return before confirming as Returned";
@@ -285,11 +308,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $db->update('incomplete_orders', [$recCol2 => 1, 'recovered_order_id' => $existingTemp['id']], 'id = ?', [$incId]);
                     header('Location: ' . adminUrl("pages/order-view.php?order=" . urlencode($tempNum))); exit;
                 }
-                // Bad order (0 items) — delete and recreate
-                try { $db->delete('order_items', 'order_id = ?', [$existingTemp['id']]); } catch (\Throwable $e) {}
-                try { $db->delete('order_status_history', 'order_id = ?', [$existingTemp['id']]); } catch (\Throwable $e) {}
-                try { $db->delete('order_tags', 'order_id = ?', [$existingTemp['id']]); } catch (\Throwable $e) {}
-                try { $db->delete('orders', 'id = ?', [$existingTemp['id']]); } catch (\Throwable $e) {}
+                // Bad order (0 items) — delete and recreate (ONLY if still incomplete/processing TEMP)
+                $__safeToDelete = in_array($existingTemp['order_status'] ?? 'incomplete', ['incomplete', 'processing', 'pending']);
+                if ($__safeToDelete) {
+                    try { $db->delete('order_items', 'order_id = ?', [$existingTemp['id']]); } catch (\Throwable $e) {}
+                    try { $db->delete('order_status_history', 'order_id = ?', [$existingTemp['id']]); } catch (\Throwable $e) {}
+                    try { $db->delete('order_tags', 'order_id = ?', [$existingTemp['id']]); } catch (\Throwable $e) {}
+                    try { $db->query("DELETE FROM orders WHERE id = ? AND order_status IN ('incomplete','processing','pending')", [$existingTemp['id']]); } catch (\Throwable $e) {}
+                }
             }
             
             // Check recovered_order_id pointing to a good order
@@ -1387,7 +1413,7 @@ const OM = {
       // Show/hide courier sub-tab bar (from confirmed onwards)
       const courierBar = document.querySelector('.om-courier-bar');
       if (courierBar) {
-        var _noCourrierStatuses = ['', 'processing', 'no_response', 'good_but_no_response', 'advance_payment'];
+        var _noCourrierStatuses = ['', 'processing', 'no_response', 'good_but_no_response', 'advance_payment', 'incomplete'];
         courierBar.classList.toggle('hidden', !params.status || _noCourrierStatuses.indexOf(params.status) >= 0);
       }
 
@@ -1440,6 +1466,19 @@ const OM = {
 // Handle browser back/forward
 window.addEventListener('popstate', e => {
   if (e.state) { OM.state = e.state; OM._fetch(e.state); }
+  else {
+    // No state stored — parse from URL params to restore correctly
+    const sp = new URLSearchParams(location.search);
+    const restored = {
+      status: sp.get('status') || '', search: sp.get('search') || '',
+      courier: sp.get('courier') || '', page: parseInt(sp.get('page')) || 1,
+      date_from: sp.get('date_from') || '', date_to: sp.get('date_to') || '',
+      channel: sp.get('channel') || '', customer: sp.get('customer') || '',
+      per_page: sp.get('per_page') || OM.state.per_page,
+    };
+    OM.state = restored;
+    OM._fetch(restored);
+  }
 });
 
 // Set initial pushState so back button works from first load

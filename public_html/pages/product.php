@@ -1401,11 +1401,20 @@ document.addEventListener('DOMContentLoaded', () => {
 // Clear all addons in a group
 function clearAddonGroup(groupName) {
     const radios = document.querySelectorAll(`input[name="${groupName}"]`);
+    const hadVariation = [...radios].some(r => r.checked && r.dataset.optionType === 'variation');
     radios.forEach(r => r.checked = false);
     // Find groupId from first radio
     const first = radios[0];
     if (first && first.dataset.groupId) {
         updateClearBtnVisibility(first.dataset.groupId);
+    }
+    // If user cleared a variation group, reset the user-clicked flag so price range re-appears
+    if (hadVariation) {
+        const anyVariationStillSelected = [...document.querySelectorAll('.product-variant-radio:checked')]
+            .some(r => r.dataset.optionType === 'variation');
+        if (!anyVariationStillSelected) {
+            _variantUserClicked = false;
+        }
     }
     onVariantChange();
 }
@@ -1483,7 +1492,7 @@ if ($stickyBarEnabled):
 <!-- Mobile Sticky Buy Bar -->
 <div id="mobile-sticky-buy" class="md:hidden fixed bottom-0 left-0 right-0 z-50 px-3 py-2.5 shadow-[0_-4px_20px_rgba(0,0,0,0.1)]"
      style="<?= $stickyBgCSS ?>;color:<?= $stickyTextColor ?>;">
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 w-full max-w-full overflow-hidden">
         <!-- Price -->
         <div class="flex-shrink-0">
             <span id="sticky-price" class="text-lg font-bold" style="color:var(--price-color, var(--primary))">
@@ -1507,11 +1516,11 @@ if ($stickyBarEnabled):
         
         <!-- Order Button -->
         <button onclick="productOrder()" id="sticky-order-btn"
-                class="flex-1 py-2.5 rounded-xl text-white font-bold text-sm transition active:scale-[0.97] flex items-center justify-center gap-1.5"
-                style="background:var(--btn-primary)"
+                class="flex-1 min-w-0 py-2.5 rounded-xl text-white font-bold transition active:scale-[0.97] flex items-center justify-center gap-1.5"
+                style="background:var(--btn-primary);font-size:clamp(12px, 3.5vw, 14px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
                 <?= $product['stock_status'] === 'out_of_stock' ? 'disabled' : '' ?>>
-            <i class="fas fa-shopping-bag text-xs"></i>
-            <?= getSetting('btn_order_cod_label', 'অর্ডার করুন') ?>
+            <i class="fas fa-shopping-bag text-xs flex-shrink-0"></i>
+            <span class="truncate"><?= getSetting('btn_order_cod_label', 'অর্ডার করুন') ?></span>
         </button>
     </div>
 </div>

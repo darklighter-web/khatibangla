@@ -1,7 +1,7 @@
 ================================================================================
 KHATIBANGLA.COM - SYSTEM INFORMATION & DEVELOPER REFERENCE
 ================================================================================
-Last Updated: 2026-03-25
+Last Updated: 2026-04-01
 Maintained By: Claude AI Assistant (Anthropic)
 Repository: https://github.com/darklighter-web/khatibangla.git
 ================================================================================
@@ -589,5 +589,167 @@ FIX #3 — CONSIGNMENT ID DISPLAY AFTER UPLOAD
   Files: order-management.php (modal UI), courier-bulk-upload.php (already OK)
 
 ================================================================================
+                          CHANGELOG — 2026-04-01 (Major Bug Fix Sprint)
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+CRITICAL: DATA INTEGRITY & CORE WORKFLOW FIXES
+────────────────────────────────────────────────────────────────────────────────
+
+FIX #1 — LOCATION MAPPING BUG (Mirpur 14 → Mirpur 1)
+  Root Cause: Zone scoring in auto-detect used `aliasAddr.includes(zn)` which
+  matched "mirpur 1" as substring inside "mirpur 14". First-word matching with
+  `includes(fw)` had same issue — "mirpur" matched all Mirpur zones equally.
+  Fix: Replaced with word-boundary regex for exact zone name matching. Added
+  number-aware scoring: zones with numbers (e.g. "Mirpur 14") now require the
+  exact number to match via regex `mirpur\s*-?\s*14(?:\s|$|[^0-9])`. Wrong
+  number matches get a -50 penalty. Exact bounded match gets +200 score.
+  File: admin/pages/order-view.php (autoDetectLocation → scoredZones)
+
+FIX #2 — ORDER CONFIRMATION VALIDATION
+  Problem: Orders could be confirmed without customer name, phone, address, or
+  products. No backend validation existed.
+  Fix (Backend): Added strict validation in order-view.php confirm_order handler.
+  Checks: name not empty, phone ≥10 digits, address not empty, ≥1 product,
+  total > 0 (unless advance paid). Returns JSON error, iframe postMessage, or
+  redirect with detail on failure.
+  Fix (Frontend): Added validateConfirmOrder() onclick handler on confirm button.
+  Checks same fields client-side and shows modal error before submit.
+  Fix (Bulk): order-management.php bulk_status handler now validates required
+  fields when confirming orders in bulk — skips with error message if missing.
+  Files: admin/pages/order-view.php, admin/pages/order-management.php
+
+FIX #3 — DISAPPEARING INCOMPLETE ORDERS (Navigation State Bug)
+  Root Cause: Browser back/forward popstate handler only restored state from
+  `e.state` object. If no state was stored (first page load), incomplete tab
+  data was lost. Also courier filter bar incorrectly appeared on incomplete tab
+  because 'incomplete' was missing from the no-courier-statuses list in JS.
+  Fix: Added fallback URL parsing in popstate handler — if `e.state` is null,
+  parses all params from `location.search` and re-fetches. Added 'incomplete'
+  to `_noCourrierStatuses` array so courier bar stays hidden.
+  File: admin/pages/order-management.php
+
+FIX #4 — RETURNS PAGE DATA FETCHING
+  Root Cause: The query joined `customers c ON c.id = o.customer_id` which
+  failed when customer_id was NULL (guest orders). Also referenced `c.password`
+  and `c.store_credit` columns that may not exist. The status dropdown was
+  missing 'picked_up' from the DB enum.
+  Fix: Added column detection via SHOW COLUMNS before query. Used COALESCE()
+  for all nullable fields. Added `AND o.customer_id IS NOT NULL` to customer
+  JOIN condition. Added fallback query without customers table on error. Added
+  'picked_up' to status filter tabs and dropdown options. Increased limit to 100.
+  File: admin/pages/returns.php (full rewrite)
+
+────────────────────────────────────────────────────────────────────────────────
+HIGH: BUSINESS LOGIC & ACCESS CONTROL
+────────────────────────────────────────────────────────────────────────────────
+
+FIX #5 — POST-SHIPPING IMMUTABILITY
+  Problem: Shipped/delivered orders could be freely edited (name, phone, address,
+  items, prices) which corrupts courier and accounting records.
+  Fix (Backend): Added guard in order-view.php save_order handler. If order
+  status is shipped/delivered/returned/partial_delivered, returns 403-style
+  error via JSON, iframe postMessage, or redirect.
+  Fix (Frontend): Added read-only banner for shipped+ orders. JS disables all
+  form inputs (except status dropdown, courier section, and panel notes) on
+  DOMContentLoaded. Save/confirm buttons grayed out with tooltip.
+  Fix (Bulk): Added guard in order-management.php bulk_status to prevent
+  reverting shipped/delivered orders to pre-ship statuses (pending, processing,
+  confirmed, ready_to_ship).
+  Files: admin/pages/order-view.php, admin/pages/order-management.php
+
+FIX #6 — PREVENT DELETION OF CONFIRMED ORDERS
+  Problem: TEMP order cleanup during incomplete→order conversion could delete
+  orders that had been confirmed in the meantime.
+  Fix: Added status check before deletion — only deletes orders in incomplete/
+  processing/pending status. Uses targeted SQL: DELETE ... WHERE order_status
+  IN ('incomplete','processing','pending'). Orders at confirmed+ are never
+  touched by cleanup.
+  File: admin/pages/order-management.php (open_incomplete handler)
+
+FIX #7 — WAREHOUSE CRUD CONSTRAINTS
+  Problem: Warehouses could be hard-deleted, losing all stock history,
+  movement records, and batch references.
+  Fix: Replaced hard DELETE with soft-deactivate (SET is_active = 0). Added
+  auto-generated UUID-based code (WH-XXXXXXXX) for new warehouses when code
+  field is left empty. Default warehouse still protected from deactivation.
+  File: admin/pages/inventory.php
+
+────────────────────────────────────────────────────────────────────────────────
+MEDIUM: UI/UX & OPERATIONAL EFFICIENCY
+────────────────────────────────────────────────────────────────────────────────
+
+FIX #8 — DYNAMIC PRICING ON PRODUCT PAGE (Variant Clear → Price Range)
+  Problem: After selecting a variation then clearing it via the ✕ button, the
+  price stayed on the last selected variant price instead of reverting to the
+  min–max price range.
+  Root Cause: `_variantUserClicked` flag was set to true on first click but
+  never reset when all variations were cleared.
+  Fix: clearAddonGroup() now checks if a variation-type radio was unchecked.
+  If no variation remains selected, resets `_variantUserClicked = false` so
+  onVariantChange() shows the price range again.
+  File: pages/product.php
+
+FIX #9 — MOBILE STICKY 'BUY NOW' BUTTON CSS
+  Problem: Long Bengali text in order button overflowed or broke layout on
+  narrow screens (<360px).
+  Fix: Added `min-w-0` to prevent flex overflow. Used `font-size: clamp(12px,
+  3.5vw, 14px)` for responsive scaling. Added `white-space:nowrap` with
+  `overflow:hidden;text-overflow:ellipsis` and `truncate` class on text span.
+  Container now has `w-full max-w-full overflow-hidden`.
+  File: pages/product.php
+
+FIX #10 — COURIER FILTERS HIDDEN ON INCOMPLETE ORDERS
+  Problem: Courier filter tabs appeared on the incomplete orders tab after
+  AJAX navigation, even though PHP correctly hid them on initial load.
+  Root Cause: JS `_noCourrierStatuses` array in _fetch() was missing
+  'incomplete', so the courier bar toggled visible when switching to
+  incomplete tab via AJAX.
+  Fix: Added 'incomplete' to `_noCourrierStatuses` array.
+  File: admin/pages/order-management.php
+
+FIX #11 — SCANNER AUDIO ALERTS & GLOBAL KEYBOARD CAPTURE FOR RETURNS
+  Enhancements to scan-to-update.php:
+  (a) Return Alert Sound: New `playReturnAlert()` function — 3-tone descending
+      sawtooth siren (1000→700→500 Hz) plays when scanning in return/rts modes.
+      Visual: red border flash overlay (1.2s) via CSS animation.
+  (b) Global Keyboard Capture: Added document-level keydown listener that
+      captures rapid sequential keystrokes (barcode scanner behavior) followed
+      by Enter. 200ms timeout window. Only activates when not focused on
+      input/textarea/select fields. Allows scanning without clicking the input.
+  File: admin/pages/scan-to-update.php
+
+────────────────────────────────────────────────────────────────────────────────
+FILES CHANGED (8 total)
+────────────────────────────────────────────────────────────────────────────────
+
+  admin/pages/order-view.php         — Fixes #1, #2, #5
+  admin/pages/order-management.php   — Fixes #2, #3, #5, #6, #10
+  admin/pages/returns.php            — Fix #4 (full rewrite)
+  admin/pages/inventory.php          — Fix #7
+  admin/pages/scan-to-update.php     — Fix #11
+  pages/product.php                  — Fixes #8, #9
+
+────────────────────────────────────────────────────────────────────────────────
+LOW PRIORITY — NOTED FOR FUTURE SPRINT (Not implemented in this batch)
+────────────────────────────────────────────────────────────────────────────────
+
+  • Live Order Panel Sync — Requires WebSocket server (Socket.io/Pusher/Reverb).
+    Cannot be implemented in vanilla PHP without a separate Node.js service.
+    Recommended: Use Pusher Channels (SaaS) with JS client for real-time order
+    status broadcasts. Alternatively, implement long-polling endpoint.
+
+  • Live HRM Dashboard — Same WebSocket dependency. Current employee_sessions
+    table supports clock in/out. Needs: real-time presence via WS, idle timeout
+    detection via frontend mousemove/keystroke listeners.
+
+  • Smart Restock Algorithm — Requires: cron job + background worker. Formula:
+    (avg_daily_sales × lead_time_days) - current_stock = restock_qty.
+    Data sources: stock_batches, warehouse_stock, order_items (for velocity).
+    Legacy ecomdrive code review needed. Smart-restock.php page exists but
+    needs algorithm integration.
+
+================================================================================
                               END OF DOCUMENT
 ================================================================================
+
