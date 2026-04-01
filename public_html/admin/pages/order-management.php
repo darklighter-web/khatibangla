@@ -18,34 +18,67 @@ if (!function_exists('timeAgo')) {
 $db = Database::getInstance();
 
 // Helper: adjust stock for an order (reduce on confirm, restore on cancel/return)
+// FIXED: No longer double-counts stock. For variable products with variants,
+// stock is deducted ONLY from product_variants. product.stock_quantity is then
+// recalculated as the SUM of all variant stocks. For simple products, only
+// products.stock_quantity is adjusted.
 function _bulkStockAdjust($db, $orderId, $direction = 'reduce') {
     $items = $db->fetchAll("SELECT oi.product_id, oi.quantity, oi.variant_name FROM order_items oi WHERE oi.order_id = ?", [$orderId]);
     $sign = $direction === 'reduce' ? -1 : 1;
+    $affectedProducts = [];
     foreach ($items as $oi) {
         if (!$oi['product_id']) continue;
-        $prod = $db->fetch("SELECT manage_stock, combined_stock FROM products WHERE id = ?", [$oi['product_id']]);
+        $prod = $db->fetch("SELECT manage_stock, combined_stock, product_type, variation_mode FROM products WHERE id = ?", [$oi['product_id']]);
         if (!$prod || !intval($prod['manage_stock'] ?? 1)) continue;
         $qty = intval($oi['quantity']);
+        $affectedProducts[$oi['product_id']] = $prod;
 
         if (intval($prod['combined_stock'] ?? 0) && !empty($oi['variant_name'])) {
-            // Combined kg stock: adjust by weight_per_unit
+            // Combined kg stock: adjust product-level by weight_per_unit (legacy kg mode)
             $variant = $db->fetch("SELECT id, weight_per_unit FROM product_variants WHERE product_id = ? AND CONCAT(variant_name, ': ', variant_value) = ? LIMIT 1", [$oi['product_id'], $oi['variant_name']]);
             if ($variant && floatval($variant['weight_per_unit'] ?? 0) > 0) {
                 $db->query("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?", [$sign * floatval($variant['weight_per_unit']) * $qty, $oi['product_id']]);
             }
-        } else {
-            // Normal stock: adjust by quantity
-            $db->query("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?", [$sign * $qty, $oi['product_id']]);
-            if (!empty($oi['variant_name'])) {
-                try {
-                    $variant = $db->fetch("SELECT id FROM product_variants WHERE product_id = ? AND CONCAT(variant_name, ': ', variant_value) = ? LIMIT 1", [$oi['product_id'], $oi['variant_name']]);
-                    if ($variant) {
-                        $db->query("UPDATE product_variants SET stock_quantity = stock_quantity + ? WHERE id = ?", [$sign * $qty, $variant['id']]);
+        } elseif (!empty($oi['variant_name'])) {
+            // Has variant: deduct ONLY from the variant row, NOT from products table
+            try {
+                // Try exact match first (for combination-mode: "Frame Color / Lens Color: Golden / Black")
+                $variant = $db->fetch("SELECT id FROM product_variants WHERE product_id = ? AND CONCAT(variant_name, ': ', variant_value) = ? LIMIT 1", [$oi['product_id'], $oi['variant_name']]);
+                if (!$variant) {
+                    // Fallback: try matching against comma-separated variant pairs
+                    $parts = array_map('trim', explode(',', $oi['variant_name']));
+                    if (count($parts) === 1) {
+                        $variant = $db->fetch("SELECT id FROM product_variants WHERE product_id = ? AND CONCAT(variant_name, ': ', variant_value) = ? LIMIT 1", [$oi['product_id'], $parts[0]]);
                     }
-                } catch (\Throwable $e) {}
+                }
+                if ($variant) {
+                    $db->query("UPDATE product_variants SET stock_quantity = stock_quantity + ? WHERE id = ?", [$sign * $qty, $variant['id']]);
+                    // Also update combination table if exists
+                    try { $db->query("UPDATE product_variant_combinations SET stock_quantity = stock_quantity + ? WHERE product_id = ? AND sku = (SELECT sku FROM product_variants WHERE id = ?)", [$sign * $qty, $oi['product_id'], $variant['id']]); } catch (\Throwable $e) {}
+                } else {
+                    // Variant not found — fall back to product-level stock
+                    $db->query("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?", [$sign * $qty, $oi['product_id']]);
+                }
+            } catch (\Throwable $e) {
+                // Fallback to product-level on error
+                $db->query("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?", [$sign * $qty, $oi['product_id']]);
+            }
+        } else {
+            // Simple product (no variant): adjust product-level stock only
+            $db->query("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?", [$sign * $qty, $oi['product_id']]);
+        }
+    }
+    // Recalc product-level stock from variant totals for variable products
+    foreach ($affectedProducts as $pid => $prod) {
+        $isVariable = ($prod['product_type'] ?? 'simple') === 'variable';
+        if ($isVariable && !intval($prod['combined_stock'] ?? 0)) {
+            // Sum all variant stock quantities into product.stock_quantity
+            $totalVarStock = $db->fetch("SELECT COALESCE(SUM(stock_quantity),0) as total FROM product_variants WHERE product_id = ? AND option_type='variation' AND is_active=1 AND manage_stock=1", [$pid]);
+            if ($totalVarStock) {
+                $db->query("UPDATE products SET stock_quantity = ? WHERE id = ?", [intval($totalVarStock['total']), $pid]);
             }
         }
-        $db->query("UPDATE products SET stock_status = CASE WHEN stock_quantity > 0 THEN 'in_stock' ELSE 'out_of_stock' END WHERE id = ? AND manage_stock = 1", [$oi['product_id']]);
+        $db->query("UPDATE products SET stock_status = CASE WHEN stock_quantity > 0 THEN 'in_stock' ELSE 'out_of_stock' END WHERE id = ? AND manage_stock = 1", [$pid]);
     }
 }
 

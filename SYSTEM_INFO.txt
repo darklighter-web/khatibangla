@@ -753,3 +753,58 @@ LOW PRIORITY — NOTED FOR FUTURE SPRINT (Not implemented in this batch)
                               END OF DOCUMENT
 ================================================================================
 
+
+================================================================================
+                    VARIATION COMBINATION SYSTEM (v2.0)
+================================================================================
+Updated: 2026-04-01
+Status: Active
+
+OVERVIEW:
+The product variation system now supports two modes:
+1. LEGACY MODE (Single) - Original flat-row system where each row is one option
+   (e.g. Color: Red, Size: L as separate rows with individual prices)
+2. COMBINATION MODE - WooCommerce-style system where attributes are defined first,
+   then all combinations are auto-generated (e.g. Frame Color × Lens Color × Size
+   = Golden+Black+Large as one combination with its own price/stock/SKU/image)
+
+NEW DATABASE TABLES:
+- product_attributes: Stores attribute definitions per product
+  Columns: id, product_id, attribute_name, attribute_values (JSON), is_visible,
+           is_variation, sort_order
+- product_variant_combinations: Stores each combination with its own pricing/stock
+  Columns: id, product_id, combination_key (JSON), combination_label, sku,
+           regular_price, sale_price, cost_price, stock_quantity, manage_stock,
+           weight, variant_image, is_active, is_default, sort_order
+- products.variation_mode: ENUM('legacy','combination') - which mode the product uses
+
+BACKWARD COMPATIBILITY:
+- Combination mode syncs to legacy product_variants table automatically
+- Frontend product page works unchanged (reads from product_variants)
+- order_items.variant_name format preserved
+- Existing legacy products continue working without changes
+
+STOCK TRACKING FIX:
+- FIXED: Stock was previously deducted from BOTH products.stock_quantity AND
+  product_variants.stock_quantity (double counting)
+- NOW: For variable products, stock is deducted ONLY from product_variants.
+  product.stock_quantity is then recalculated as SUM of all variant stocks.
+- For simple products, only products.stock_quantity is adjusted (no change)
+
+FILES CHANGED:
+- admin/pages/product-form.php: Added combination mode UI (Attributes tab,
+  Variations tab with Generate button + bulk actions, Addons tab), mode toggle,
+  combination save logic, auto-migration for new tables
+- admin/pages/order-management.php: Fixed _bulkStockAdjust() to prevent
+  double stock counting. Now deducts from variants only, then recalculates
+  product-level total.
+- migration_variation_combinations_2026-04-01.sql: Manual migration if needed
+
+HOW TO USE:
+1. Edit/create a product → set to "Variable" type
+2. In the Addons & Variations section, click "Combinations" mode toggle
+3. Go to Attributes tab → Add attributes (e.g. Frame Color: Black | Golden)
+4. Go to Variations tab → Click "Generate variations"
+5. Set prices, stock, SKU for each combination
+6. Use "Bulk set" to quickly apply same price/stock to all combinations
+7. Save product

@@ -7,17 +7,6 @@ $id = intval($_GET['id'] ?? 0);
 $product = $id ? $db->fetch("SELECT * FROM products WHERE id = ?", [$id]) : null;
 $pageTitle = $product ? 'Edit Product' : 'Add Product';
 
-// ── Ensure new tables exist (auto-migration for combination system) ──
-try { $db->query("SELECT 1 FROM product_attributes LIMIT 0"); } catch (\Throwable $e) {
-    try { $db->query("CREATE TABLE IF NOT EXISTS `product_attributes` (`id` int(11) NOT NULL AUTO_INCREMENT, `product_id` int(11) NOT NULL, `attribute_name` varchar(100) NOT NULL, `attribute_values` text NOT NULL, `is_visible` tinyint(1) NOT NULL DEFAULT 1, `is_variation` tinyint(1) NOT NULL DEFAULT 1, `sort_order` int(11) NOT NULL DEFAULT 0, PRIMARY KEY (`id`), KEY `idx_product_attrs` (`product_id`), CONSTRAINT `fk_product_attrs_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3"); } catch (\Throwable $e2) {}
-}
-try { $db->query("SELECT 1 FROM product_variant_combinations LIMIT 0"); } catch (\Throwable $e) {
-    try { $db->query("CREATE TABLE IF NOT EXISTS `product_variant_combinations` (`id` int(11) NOT NULL AUTO_INCREMENT, `product_id` int(11) NOT NULL, `combination_key` varchar(500) NOT NULL, `combination_label` varchar(500) NOT NULL, `sku` varchar(100) DEFAULT NULL, `regular_price` decimal(12,2) DEFAULT NULL, `sale_price` decimal(12,2) DEFAULT NULL, `cost_price` decimal(12,2) DEFAULT NULL, `stock_quantity` int(11) NOT NULL DEFAULT 0, `manage_stock` tinyint(1) NOT NULL DEFAULT 1, `weight` decimal(10,4) DEFAULT NULL, `variant_image` varchar(500) DEFAULT NULL, `is_active` tinyint(1) NOT NULL DEFAULT 1, `is_default` tinyint(1) NOT NULL DEFAULT 0, `sort_order` int(11) NOT NULL DEFAULT 0, `created_at` timestamp NULL DEFAULT current_timestamp(), PRIMARY KEY (`id`), KEY `idx_combo_product` (`product_id`), CONSTRAINT `fk_combo_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3"); } catch (\Throwable $e2) {}
-}
-try { $db->query("SELECT variation_mode FROM products LIMIT 0"); } catch (\Throwable $e) {
-    try { $db->query("ALTER TABLE products ADD COLUMN variation_mode ENUM('legacy','combination') NOT NULL DEFAULT 'legacy' AFTER product_type"); } catch (\Throwable $e2) {}
-}
-
 // ── AJAX: delete image ──
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete_image') {
     $imgId = intval($_POST['image_id']);
@@ -86,7 +75,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['action'])) {
         'slug' => $slug,
         'sku' => sanitize($_POST['sku'] ?? '') ?: generateProductSKU($id ?: null, $catNameForSku),
         'product_type' => ($_POST['product_type'] ?? 'simple') === 'variable' ? 'variable' : 'simple',
-        'variation_mode' => in_array(($_POST['variation_mode'] ?? 'legacy'), ['legacy','combination']) ? $_POST['variation_mode'] : 'legacy',
         'category_id' => $catId ?: null,
         'short_description' => $_POST['short_description'] ?? '',
         'description' => $_POST['description'] ?? '',
@@ -177,108 +165,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['action'])) {
         }
     }
 
-    // ══════════════════════════════════════
-    // ── Save Combinations (new system) ──
-    // ══════════════════════════════════════
-    $variationMode = $_POST['variation_mode'] ?? 'legacy';
-    if ($variationMode === 'combination' && ($data['product_type'] ?? 'simple') === 'variable') {
-        // Save attributes
-        try { $db->delete('product_attributes', 'product_id = ?', [$id]); } catch (\Throwable $e) {}
-        if (isset($_POST['attr_name'])) {
-            foreach ($_POST['attr_name'] as $ai => $aname) {
-                $aname = trim(sanitize($aname));
-                if (!$aname) continue;
-                $avalues = sanitize($_POST['attr_values'][$ai] ?? '');
-                if (!$avalues) continue;
-                $valsArr = array_filter(array_map('trim', explode('|', $avalues)));
-                if (empty($valsArr)) continue;
-                $db->insert('product_attributes', [
-                    'product_id' => $id, 'attribute_name' => $aname,
-                    'attribute_values' => json_encode($valsArr, JSON_UNESCAPED_UNICODE),
-                    'is_visible' => isset($_POST['attr_visible'][$ai]) ? 1 : 0,
-                    'is_variation' => isset($_POST['attr_for_variation'][$ai]) ? 1 : 0,
-                    'sort_order' => $ai,
-                ]);
-            }
-        }
-        // Save combinations + sync to legacy product_variants
-        try { $db->delete('product_variant_combinations', 'product_id = ?', [$id]); } catch (\Throwable $e) {}
-        $db->delete('product_variants', "product_id = ? AND option_type = 'variation'", [$id]);
-        
-        if (isset($_POST['combo_key'])) {
-            $productSku = $data['sku'] ?? generateProductSKU($id, $catNameForSku ?? null);
-            $defaultComboIdx = intval($_POST['combo_default'] ?? -1);
-            foreach ($_POST['combo_key'] as $ci => $ckey) {
-                if (!$ckey) continue;
-                $comboLabel = sanitize($_POST['combo_label'][$ci] ?? '');
-                $comboSku = sanitize($_POST['combo_sku'][$ci] ?? '');
-                if (!$comboSku) $comboSku = $productSku . '-C' . ($ci+1);
-                $cReg = floatval($_POST['combo_regular_price'][$ci] ?? 0);
-                $cSale = floatval($_POST['combo_sale_price'][$ci] ?? 0);
-                $cCost = floatval($_POST['combo_cost_price'][$ci] ?? 0);
-                $cStock = intval($_POST['combo_stock'][$ci] ?? 0);
-                $cManage = isset($_POST['combo_manage_stock_' . $ci]) ? 1 : 0;
-                $cWeight = floatval($_POST['combo_weight'][$ci] ?? 0) ?: null;
-                $cImage = sanitize($_POST['combo_image'][$ci] ?? '') ?: null;
-                $cAbsPrice = ($cSale > 0 && $cSale < $cReg) ? $cSale : $cReg;
-                
-                $db->insert('product_variant_combinations', [
-                    'product_id'=>$id, 'combination_key'=>$ckey, 'combination_label'=>$comboLabel,
-                    'sku'=>$comboSku, 'regular_price'=>$cReg?:null,
-                    'sale_price'=>($cSale>0&&$cSale<$cReg)?$cSale:null,
-                    'cost_price'=>$cCost?:null, 'stock_quantity'=>$cStock,
-                    'manage_stock'=>$cManage, 'weight'=>$cWeight, 'variant_image'=>$cImage,
-                    'is_active'=>1, 'is_default'=>($ci==$defaultComboIdx)?1:0, 'sort_order'=>$ci,
-                ]);
-                // Sync to legacy product_variants for frontend compatibility
-                $keyData = json_decode($ckey, true);
-                if (is_array($keyData)) {
-                    $db->insert('product_variants', [
-                        'product_id'=>$id, 'variant_name'=>implode(' / ', array_keys($keyData)),
-                        'variant_value'=>implode(' / ', array_values($keyData)),
-                        'option_type'=>'variation', 'price_adjustment'=>0,
-                        'absolute_price'=>$cAbsPrice, 'var_regular_price'=>$cReg?:null,
-                        'var_sale_price'=>($cSale>0&&$cSale<$cReg)?$cSale:null,
-                        'stock_quantity'=>$cStock, 'manage_stock'=>$cManage,
-                        'sku'=>$comboSku, 'variant_image'=>$cImage,
-                        'is_active'=>1, 'is_default'=>($ci==$defaultComboIdx)?1:0,
-                        'weight_per_unit'=>$cWeight,
-                    ]);
-                }
-            }
-        }
-        // Auto-calc product pricing from combinations
-        $cp = $db->fetch("SELECT MIN(COALESCE(sale_price,regular_price)) as smin, MAX(regular_price) as rmax, SUM(stock_quantity) as total FROM product_variant_combinations WHERE product_id=? AND is_active=1 AND regular_price>0", [$id]);
-        if ($cp && floatval($cp['rmax'])>0) {
-            $db->query("UPDATE products SET regular_price=?, sale_price=NULL, stock_quantity=?, stock_status=? WHERE id=?",
-                [floatval($cp['rmax']), intval($cp['total']??0), intval($cp['total']??0)>0?'in_stock':'out_of_stock', $id]);
-        }
-        // Save combo-mode addons
-        if (isset($_POST['combo_addon_name'])) {
-            $productSku = $data['sku'] ?? generateProductSKU($id, $catNameForSku ?? null);
-            // Clear existing addons first
-            $db->delete('product_variants', "product_id = ? AND option_type = 'addon'", [$id]);
-            foreach ($_POST['combo_addon_name'] as $vi => $vname) {
-                if (empty($vname) || empty($_POST['combo_addon_value'][$vi])) continue;
-                $db->insert('product_variants', [
-                    'product_id' => $id, 'variant_name' => sanitize($vname),
-                    'variant_value' => sanitize($_POST['combo_addon_value'][$vi]),
-                    'option_type' => 'addon',
-                    'price_adjustment' => floatval($_POST['combo_addon_price'][$vi] ?? 0),
-                    'absolute_price' => null, 'var_regular_price' => null, 'var_sale_price' => null,
-                    'stock_quantity' => intval($_POST['combo_addon_stock'][$vi] ?? 0),
-                    'manage_stock' => 1,
-                    'sku' => sanitize($_POST['combo_addon_sku'][$vi] ?? '') ?: generateVariantSKU($productSku, $_POST['combo_addon_value'][$vi], $vi + 1),
-                    'variant_image' => null, 'is_active' => 1, 'is_default' => 0,
-                ]);
-            }
-        }
-
-        // Skip legacy variant save — jump to upsells
-        goto save_upsells;
-    }
-
-    // ── Save Addons & Variations (Legacy) ──
+    // ── Save Addons & Variations ──
     if (isset($_POST['opt_name'])) {
         $db->delete('product_variants', 'product_id = ?', [$id]);
         $productSku = $data['sku'] ?? generateProductSKU($id, $catNameForSku ?? null);
@@ -360,7 +247,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['action'])) {
         }
     }
 
-    save_upsells:
     // ── Save Upsells ──
     try {
         $db->delete('product_upsells', 'product_id = ?', [$id]);
@@ -417,12 +303,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['action'])) {
 $categories = $db->fetchAll("SELECT * FROM categories WHERE is_active = 1 ORDER BY name");
 $variants = $id ? $db->fetchAll("SELECT * FROM product_variants WHERE product_id = ? ORDER BY option_type, id", [$id]) : [];
 $galleryImages = $id ? $db->fetchAll("SELECT * FROM product_images WHERE product_id = ? ORDER BY is_primary DESC, sort_order ASC", [$id]) : [];
-
-// Load attributes and combinations (new system)
-$attributes = $id ? (function() use ($db, $id) { try { return $db->fetchAll("SELECT * FROM product_attributes WHERE product_id = ? ORDER BY sort_order", [$id]); } catch (\Throwable $e) { return []; } })() : [];
-$combinations = $id ? (function() use ($db, $id) { try { return $db->fetchAll("SELECT * FROM product_variant_combinations WHERE product_id = ? ORDER BY sort_order", [$id]); } catch (\Throwable $e) { return []; } })() : [];
-$variationMode = $product['variation_mode'] ?? 'legacy';
-if ($variationMode === 'legacy' && !empty($combinations)) $variationMode = 'combination';
 
 // Ensure product_type column exists
 try { $db->query("SELECT product_type FROM products LIMIT 0"); } catch (\Throwable $e) {
@@ -506,7 +386,6 @@ if ($product) {
 ?>
 
 <form method="POST" enctype="multipart/form-data" id="productForm" onsubmit="return validateProductForm()">
-<input type="hidden" name="variation_mode" id="variationModeInput" value="<?= $variationMode ?>">
 <div class="grid lg:grid-cols-3 gap-6">
     <div class="lg:col-span-2 space-y-6">
         <!-- Basic Info -->
@@ -623,151 +502,10 @@ if ($product) {
 
         <!-- ═══════ ADDONS & VARIATIONS ═══════ -->
         <div class="bg-white rounded-xl shadow-sm border p-5" id="variationsSection">
-            <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center justify-between mb-2">
                 <h4 class="font-semibold text-gray-800" id="varSectionTitle">🎨 Addons & Variations</h4>
-                <div class="flex items-center gap-2">
-                    <!-- Mode Toggle (Variable products only) -->
-                    <div id="variationModeToggle" class="flex items-center gap-2 <?= $productType === 'variable' ? '' : 'hidden' ?>">
-                        <span class="text-xs text-gray-500">Mode:</span>
-                        <div class="flex bg-gray-100 rounded-lg p-0.5">
-                            <button type="button" id="btnModeLegacy" onclick="setVariationMode('legacy')"
-                                class="px-2.5 py-1 rounded-md text-[11px] font-medium transition-all <?= $variationMode === 'legacy' ? 'bg-white shadow text-blue-700' : 'text-gray-500' ?>">
-                                Single
-                            </button>
-                            <button type="button" id="btnModeCombination" onclick="setVariationMode('combination')"
-                                class="px-2.5 py-1 rounded-md text-[11px] font-medium transition-all <?= $variationMode === 'combination' ? 'bg-white shadow text-purple-700' : 'text-gray-500' ?>">
-                                <i class="fas fa-th mr-0.5"></i>Combinations
-                            </button>
-                        </div>
-                    </div>
-                    <button type="button" id="legacyAddBtn" onclick="addOption()" class="bg-purple-50 text-purple-600 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-purple-100 <?= $variationMode === 'combination' && $productType === 'variable' ? 'hidden' : '' ?>">+ Add Option</button>
-                </div>
+                <button type="button" onclick="addOption()" class="bg-purple-50 text-purple-600 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-purple-100">+ Add Option</button>
             </div>
-
-            <!-- ═══════ COMBINATION MODE PANEL ═══════ -->
-            <div id="combinationModePanel" class="<?= ($variationMode === 'combination' && $productType === 'variable') ? '' : 'hidden' ?>">
-                <!-- Tab Bar -->
-                <div class="flex border-b mb-4">
-                    <button type="button" onclick="switchComboTab('attributes')" class="combo-tab px-4 py-2 text-sm font-medium border-b-2 border-purple-600 text-purple-700 transition-all" data-tab="attributes"><i class="fas fa-tags mr-1"></i>Attributes</button>
-                    <button type="button" onclick="switchComboTab('variations')" class="combo-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 transition-all" data-tab="variations"><i class="fas fa-layer-group mr-1"></i>Variations <span id="comboCountBadge" class="ml-1 bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full text-[10px]"><?= count($combinations) ?></span></button>
-                    <button type="button" onclick="switchComboTab('addons')" class="combo-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 transition-all" data-tab="addons"><i class="fas fa-puzzle-piece mr-1"></i>Addons</button>
-                </div>
-
-                <!-- TAB: Attributes -->
-                <div id="comboTabAttributes" class="combo-tab-panel">
-                    <p class="text-xs text-gray-400 mb-3">Define product attributes (Frame Color, Lens Color, Size). Check "Used for variations" to include in combination generation.</p>
-                    <div id="attributesContainer" class="space-y-3">
-                        <?php foreach ($attributes as $ai => $attr):
-                            $attrVals = json_decode($attr['attribute_values'], true) ?: [];
-                        ?>
-                        <div class="attr-row bg-gray-50 rounded-lg border p-3" data-index="<?= $ai ?>">
-                            <div class="flex items-center justify-between mb-2">
-                                <span class="font-medium text-sm text-gray-700 attr-name-display"><?= e($attr['attribute_name']) ?></span>
-                                <div class="flex items-center gap-3">
-                                    <button type="button" onclick="this.closest('.attr-row').querySelector('.attr-details').classList.toggle('hidden')" class="text-xs text-blue-500 hover:text-blue-700">Expand / Close</button>
-                                    <button type="button" onclick="this.closest('.attr-row').remove()" class="text-xs text-red-400 hover:text-red-600">Remove</button>
-                                </div>
-                            </div>
-                            <div class="attr-details">
-                                <div class="grid grid-cols-12 gap-3">
-                                    <div class="col-span-4"><label class="text-xs text-gray-500">Name:</label><input type="text" name="attr_name[]" value="<?= e($attr['attribute_name']) ?>" class="w-full px-2 py-1.5 border rounded text-sm attr-name-input" oninput="this.closest('.attr-row').querySelector('.attr-name-display').textContent=this.value"></div>
-                                    <div class="col-span-8"><label class="text-xs text-gray-500">Value(s): <span class="text-gray-300">separate with |</span></label><input type="text" name="attr_values[]" value="<?= e(implode(' | ', $attrVals)) ?>" class="w-full px-2 py-1.5 border rounded text-sm"></div>
-                                </div>
-                                <div class="flex items-center gap-4 mt-2">
-                                    <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" name="attr_visible[<?= $ai ?>]" value="1" <?= $attr['is_visible'] ? 'checked' : '' ?> class="rounded text-blue-500"><span class="text-xs text-gray-600">Visible on product page</span></label>
-                                    <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" name="attr_for_variation[<?= $ai ?>]" value="1" <?= $attr['is_variation'] ? 'checked' : '' ?> class="rounded text-purple-500 attr-for-var-cb"><span class="text-xs text-gray-600 font-medium">Used for variations</span></label>
-                                </div>
-                            </div>
-                        </div>
-                        <?php endforeach; ?>
-                    </div>
-                    <?php if (empty($attributes)): ?><p id="noAttrMsg" class="text-sm text-gray-400 text-center py-4">No attributes yet. Add attributes like Color, Size, Material.</p><?php endif; ?>
-                    <div class="mt-3"><button type="button" onclick="addAttributeRow()" class="bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-blue-100">+ Add Attribute</button></div>
-                </div>
-
-                <!-- TAB: Variations (Combinations) -->
-                <div id="comboTabVariations" class="combo-tab-panel hidden">
-                    <div class="flex items-center justify-between mb-3">
-                        <p class="text-xs text-gray-400">Each combination has its own price, stock, SKU, and image.</p>
-                        <button type="button" onclick="generateCombinations()" class="bg-purple-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-purple-700"><i class="fas fa-sync-alt mr-1"></i>Generate variations</button>
-                    </div>
-                    <!-- Bulk actions -->
-                    <div id="comboBulkActions" class="bg-gray-50 rounded-lg p-2 mb-3 flex items-center gap-3 flex-wrap <?= !empty($combinations) ? '' : 'hidden' ?>">
-                        <span class="text-xs text-gray-500 font-medium">Bulk set:</span>
-                        <div class="flex items-center gap-1"><input type="number" id="bulkRegPrice" class="w-20 px-2 py-1 border rounded text-xs" placeholder="Regular ৳"><button type="button" onclick="bulkSetField('regular_price')" class="text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded">Apply</button></div>
-                        <div class="flex items-center gap-1"><input type="number" id="bulkSalePrice" class="w-20 px-2 py-1 border rounded text-xs" placeholder="Sale ৳"><button type="button" onclick="bulkSetField('sale_price')" class="text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded">Apply</button></div>
-                        <div class="flex items-center gap-1"><input type="number" id="bulkStock" class="w-16 px-2 py-1 border rounded text-xs" placeholder="Stock"><button type="button" onclick="bulkSetField('stock')" class="text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded">Apply</button></div>
-                    </div>
-                    <div id="combinationsContainer" class="space-y-2">
-                        <?php foreach ($combinations as $ci => $combo):
-                            $comboData = json_decode($combo['combination_key'], true) ?: [];
-                            $cImg = $combo['variant_image'] ?? '';
-                            $cImgUrl = $cImg ? (SITE_URL . '/uploads/products/' . $cImg) : '';
-                        ?>
-                        <div class="combo-row bg-purple-50/40 border border-purple-200 rounded-lg p-3" data-index="<?= $ci ?>">
-                            <div class="flex gap-3 items-start">
-                                <div class="flex-shrink-0">
-                                    <div class="combo-img-wrap relative" style="width:48px;">
-                                        <div class="w-12 h-12 rounded-lg border-2 <?= $cImg ? 'border-blue-300 bg-blue-50' : 'border-dashed border-gray-300' ?> flex items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition overflow-hidden" onclick="pickComboImage(this.closest('.combo-img-wrap'))">
-                                            <?php if ($cImg): ?><img src="<?= $cImgUrl ?>" class="w-full h-full object-cover combo-img-preview">
-                                            <?php else: ?><img src="" class="w-full h-full object-cover combo-img-preview hidden"><i class="fas fa-image text-gray-300 text-sm combo-img-placeholder"></i><?php endif; ?>
-                                        </div>
-                                        <input type="hidden" name="combo_image[]" value="<?= e($cImg) ?>">
-                                    </div>
-                                </div>
-                                <div class="flex-1 min-w-0">
-                                    <input type="hidden" name="combo_key[]" value="<?= e($combo['combination_key']) ?>">
-                                    <input type="hidden" name="combo_label[]" value="<?= e($combo['combination_label']) ?>">
-                                    <div class="flex items-center justify-between mb-2">
-                                        <span class="text-sm font-bold text-purple-800"><?php foreach ($comboData as $ak => $av): ?><span class="inline-flex items-center bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-[11px] mr-1"><?= e($ak) ?>: <strong class="ml-0.5"><?= e($av) ?></strong></span><?php endforeach; ?></span>
-                                        <div class="flex items-center gap-2">
-                                            <label class="flex items-center gap-1 cursor-pointer"><input type="radio" name="combo_default" value="<?= $ci ?>" <?= ($combo['is_default'] ?? 0) ? 'checked' : '' ?> class="accent-purple-600"><span class="text-[10px] text-gray-400">Default</span></label>
-                                            <button type="button" onclick="removeComboRow(this)" class="text-red-400 hover:text-red-600 text-sm">✕</button>
-                                        </div>
-                                    </div>
-                                    <div class="grid grid-cols-12 gap-2">
-                                        <div class="col-span-3"><label class="text-[10px] text-gray-500">Regular ৳ *</label><input type="number" name="combo_regular_price[]" value="<?= $combo['regular_price'] ?>" step="0.01" class="w-full px-2 py-1.5 border rounded text-sm combo-reg-price" oninput="recalcComboPreview()"></div>
-                                        <div class="col-span-2"><label class="text-[10px] text-gray-500">Sale ৳</label><input type="number" name="combo_sale_price[]" value="<?= $combo['sale_price'] ?>" step="0.01" class="w-full px-2 py-1.5 border rounded text-sm combo-sale-price" oninput="recalcComboPreview()"></div>
-                                        <div class="col-span-2"><label class="text-[10px] text-gray-500">Cost ৳</label><input type="number" name="combo_cost_price[]" value="<?= $combo['cost_price'] ?>" step="0.01" class="w-full px-2 py-1.5 border rounded text-sm"></div>
-                                        <div class="col-span-2"><label class="text-[10px] text-gray-500">Stock</label><input type="number" name="combo_stock[]" value="<?= $combo['stock_quantity'] ?>" class="w-full px-2 py-1.5 border rounded text-sm combo-stock-input" oninput="recalcTotalStock()"></div>
-                                        <div class="col-span-3"><label class="text-[10px] text-gray-500">SKU</label><input type="text" name="combo_sku[]" value="<?= e($combo['sku'] ?? '') ?>" class="w-full px-2 py-1.5 border rounded text-sm" placeholder="Auto"></div>
-                                    </div>
-                                    <div class="flex items-center gap-4 mt-1.5">
-                                        <label class="flex items-center gap-1 cursor-pointer"><input type="checkbox" name="combo_manage_stock_<?= $ci ?>" value="1" <?= ($combo['manage_stock'] ?? 1) ? 'checked' : '' ?> class="rounded text-purple-500"><span class="text-[10px] text-gray-500">Track Stock</span></label>
-                                        <div class="flex items-center gap-1"><label class="text-[10px] text-gray-500">Weight:</label><input type="number" name="combo_weight[]" value="<?= $combo['weight'] ?>" step="0.01" class="w-16 px-1.5 py-0.5 border rounded text-[11px]" placeholder="g"></div>
-                                        <div class="combo-price-preview text-[11px] ml-auto"></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <?php endforeach; ?>
-                    </div>
-                    <?php if (empty($combinations)): ?><p id="noComboMsg" class="text-sm text-gray-400 text-center py-6">No combinations yet. Add attributes first, then click "Generate variations".</p><?php endif; ?>
-                </div>
-
-                <!-- TAB: Addons (combo mode) -->
-                <div id="comboTabAddons" class="combo-tab-panel hidden">
-                    <p class="text-xs text-gray-400 mb-3">Addons add extra cost to the variation price (e.g. gift wrap +৳50).</p>
-                    <div id="comboAddonsContainer" class="space-y-2">
-                        <?php foreach ($variants as $v): if (($v['option_type'] ?? 'addon') !== 'addon') continue; ?>
-                        <div class="addon-row bg-gray-50 rounded-lg border p-3">
-                            <div class="grid grid-cols-12 gap-2 items-end">
-                                <div class="col-span-3"><label class="text-xs text-gray-500">Name</label><input type="text" name="combo_addon_name[]" value="<?= e($v['variant_name']) ?>" class="w-full px-2 py-1.5 border rounded text-sm"></div>
-                                <div class="col-span-3"><label class="text-xs text-gray-500">Value</label><input type="text" name="combo_addon_value[]" value="<?= e($v['variant_value']) ?>" class="w-full px-2 py-1.5 border rounded text-sm"></div>
-                                <div class="col-span-2"><label class="text-xs text-gray-500">Price ±৳</label><input type="number" name="combo_addon_price[]" value="<?= $v['price_adjustment'] ?>" step="0.01" class="w-full px-2 py-1.5 border rounded text-sm"></div>
-                                <div class="col-span-2"><label class="text-xs text-gray-500">Stock</label><input type="number" name="combo_addon_stock[]" value="<?= $v['stock_quantity'] ?>" class="w-full px-2 py-1.5 border rounded text-sm"></div>
-                                <div class="col-span-1"><label class="text-xs text-gray-500">SKU</label><input type="text" name="combo_addon_sku[]" value="<?= e($v['sku'] ?? '') ?>" class="w-full px-2 py-1.5 border rounded text-sm"></div>
-                                <div class="col-span-1 text-center pt-5"><button type="button" onclick="this.closest('.addon-row').remove()" class="text-red-400 hover:text-red-600 text-lg">✕</button></div>
-                            </div>
-                        </div>
-                        <?php endforeach; ?>
-                    </div>
-                    <button type="button" onclick="addComboAddon()" class="mt-3 bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-blue-100">+ Add Addon</button>
-                </div>
-            </div>
-
-            <!-- ═══════ LEGACY MODE PANEL ═══════ -->
-            <div id="legacyModePanel" class="<?= ($variationMode === 'combination' && $productType === 'variable') ? 'hidden' : '' ?>">
             <p class="text-xs text-gray-400 mb-4" id="varSectionHint">
                 <strong>Addon</strong> = adds cost to base price (e.g. gift wrap +৳50) &nbsp;|&nbsp; 
                 <strong>Variation</strong> = replaces base price entirely (e.g. Size L = ৳899)
@@ -861,7 +599,6 @@ if ($product) {
                 <?php endforeach; ?>
             </div>
             <?php if (empty($variants)): ?><p id="noOptMsg" class="text-sm text-gray-400 text-center py-4">No addons or variations yet.</p><?php endif; ?>
-            </div><!-- /legacyModePanel -->
         </div>
 
         <!-- ═══════ UPSELL PRODUCTS ═══════ -->
@@ -1154,229 +891,13 @@ function setProductType(type) {
     document.getElementById('varSectionTitle').innerHTML = isVar
         ? '🎨 <span class="text-purple-600">Variations</span> & Addons'
         : '🎨 Addons & Variations';
-
-    // Show/hide mode toggle and apply current mode
-    toggle('variationModeToggle', isVar);
-    if (isVar) {
-        setVariationMode(document.getElementById('variationModeInput').value || 'legacy');
-    } else {
-        toggle('combinationModePanel', false);
-        toggle('legacyModePanel', true);
-        const lb = document.getElementById('legacyAddBtn'); if(lb) lb.classList.remove('hidden');
-        const hint = document.getElementById('varSectionHint');
-        if(hint) hint.innerHTML = '<strong>Addon</strong> = adds cost to base price &nbsp;|&nbsp; <strong>Variation</strong> = replaces base price entirely';
-    }
+    document.getElementById('varSectionHint').innerHTML = isVar
+        ? '<span class="text-purple-600 font-medium">⚡ Variable Product:</span> Each variation has its own pricing & stock. Add at least one variation.'
+        : '<strong>Addon</strong> = adds cost to base price &nbsp;|&nbsp; <strong>Variation</strong> = replaces base price entirely';
 
     // Re-layout all option rows
     document.querySelectorAll('.option-row').forEach(row => layoutOptionRow(row));
     recalcVariablePrice();
-}
-
-// ══════════════════════════════════════════
-// ── Variation Mode Toggle ────────────────
-// ══════════════════════════════════════════
-function setVariationMode(mode) {
-    document.getElementById('variationModeInput').value = mode;
-    const isComb = mode === 'combination';
-    const isVar = document.getElementById('productTypeInput').value === 'variable';
-    document.getElementById('btnModeLegacy').className = 'px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ' + (!isComb ? 'bg-white shadow text-blue-700' : 'text-gray-500');
-    document.getElementById('btnModeCombination').className = 'px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ' + (isComb ? 'bg-white shadow text-purple-700' : 'text-gray-500');
-    toggle('combinationModePanel', isComb && isVar);
-    toggle('legacyModePanel', !isComb || !isVar);
-    const lb = document.getElementById('legacyAddBtn');
-    if(lb) lb.classList.toggle('hidden', isComb && isVar);
-    const hint = document.getElementById('varSectionHint');
-    if(hint && isComb && isVar) hint.innerHTML = '<span class="text-purple-600 font-medium">⚡ Combination Mode:</span> Use Attributes tab to define options, then generate all combinations.';
-    else if(hint && isVar) hint.innerHTML = '<span class="text-purple-600 font-medium">⚡ Variable Product:</span> Each variation has its own pricing & stock.';
-    if (isComb) switchComboTab('attributes');
-    if (isComb) recalcComboPreview();
-}
-
-// ══════════════════════════════════════════
-// ── Combination Mode: Tabs ───────────────
-// ══════════════════════════════════════════
-function switchComboTab(tab) {
-    document.querySelectorAll('.combo-tab').forEach(t => {
-        const match = t.dataset.tab === tab;
-        t.classList.toggle('border-purple-600', match);
-        t.classList.toggle('text-purple-700', match);
-        t.classList.toggle('border-transparent', !match);
-        t.classList.toggle('text-gray-500', !match);
-    });
-    document.querySelectorAll('.combo-tab-panel').forEach(p => p.classList.add('hidden'));
-    const panel = document.getElementById('comboTab' + tab.charAt(0).toUpperCase() + tab.slice(1));
-    if (panel) panel.classList.remove('hidden');
-}
-
-// ══════════════════════════════════════════
-// ── Attributes ───────────────────────────
-// ══════════════════════════════════════════
-function addAttributeRow() {
-    const m = document.getElementById('noAttrMsg'); if (m) m.remove();
-    const idx = document.querySelectorAll('.attr-row').length;
-    document.getElementById('attributesContainer').insertAdjacentHTML('beforeend',
-    `<div class="attr-row bg-gray-50 rounded-lg border p-3" data-index="${idx}">
-        <div class="flex items-center justify-between mb-2">
-            <span class="font-medium text-sm text-gray-700 attr-name-display">New Attribute</span>
-            <div class="flex items-center gap-3">
-                <button type="button" onclick="this.closest('.attr-row').querySelector('.attr-details').classList.toggle('hidden')" class="text-xs text-blue-500">Expand / Close</button>
-                <button type="button" onclick="this.closest('.attr-row').remove()" class="text-xs text-red-400 hover:text-red-600">Remove</button>
-            </div>
-        </div>
-        <div class="attr-details">
-            <div class="grid grid-cols-12 gap-3">
-                <div class="col-span-4"><label class="text-xs text-gray-500">Name:</label><input type="text" name="attr_name[]" class="w-full px-2 py-1.5 border rounded text-sm" placeholder="e.g. Frame Color" oninput="this.closest('.attr-row').querySelector('.attr-name-display').textContent=this.value||'New Attribute'"></div>
-                <div class="col-span-8"><label class="text-xs text-gray-500">Value(s): <span class="text-gray-300">separate with |</span></label><input type="text" name="attr_values[]" class="w-full px-2 py-1.5 border rounded text-sm" placeholder="Black | Golden | Silver"></div>
-            </div>
-            <div class="flex items-center gap-4 mt-2">
-                <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" name="attr_visible[${idx}]" value="1" checked class="rounded text-blue-500"><span class="text-xs text-gray-600">Visible on product page</span></label>
-                <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" name="attr_for_variation[${idx}]" value="1" checked class="rounded text-purple-500 attr-for-var-cb"><span class="text-xs text-gray-600 font-medium">Used for variations</span></label>
-            </div>
-        </div>
-    </div>`);
-}
-
-// ══════════════════════════════════════════
-// ── Generate Combinations ────────────────
-// ══════════════════════════════════════════
-function generateCombinations() {
-    const attrs = [];
-    document.querySelectorAll('.attr-row').forEach(row => {
-        const forVar = row.querySelector('.attr-for-var-cb');
-        if (!forVar || !forVar.checked) return;
-        const name = row.querySelector('[name="attr_name[]"]')?.value?.trim();
-        const valsStr = row.querySelector('[name="attr_values[]"]')?.value?.trim();
-        if (!name || !valsStr) return;
-        const vals = valsStr.split('|').map(v => v.trim()).filter(Boolean);
-        if (vals.length) attrs.push({ name, vals });
-    });
-    if (!attrs.length) { alert('Add attributes with values first (Attributes tab), and check "Used for variations".'); switchComboTab('attributes'); return; }
-
-    // Cartesian product
-    const cartesian = arrays => arrays.reduce((acc, curr) => {
-        const r = []; acc.forEach(a => curr.forEach(b => r.push([...a, b]))); return r;
-    }, [['_']]).map(r => r.slice(1));
-    const combos = cartesian(attrs.map(a => a.vals));
-
-    // Preserve existing data
-    const existing = {};
-    document.querySelectorAll('.combo-row').forEach(row => {
-        const key = row.querySelector('[name="combo_key[]"]')?.value;
-        if (key) existing[key] = {
-            reg: row.querySelector('.combo-reg-price')?.value||'', sale: row.querySelector('.combo-sale-price')?.value||'',
-            cost: row.querySelector('[name="combo_cost_price[]"]')?.value||'', stock: row.querySelector('.combo-stock-input')?.value||'0',
-            sku: row.querySelector('[name="combo_sku[]"]')?.value||'', image: row.querySelector('[name="combo_image[]"]')?.value||''
-        };
-    });
-
-    const container = document.getElementById('combinationsContainer');
-    container.innerHTML = '';
-    const nm = document.getElementById('noComboMsg'); if (nm) nm.remove();
-
-    combos.forEach((combo, ci) => {
-        const keyObj = {}; attrs.forEach((a,i) => keyObj[a.name] = combo[i]);
-        const keyJson = JSON.stringify(keyObj), label = combo.join(' / '), ex = existing[keyJson] || {};
-        const badges = attrs.map((a,i) => `<span class="inline-flex items-center bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-[11px] mr-1">${a.name}: <strong class="ml-0.5">${combo[i]}</strong></span>`).join('');
-        container.insertAdjacentHTML('beforeend',
-        `<div class="combo-row bg-purple-50/40 border border-purple-200 rounded-lg p-3" data-index="${ci}">
-            <div class="flex gap-3 items-start">
-                <div class="flex-shrink-0"><div class="combo-img-wrap relative" style="width:48px;">
-                    <div class="w-12 h-12 rounded-lg border-2 ${ex.image?'border-blue-300 bg-blue-50':'border-dashed border-gray-300'} flex items-center justify-center cursor-pointer hover:border-blue-400 transition overflow-hidden" onclick="pickComboImage(this.closest('.combo-img-wrap'))">
-                        <img src="${ex.image?SITE_URL+'/uploads/products/'+ex.image:''}" class="w-full h-full object-cover combo-img-preview ${ex.image?'':'hidden'}">
-                        <i class="fas fa-image text-gray-300 text-sm combo-img-placeholder ${ex.image?'hidden':''}"></i>
-                    </div><input type="hidden" name="combo_image[]" value="${ex.image||''}">
-                </div></div>
-                <div class="flex-1 min-w-0">
-                    <input type="hidden" name="combo_key[]" value='${keyJson.replace(/'/g,"&#39;")}'>
-                    <input type="hidden" name="combo_label[]" value="${label}">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-sm font-bold text-purple-800">${badges}</span>
-                        <div class="flex items-center gap-2">
-                            <label class="flex items-center gap-1 cursor-pointer"><input type="radio" name="combo_default" value="${ci}" class="accent-purple-600"><span class="text-[10px] text-gray-400">Default</span></label>
-                            <button type="button" onclick="removeComboRow(this)" class="text-red-400 hover:text-red-600 text-sm">✕</button>
-                        </div>
-                    </div>
-                    <div class="grid grid-cols-12 gap-2">
-                        <div class="col-span-3"><label class="text-[10px] text-gray-500">Regular ৳ *</label><input type="number" name="combo_regular_price[]" value="${ex.reg||''}" step="0.01" class="w-full px-2 py-1.5 border rounded text-sm combo-reg-price" oninput="recalcComboPreview()"></div>
-                        <div class="col-span-2"><label class="text-[10px] text-gray-500">Sale ৳</label><input type="number" name="combo_sale_price[]" value="${ex.sale||''}" step="0.01" class="w-full px-2 py-1.5 border rounded text-sm combo-sale-price" oninput="recalcComboPreview()"></div>
-                        <div class="col-span-2"><label class="text-[10px] text-gray-500">Cost ৳</label><input type="number" name="combo_cost_price[]" value="${ex.cost||''}" step="0.01" class="w-full px-2 py-1.5 border rounded text-sm"></div>
-                        <div class="col-span-2"><label class="text-[10px] text-gray-500">Stock</label><input type="number" name="combo_stock[]" value="${ex.stock||'0'}" class="w-full px-2 py-1.5 border rounded text-sm combo-stock-input" oninput="recalcTotalStock()"></div>
-                        <div class="col-span-3"><label class="text-[10px] text-gray-500">SKU</label><input type="text" name="combo_sku[]" value="${ex.sku||''}" class="w-full px-2 py-1.5 border rounded text-sm" placeholder="Auto"></div>
-                    </div>
-                    <div class="flex items-center gap-4 mt-1.5">
-                        <label class="flex items-center gap-1 cursor-pointer"><input type="checkbox" name="combo_manage_stock_${ci}" value="1" checked class="rounded text-purple-500"><span class="text-[10px] text-gray-500">Track Stock</span></label>
-                        <div class="flex items-center gap-1"><label class="text-[10px] text-gray-500">Wt:</label><input type="number" name="combo_weight[]" step="0.01" class="w-16 px-1.5 py-0.5 border rounded text-[11px]" placeholder="g"></div>
-                        <div class="combo-price-preview text-[11px] ml-auto"></div>
-                    </div>
-                </div>
-            </div>
-        </div>`);
-    });
-    document.getElementById('comboCountBadge').textContent = combos.length;
-    toggle('comboBulkActions', combos.length > 0);
-    recalcComboPreview(); recalcTotalStock();
-    switchComboTab('variations');
-}
-
-function removeComboRow(btn) {
-    btn.closest('.combo-row').remove();
-    document.getElementById('comboCountBadge').textContent = document.querySelectorAll('.combo-row').length;
-    recalcComboPreview(); recalcTotalStock();
-}
-
-function bulkSetField(field) {
-    if (field==='regular_price') { const v=document.getElementById('bulkRegPrice').value; if(v) document.querySelectorAll('.combo-reg-price').forEach(i=>i.value=v); }
-    else if (field==='sale_price') { const v=document.getElementById('bulkSalePrice').value; document.querySelectorAll('.combo-sale-price').forEach(i=>i.value=v); }
-    else if (field==='stock') { const v=document.getElementById('bulkStock').value; if(v) document.querySelectorAll('.combo-stock-input').forEach(i=>i.value=v); }
-    recalcComboPreview(); recalcTotalStock();
-}
-
-function recalcTotalStock() {
-    let t=0; document.querySelectorAll('.combo-stock-input').forEach(i=>{t+=parseInt(i.value)||0;});
-    const el=document.getElementById('productTotalStock'); if(el)el.value=t;
-}
-
-function recalcComboPreview() {
-    let sell=[], reg=[];
-    document.querySelectorAll('.combo-row').forEach(row => {
-        const r=parseFloat(row.querySelector('.combo-reg-price')?.value)||0;
-        const s=parseFloat(row.querySelector('.combo-sale-price')?.value)||0;
-        if(r>0){reg.push(r);sell.push((s>0&&s<r)?s:r);}
-        const prev=row.querySelector('.combo-price-preview');
-        if(prev){
-            if(r>0&&s>0&&s<r){const d=Math.round((r-s)/r*100);prev.innerHTML=`<span class="text-green-700 font-medium">৳${s.toLocaleString()}</span> <s class="text-gray-400">৳${r.toLocaleString()}</s> <span class="bg-red-100 text-red-600 px-1 py-0.5 rounded text-[9px] font-bold">-${d}%</span>`;}
-            else if(r>0){prev.innerHTML=`<span class="text-gray-600">৳${r.toLocaleString()}</span>`;}
-            else{prev.innerHTML='';}
-        }
-    });
-    const regI=document.getElementById('inputRegularPrice'), prev=document.getElementById('variablePricePreview');
-    if(sell.length>0){
-        const sMin=Math.min(...sell),sMax=Math.max(...sell),rMax=Math.max(...reg);
-        if(regI)regI.value=rMax;
-        let t=sMin===sMax?'৳'+sMin.toLocaleString():'৳'+sMin.toLocaleString()+' – ৳'+sMax.toLocaleString();
-        prev.innerHTML='💡 Sell: '+t+` (${sell.length} combination${sell.length>1?'s':''})`;
-        prev.classList.remove('hidden');
-    } else { if(prev){prev.textContent='⚠️ No prices set yet.';prev.classList.remove('hidden');} }
-}
-
-let _comboImgTarget=null;
-function pickComboImage(wrap){_comboImgTarget=wrap;openMediaLibrary(onComboImageSelected,{multiple:false,folder:'products',uploadFolder:'products'});}
-function onComboImageSelected(files){
-    if(!_comboImgTarget||!files.length)return;
-    const f=files[0],path=f.path.replace(/^products\//,'');
-    const prev=_comboImgTarget.querySelector('.combo-img-preview'),ph=_comboImgTarget.querySelector('.combo-img-placeholder'),inp=_comboImgTarget.querySelector('input[name="combo_image[]"]');
-    prev.src=f.url;prev.classList.remove('hidden');if(ph)ph.classList.add('hidden');inp.value=path;_comboImgTarget=null;
-}
-function addComboAddon(){
-    document.getElementById('comboAddonsContainer').insertAdjacentHTML('beforeend',
-    `<div class="addon-row bg-gray-50 rounded-lg border p-3"><div class="grid grid-cols-12 gap-2 items-end">
-        <div class="col-span-3"><label class="text-xs text-gray-500">Name</label><input type="text" name="combo_addon_name[]" class="w-full px-2 py-1.5 border rounded text-sm" placeholder="Gift wrap"></div>
-        <div class="col-span-3"><label class="text-xs text-gray-500">Value</label><input type="text" name="combo_addon_value[]" class="w-full px-2 py-1.5 border rounded text-sm" placeholder="Premium"></div>
-        <div class="col-span-2"><label class="text-xs text-gray-500">Price ±৳</label><input type="number" name="combo_addon_price[]" value="0" step="0.01" class="w-full px-2 py-1.5 border rounded text-sm"></div>
-        <div class="col-span-2"><label class="text-xs text-gray-500">Stock</label><input type="number" name="combo_addon_stock[]" value="0" class="w-full px-2 py-1.5 border rounded text-sm"></div>
-        <div class="col-span-1"><label class="text-xs text-gray-500">SKU</label><input type="text" name="combo_addon_sku[]" class="w-full px-2 py-1.5 border rounded text-sm"></div>
-        <div class="col-span-1 text-center pt-5"><button type="button" onclick="this.closest('.addon-row').remove()" class="text-red-400 hover:text-red-600 text-lg">✕</button></div>
-    </div></div>`);
 }
 
 function toggle(id, show) {
@@ -1509,8 +1030,6 @@ function updateRowDiscountPreview(row) {
 // ══════════════════════════════════════════
 function recalcVariablePrice() {
     if (document.getElementById('productTypeInput').value !== 'variable') return;
-    // Delegate to combo preview if in combination mode
-    if (document.getElementById('variationModeInput').value === 'combination') { recalcComboPreview(); return; }
 
     let sellPrices = [], regPrices = [];
     document.querySelectorAll('.option-row').forEach(row => {
@@ -1561,31 +1080,21 @@ function recalcVariablePrice() {
 // ══════════════════════════════════════════
 function validateProductForm() {
     const type = document.getElementById('productTypeInput').value;
-    const mode = document.getElementById('variationModeInput').value;
     if (type === 'variable') {
-        if (mode === 'combination') {
-            let hasCombo = false;
-            document.querySelectorAll('.combo-row').forEach(row => {
-                if ((parseFloat(row.querySelector('.combo-reg-price')?.value)||0) > 0) hasCombo = true;
-            });
-            if (!hasCombo) { alert('Combination mode requires at least one combination with a Regular Price.\n\nAttributes tab → add attributes → Variations tab → Generate → set prices.'); return false; }
-            recalcComboPreview();
-        } else {
-            let hasVarWithPrice = false;
-            document.querySelectorAll('.option-row').forEach(row => {
-                const ts = row.querySelector('.opt-type-select');
-                if (ts && ts.value === 'variation') {
-                    const reg = row.querySelector('[name="opt_var_regular[]"]');
-                    if (reg && parseFloat(reg.value) > 0) hasVarWithPrice = true;
-                }
-            });
-            if (!hasVarWithPrice) {
-                alert('Variable product requires at least one variation with a Regular Price.');
-                document.getElementById('variationsSection').scrollIntoView({behavior: 'smooth', block: 'center'});
-                return false;
+        let hasVarWithPrice = false;
+        document.querySelectorAll('.option-row').forEach(row => {
+            const ts = row.querySelector('.opt-type-select');
+            if (ts && ts.value === 'variation') {
+                const reg = row.querySelector('[name="opt_var_regular[]"]');
+                if (reg && parseFloat(reg.value) > 0) hasVarWithPrice = true;
             }
-            recalcVariablePrice();
+        });
+        if (!hasVarWithPrice) {
+            alert('Variable product requires at least one variation with a Regular Price.');
+            document.getElementById('variationsSection').scrollIntoView({behavior: 'smooth', block: 'center'});
+            return false;
         }
+        recalcVariablePrice();
     } else {
         const regInput = document.getElementById('inputRegularPrice');
         if (!regInput.value || parseFloat(regInput.value) <= 0) {
@@ -1675,10 +1184,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const type = document.getElementById('productTypeInput').value;
     if (type === 'variable') {
         setProductType('variable');
-    }
-    // Init combo preview if in combination mode
-    if (document.getElementById('variationModeInput').value === 'combination') {
-        recalcComboPreview(); recalcTotalStock();
     }
 });
 
