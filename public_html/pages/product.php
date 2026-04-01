@@ -855,7 +855,8 @@ if ($isCombinationMode) {
             <!-- Variation groups (only variation type, not addons) -->
             <?php foreach ($variantGroups as $groupKey => $groupData):
                 $gVariants = $groupData['items'];
-                $gOptType = $gVariants[0]['option_type'] ?? 'addon';
+                $isComboGroup = !empty($groupData['is_combo_attr']);
+                $gOptType = $isComboGroup ? 'variation' : ($gVariants[0]['option_type'] ?? 'addon');
                 if ($gOptType !== 'variation') continue;
                 $gId = md5($groupKey);
             ?>
@@ -865,14 +866,19 @@ if ($isCombinationMode) {
                     <?php foreach ($gVariants as $gv):
                         $gvImg = $gv['variant_image'] ?? '';
                         $gvImgUrl = $gvImg ? (SITE_URL . '/uploads/products/' . $gvImg) : '';
-                        $gvOos = $gv['stock_quantity'] <= 0;
+                        $gvOos = !$isComboGroup && $gv['stock_quantity'] <= 0;
+                        $gvValue = $isComboGroup ? ('combo_attr_' . $gId . '_' . array_search($gv, $gVariants)) : $gv['id'];
                     ?>
                     <label class="inline-flex items-center border-2 rounded-xl px-4 py-2.5 cursor-pointer has-[:checked]:border-red-500 has-[:checked]:bg-red-50 hover:border-gray-400 transition <?= $gvOos ? 'opacity-50' : '' ?>">
                         <input type="radio" name="vp_group_<?= $gId ?>" 
-                               value="<?= $gv['id'] ?>"
+                               value="<?= $gvValue ?>"
                                data-abs-price="<?= $gv['absolute_price'] ?? 0 ?>"
                                data-main-radio="variant_group_<?= $gId ?>"
-                               data-main-val="<?= $gv['id'] ?>"
+                               data-main-val="<?= $gvValue ?>"
+                               <?php if ($isComboGroup): ?>
+                               data-combo-attr-name="<?= htmlspecialchars($gv['variant_name']) ?>"
+                               data-option-type="combo_attr"
+                               <?php endif; ?>
                                class="hidden vp-radio"
                                <?= $gvOos ? 'disabled' : '' ?>
                                onchange="onVarPickerChange()">
@@ -881,7 +887,7 @@ if ($isCombinationMode) {
                         <?php endif; ?>
                         <span class="text-sm font-medium">
                             <?= htmlspecialchars($gv['variant_value']) ?>
-                            <?php if ($gv['absolute_price']): ?>
+                            <?php if (!$isComboGroup && $gv['absolute_price']): ?>
                             <span class="text-xs text-gray-500">(<?= formatPrice($gv['absolute_price']) ?>)</span>
                             <?php endif; ?>
                             <?php if ($gvOos): ?>
@@ -1017,17 +1023,23 @@ function updateDisplayedPrice() {
 
 // Get all selected variant IDs from product page radio buttons
 function getSelectedVariantId() {
-    // In combo mode, return the combo ID if a match was found
-    if (IS_COMBO_MODE && _currentCombo) {
-        return 'combo_' + _currentCombo.id;
+    if (IS_COMBO_MODE) {
+        // Return combo ID only if a combination was actually matched
+        if (_currentCombo && _currentCombo.id) return 'combo_' + _currentCombo.id;
+        // Fallback: also collect any addon IDs
+        const addonIds = [];
+        document.querySelectorAll('.product-variant-radio:checked').forEach(r => {
+            if (r.dataset.optionType === 'addon') addonIds.push(parseInt(r.value));
+        });
+        return addonIds.length ? addonIds.join(',') : null;
     }
     const checked = document.querySelectorAll('.product-variant-radio:checked');
     if (checked.length === 0) return null;
     const ids = [];
     checked.forEach(r => {
-        // Skip combo-attr radios (they don't have real variant IDs)
         if (r.dataset.optionType === 'combo_attr') return;
-        ids.push(parseInt(r.value));
+        const v = parseInt(r.value);
+        if (v) ids.push(v);
     });
     return ids.length ? ids.join(',') : null;
 }
@@ -1054,8 +1066,37 @@ function _comboFuzzyLookup(selectedAttrs) {
 // If a default variant is pre-checked on load, treat it as explicitly selected
 let _variantUserClicked = (function(){
     const preChecked = document.querySelectorAll('.product-variant-radio:checked');
-    for(const r of preChecked) { if(r.dataset.optionType === 'variation') return true; }
+    for(const r of preChecked) { if(r.dataset.optionType === 'variation' || r.dataset.optionType === 'combo_attr') return true; }
     return false;
+})();
+
+// ── Deselect on second click/tap ──
+// Radio buttons don't natively deselect. Track last-clicked and uncheck if same.
+(function() {
+    const _lastChecked = {};
+    document.querySelectorAll('.product-variant-radio').forEach(radio => {
+        // Use the wrapping <label> click since radio is hidden
+        const label = radio.closest('label');
+        if (!label) return;
+        label.addEventListener('click', function(e) {
+            const name = radio.name;
+            if (_lastChecked[name] === radio && radio.checked) {
+                // Deselect: uncheck this radio
+                e.preventDefault();
+                radio.checked = false;
+                delete _lastChecked[name];
+                // If deselecting a combo_attr or variation, reset user-clicked flag if none remain
+                const anyStillSelected = [...document.querySelectorAll('.product-variant-radio:checked')]
+                    .some(r => r.dataset.optionType === 'variation' || r.dataset.optionType === 'combo_attr');
+                if (!anyStillSelected) _variantUserClicked = false;
+                // Update clear btn visibility
+                if (radio.dataset.groupId) updateClearBtnVisibility(radio.dataset.groupId);
+                onVariantChange(false);
+            } else {
+                _lastChecked[name] = radio;
+            }
+        });
+    });
 })();
 function onVariantChange(explicit) {
     if (explicit === true) _variantUserClicked = true;
@@ -1345,12 +1386,22 @@ function getCustUpload() {
 
 // ── Product Page Actions ──
 const HAS_VARIATIONS = <?= $hasVariations ? 'true' : 'false' ?>;
-const VAR_GROUP_COUNT = <?= $hasVariations ? count(array_filter($variantGroups, fn($g) => ($g['items'][0]['option_type'] ?? '') === 'variation')) : 0 ?>;
+const VAR_GROUP_COUNT = <?= $hasVariations ? count(array_filter($variantGroups, fn($g) => ($g['items'][0]['option_type'] ?? '') === 'variation' || !empty($g['is_combo_attr']))) : 0 ?>;
 let _pendingAction = null; // 'order' | 'cart' | 'buynow'
 
 function variationSelected() {
     if (!HAS_VARIATIONS) return true;
-    // Check if all variation groups have a selection on the main page
+    if (IS_COMBO_MODE) {
+        // In combo mode: check if all combo attribute groups have a selection
+        const totalGroups = new Set();
+        const selectedGroups = new Set();
+        document.querySelectorAll('.combo-attr-radio').forEach(r => {
+            totalGroups.add(r.dataset.comboAttrName);
+            if (r.checked) selectedGroups.add(r.dataset.comboAttrName);
+        });
+        return totalGroups.size > 0 && selectedGroups.size >= totalGroups.size;
+    }
+    // Legacy mode: check variation groups
     const checked = document.querySelectorAll('.product-variant-radio:checked');
     let varCount = 0;
     checked.forEach(r => { if (r.dataset.optionType === 'variation') varCount++; });
@@ -1471,13 +1522,31 @@ function onVarPickerChange() {
     const groups = new Set();
     const selectedGroups = new Set();
     let price = 0;
+    const selectedAttrs = {};
     allRadios.forEach(r => {
         groups.add(r.name);
         if (r.checked) {
             selectedGroups.add(r.name);
-            price = parseFloat(r.dataset.absPrice) || price;
+            if (IS_COMBO_MODE && r.dataset.comboAttrName) {
+                // Combo mode: collect attribute selections for lookup
+                selectedAttrs[r.dataset.comboAttrName] = r.closest('label')?.querySelector('span.text-sm')?.textContent?.trim()?.split('\n')[0]?.trim() || '';
+                // Better: get value from the main page radio this maps to
+                const mainRadio = document.querySelector(`input[name="${r.dataset.mainRadio}"][value="${r.dataset.mainVal}"]`);
+                if (mainRadio) selectedAttrs[r.dataset.comboAttrName] = mainRadio.dataset.value || '';
+            } else {
+                price = parseFloat(r.dataset.absPrice) || price;
+            }
         }
     });
+    
+    // In combo mode: look up combination for price
+    if (IS_COMBO_MODE && Object.keys(selectedAttrs).length > 0) {
+        const sortedKey = {};
+        Object.keys(selectedAttrs).sort().forEach(k => sortedKey[k] = selectedAttrs[k]);
+        const combo = COMBO_LOOKUP[JSON.stringify(sortedKey)] || COMBO_LOOKUP[JSON.stringify(selectedAttrs)] || _comboFuzzyLookup(selectedAttrs);
+        if (combo) price = combo.sell_price;
+    }
+    
     const allSelected = selectedGroups.size >= groups.size;
     const btn = document.getElementById('varPickerConfirmBtn');
     const btnText = document.getElementById('varPickerBtnText');
@@ -1495,7 +1564,6 @@ function onVarPickerChange() {
     }
     if (price > 0 && priceEl) {
         priceEl.textContent = CURRENCY + ' ' + Number(price).toLocaleString();
-        // Update discount in popup
         if (price < REGULAR_PRICE && regPriceEl && discountEl) {
             const disc = Math.round(((REGULAR_PRICE - price) / REGULAR_PRICE) * 100);
             regPriceEl.textContent = CURRENCY + ' ' + Number(REGULAR_PRICE).toLocaleString();
@@ -1607,17 +1675,17 @@ document.addEventListener('DOMContentLoaded', () => {
 // Clear all addons in a group
 function clearAddonGroup(groupName) {
     const radios = document.querySelectorAll(`input[name="${groupName}"]`);
-    const hadVariation = [...radios].some(r => r.checked && r.dataset.optionType === 'variation');
+    const hadVariation = [...radios].some(r => r.checked && (r.dataset.optionType === 'variation' || r.dataset.optionType === 'combo_attr'));
     radios.forEach(r => r.checked = false);
     // Find groupId from first radio
     const first = radios[0];
     if (first && first.dataset.groupId) {
         updateClearBtnVisibility(first.dataset.groupId);
     }
-    // If user cleared a variation group, reset the user-clicked flag so price range re-appears
+    // If user cleared a variation/combo group, reset the user-clicked flag so price range re-appears
     if (hadVariation) {
         const anyVariationStillSelected = [...document.querySelectorAll('.product-variant-radio:checked')]
-            .some(r => r.dataset.optionType === 'variation');
+            .some(r => r.dataset.optionType === 'variation' || r.dataset.optionType === 'combo_attr');
         if (!anyVariationStillSelected) {
             _variantUserClicked = false;
         }
