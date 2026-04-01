@@ -69,6 +69,27 @@ $varPriceMin = $varPriceMax = null;
 $varRegPriceMin = $varRegPriceMax = null;
 $defaultVariantPrice = null;
 $defaultVariantRegPrice = null;
+
+// COMBINATION MODE: derive hasVariations + price range from combo lookup map
+if ($isCombinationMode && !empty($comboLookupMap)) {
+    $hasVariations = true;
+    foreach ($comboLookupMap as $combo) {
+        $sp = floatval($combo['sell_price']);
+        $rp = floatval($combo['regular_price']);
+        if ($sp <= 0) continue;
+        if ($varPriceMin === null || $sp < $varPriceMin) $varPriceMin = $sp;
+        if ($varPriceMax === null || $sp > $varPriceMax) $varPriceMax = $sp;
+        if ($rp <= 0) $rp = $sp;
+        if ($varRegPriceMin === null || $rp < $varRegPriceMin) $varRegPriceMin = $rp;
+        if ($varRegPriceMax === null || $rp > $varRegPriceMax) $varRegPriceMax = $rp;
+        if (!empty($combo['is_default'])) {
+            $defaultVariantPrice = $sp;
+            $defaultVariantRegPrice = $rp;
+        }
+    }
+}
+
+// LEGACY MODE: derive from product_variants rows
 foreach ($variants as $v) {
     if (($v['option_type'] ?? '') === 'variation' && $v['is_active'] && $v['absolute_price'] > 0) {
         $hasVariations = true;
@@ -90,6 +111,9 @@ foreach ($variants as $v) {
 $showPriceRange = $hasVariations && $varPriceMin !== null && $varPriceMax !== null;
 // Check if any variation has explicit default
 $anyExplicitDefault = false;
+if ($isCombinationMode && !empty($comboLookupMap)) {
+    foreach ($comboLookupMap as $combo) { if (!empty($combo['is_default'])) $anyExplicitDefault = true; }
+}
 foreach ($variants as $v) { if (($v['option_type'] ?? '') === 'variation' && !empty($v['is_default'])) $anyExplicitDefault = true; }
 
 // For variation products: initial price = default variant price or min variation price (NEVER base product price)
@@ -1473,8 +1497,7 @@ function productBuyNow() {
     if (upload === false) return;
     if (!variationSelected()) { _pendingAction = 'buynow'; openVarPicker(); return; }
     const variantId = getSelectedVariantId();
-    addToCartAjax(PRODUCT_ID, getQty(), variantId, upload);
-    setTimeout(() => showCheckoutModal(), 600);
+    openCheckoutPopup(PRODUCT_ID, getQty(), variantId, upload);
 }
 
 // ── Variation Picker Popup ──
@@ -1600,8 +1623,7 @@ function confirmVarPicker() {
         addToCartAjax(PRODUCT_ID, getQty(), variantId, getCustUpload());
     } else if (action === 'buynow') {
         const variantId = getSelectedVariantId();
-        addToCartAjax(PRODUCT_ID, getQty(), variantId, getCustUpload());
-        setTimeout(() => showCheckoutModal(), 600);
+        openCheckoutPopup(PRODUCT_ID, getQty(), variantId, getCustUpload());
     }
 }
 

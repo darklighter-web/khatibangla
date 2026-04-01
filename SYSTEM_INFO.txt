@@ -808,3 +808,49 @@ HOW TO USE:
 5. Set prices, stock, SKU for each combination
 6. Use "Bulk set" to quickly apply same price/stock to all combinations
 7. Save product
+
+================================================================================
+                          CHANGELOG — 2026-04-02 (Single Product Page Bug Fixes)
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+CRITICAL: BUY NOW BUTTON & VARIATION SELECTION FIXES
+────────────────────────────────────────────────────────────────────────────────
+
+FIX #1 — BUY NOW BUTTON NOT OPENING CHECKOUT POPUP
+  Root Cause: productBuyNow() called addToCartAjax() which opens the slide 
+  cart drawer (not checkout popup). Then used setTimeout(showCheckoutModal, 600)
+  hoping the AJAX finishes in 600ms — a race condition that often failed.
+  The slide cart drawer would block/conflict with the checkout popup.
+  Fix: Changed productBuyNow() to call openCheckoutPopup() directly, which 
+  properly adds to cart AND opens checkout popup in a single reliable flow.
+  Same fix applied in confirmVarPicker() for the 'buynow' pending action.
+  File: pages/product.php (lines ~1497, ~1625)
+
+FIX #2 — COMBO-MODE PRODUCTS: $hasVariations = false (CRITICAL)
+  Root Cause: $hasVariations was only calculated from product_variants table 
+  (legacy flat rows). Combination-mode products store data in 
+  product_attributes + product_variant_combinations tables instead. So for 
+  pure combo products, $hasVariations stayed false → var picker popup never 
+  rendered → variationSelected() returned true → buttons sent null variant ID 
+  → orders placed without variant selection → wrong price.
+  Fix: Added combo mode pre-check that derives $hasVariations, price range 
+  ($varPriceMin/$varPriceMax), regular price range, and default variant from 
+  $comboLookupMap BEFORE the legacy variant loop. Also fixed $anyExplicitDefault 
+  to check combo defaults.
+  File: pages/product.php (lines ~67-93)
+
+FIX #3 — VARIATION PICKER BUYNOW ACTION (confirmVarPicker)
+  Root Cause: Same as Fix #1 but triggered via the variation picker popup flow.
+  When user picks variation in popup → confirmVarPicker() → 'buynow' action 
+  called addToCartAjax + setTimeout — same race condition.
+  Fix: Changed to openCheckoutPopup() matching the direct flow fix.
+  File: pages/product.php (line ~1625)
+
+SUMMARY OF CHANGES:
+  File: public_html/pages/product.php
+  - productBuyNow(): addToCartAjax+setTimeout → openCheckoutPopup()
+  - confirmVarPicker() buynow case: same fix
+  - $hasVariations: now derived from comboLookupMap for combo-mode products
+  - $anyExplicitDefault: now checks combo defaults too
+  - Price range (min/max) and regular price range: now from combo data
