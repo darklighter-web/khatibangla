@@ -25,18 +25,48 @@ try {
     static $_variantCache = [];
     if (!isset($_variantCache[$product['id']])) {
         $db = Database::getInstance();
-        $_variantCache[$product['id']] = [
-            'has' => $db->fetch(
-                "SELECT COUNT(*) as cnt FROM product_variants WHERE product_id = ? AND is_active = 1", 
-                [$product['id']]
-            )['cnt'] > 0,
-            'range' => $db->fetch(
-                "SELECT MIN(absolute_price) as pmin, MAX(absolute_price) as pmax,
-                        MAX(COALESCE(var_regular_price, absolute_price)) as reg_max
-                 FROM product_variants WHERE product_id = ? AND is_active = 1 AND option_type = 'variation' AND absolute_price > 0",
-                [$product['id']]
-            )
-        ];
+        
+        // Check for combination mode first
+        $_comboData = null;
+        try {
+            $prodVarMode = $db->fetch("SELECT variation_mode FROM products WHERE id = ?", [$product['id']]);
+            if ($prodVarMode && ($prodVarMode['variation_mode'] ?? '') === 'combination') {
+                $_comboData = $db->fetch(
+                    "SELECT MIN(CASE WHEN sale_price > 0 AND sale_price < regular_price THEN sale_price ELSE regular_price END) as pmin,
+                            MAX(CASE WHEN sale_price > 0 AND sale_price < regular_price THEN sale_price ELSE regular_price END) as pmax,
+                            MAX(regular_price) as reg_max,
+                            COUNT(*) as cnt
+                     FROM product_variant_combinations WHERE product_id = ? AND is_active = 1",
+                    [$product['id']]
+                );
+            }
+        } catch (\Throwable $e) {}
+        
+        // Legacy variant data
+        $legacyHas = $db->fetch(
+            "SELECT COUNT(*) as cnt FROM product_variants WHERE product_id = ? AND is_active = 1", 
+            [$product['id']]
+        )['cnt'] > 0;
+        
+        $legacyRange = $db->fetch(
+            "SELECT MIN(absolute_price) as pmin, MAX(absolute_price) as pmax,
+                    MAX(COALESCE(var_regular_price, absolute_price)) as reg_max
+             FROM product_variants WHERE product_id = ? AND is_active = 1 AND option_type = 'variation' AND absolute_price > 0",
+            [$product['id']]
+        );
+        
+        // Merge: combo data takes precedence if available
+        if ($_comboData && $_comboData['cnt'] > 0 && $_comboData['pmin'] > 0) {
+            $_variantCache[$product['id']] = [
+                'has' => true,
+                'range' => $_comboData,
+            ];
+        } else {
+            $_variantCache[$product['id']] = [
+                'has' => $legacyHas,
+                'range' => $legacyRange,
+            ];
+        }
     }
     $_hasVariants = $_variantCache[$product['id']]['has'];
     $r = $_variantCache[$product['id']]['range'];

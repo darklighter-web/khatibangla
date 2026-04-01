@@ -905,3 +905,53 @@ FIX #5 — ARCHIVE VARIANT PICKER: DESELECT SUPPORT
   - showVariantPicker(): Added handler attachment after HTML injection (~line 710)
   - Variation radio HTML: removed inline onchange
   - Addon checkbox HTML: removed inline onchange and onclick="toggleAddon(event)"
+
+================================================================================
+                  CHANGELOG — 2026-04-02 (Archive Card Variant Picker + Combo Mode)
+================================================================================
+
+FEATURE: UNIFIED VARIANT PICKER FOR PRODUCT CARDS (Shop, Home, Archive pages)
+  The variant picker popup shown from product cards (smartOrder/smartAddToCart)
+  now supports the same selection/deselection mechanism as the single product
+  page, and fully supports combination-mode products.
+
+CHANGES:
+
+1. api/cart.php — get_variants endpoint
+   - Now detects combination mode (variation_mode='combination' in products table)
+   - Returns combo attributes as variation_groups with option_type='combo_attr'
+   - Returns combo_lookup map for JS-side price lookups
+   - Returns is_combo_mode flag
+   - Price range now calculated from combo combinations too
+
+2. includes/footer.php — showVariantPicker()
+   - Detects combo mode from API response
+   - Builds combo attribute radio buttons with data-combo-attr-name/value
+   - Stores comboLookup on popup element for price/confirm logic
+   - Uses vp-option-label class for consistent click handler attachment
+
+3. includes/footer.php — updateVariantPickerPrice()
+   - Full combo mode support: collects selected attributes, builds sorted JSON
+     key, looks up combination in comboLookup map (exact + fuzzy)
+   - Shows combo sell_price and regular_price discount
+   - Stores matched combo on popup._currentCombo for confirm
+
+4. includes/footer.php — confirmVariantPicker()
+   - Combo mode: validates all attribute groups selected, checks combo.stock
+   - Sends 'combo_<id>' as variant_id (same format as single product page)
+   - Appends addon IDs if any addons selected alongside combo
+   - Legacy mode: unchanged behavior
+
+5. includes/footer.php — smartAddToCart() / smartOrder()
+   - Now checks data.is_combo_mode in addition to variation_groups
+
+6. includes/product-card.php — Card price range
+   - Detects combo mode via variation_mode column
+   - Queries product_variant_combinations for price min/max/reg_max
+   - Combo data takes precedence over legacy variant data
+   - Cards now show correct price range for combo products
+
+7. Click handlers (select/deselect)
+   - Uses mousedown/touchstart + click pattern (same as single product page)
+   - Radio buttons support tap-to-deselect
+   - Checkboxes (addons) use native browser toggle

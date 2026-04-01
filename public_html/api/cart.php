@@ -35,21 +35,93 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         }
         $variants = $db->fetchAll("SELECT * FROM product_variants WHERE product_id = ? AND is_active = 1 ORDER BY option_type, variant_name, id", [$productId]);
         
+        // Detect combination mode
+        $isCombinationMode = false;
+        $comboAttributes = [];
+        $comboLookupMap = [];
+        try {
+            $prodVarMode = $db->fetch("SELECT variation_mode FROM products WHERE id = ?", [$productId]);
+            if ($prodVarMode && ($prodVarMode['variation_mode'] ?? '') === 'combination') {
+                $comboAttributes = $db->fetchAll("SELECT * FROM product_attributes WHERE product_id = ? AND is_variation = 1 ORDER BY sort_order", [$productId]);
+                $combos = $db->fetchAll("SELECT * FROM product_variant_combinations WHERE product_id = ? AND is_active = 1 ORDER BY sort_order", [$productId]);
+                if (!empty($comboAttributes) && !empty($combos)) {
+                    $isCombinationMode = true;
+                    foreach ($combos as $c) {
+                        $sellPrice = ($c['sale_price'] > 0 && $c['sale_price'] < $c['regular_price']) ? floatval($c['sale_price']) : floatval($c['regular_price']);
+                        $comboLookupMap[$c['combination_key']] = [
+                            'id' => $c['id'],
+                            'label' => $c['combination_label'],
+                            'regular_price' => floatval($c['regular_price']),
+                            'sale_price' => floatval($c['sale_price'] ?? 0),
+                            'sell_price' => $sellPrice,
+                            'stock' => intval($c['stock_quantity']),
+                            'sku' => $c['sku'],
+                            'image' => $c['variant_image'] ? (SITE_URL . '/uploads/products/' . $c['variant_image']) : '',
+                        ];
+                    }
+                }
+            }
+        } catch (\Throwable $e) {}
+        
         // Group by variant_name and option_type
         $addonGroups = [];
         $variationGroups = [];
-        foreach ($variants as $v) {
-            $type = $v['option_type'] ?? 'addon';
-            if ($type === 'variation') {
-                $variationGroups[$v['variant_name']][] = $v;
-            } else {
-                $addonGroups[$v['variant_name']][] = $v;
+        
+        if ($isCombinationMode) {
+            // Build variation groups from combo attributes
+            foreach ($comboAttributes as $attr) {
+                $attrValues = json_decode($attr['attribute_values'], true) ?: [];
+                if (empty($attrValues)) continue;
+                $items = [];
+                foreach ($attrValues as $val) {
+                    $items[] = [
+                        'id' => 0,
+                        'variant_name' => $attr['attribute_name'],
+                        'variant_value' => $val,
+                        'option_type' => 'combo_attr',
+                        'price_adjustment' => 0,
+                        'absolute_price' => 0,
+                        'var_regular_price' => 0,
+                        'var_sale_price' => 0,
+                        'stock_quantity' => 999,
+                        'is_default' => 0,
+                    ];
+                }
+                $variationGroups[$attr['attribute_name']] = $items;
+            }
+            // Add legacy addon groups
+            foreach ($variants as $v) {
+                if (($v['option_type'] ?? 'addon') === 'addon') {
+                    $addonGroups[$v['variant_name']][] = $v;
+                }
+            }
+        } else {
+            foreach ($variants as $v) {
+                $type = $v['option_type'] ?? 'addon';
+                if ($type === 'variation') {
+                    $variationGroups[$v['variant_name']][] = $v;
+                } else {
+                    $addonGroups[$v['variant_name']][] = $v;
+                }
             }
         }
         
         // Calculate variation price range
         $varPriceMin = $varPriceMax = null;
         $varRegPriceMax = null;
+        
+        if ($isCombinationMode && !empty($comboLookupMap)) {
+            foreach ($comboLookupMap as $combo) {
+                $sp = floatval($combo['sell_price']);
+                $rp = floatval($combo['regular_price']);
+                if ($sp <= 0) continue;
+                if ($varPriceMin === null || $sp < $varPriceMin) $varPriceMin = $sp;
+                if ($varPriceMax === null || $sp > $varPriceMax) $varPriceMax = $sp;
+                if ($rp <= 0) $rp = $sp;
+                if ($varRegPriceMax === null || $rp > $varRegPriceMax) $varRegPriceMax = $rp;
+            }
+        }
+        
         foreach ($variants as $v) {
             if (($v['option_type'] ?? '') === 'variation' && floatval($v['absolute_price'] ?? 0) > 0) {
                 $vp = floatval($v['absolute_price']);
@@ -62,7 +134,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         
         echo json_encode([
             'success' => true,
-            'has_variants' => !empty($variants),
+            'has_variants' => !empty($variants) || $isCombinationMode,
+            'is_combo_mode' => $isCombinationMode,
+            'combo_lookup' => $isCombinationMode ? $comboLookupMap : null,
             'product' => [
                 'id' => $product['id'],
                 'name' => $product['name_bn'] ?: $product['name'],

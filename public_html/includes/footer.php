@@ -573,7 +573,7 @@ function fetchVariants(productId) {
 // Smart Add to Cart — checks variants first
 function smartAddToCart(productId, qty) {
     fetchVariants(productId).then(data => {
-        const hasVariations = data.has_variants && Object.keys(data.variation_groups || {}).length > 0;
+        const hasVariations = (data.has_variants && Object.keys(data.variation_groups || {}).length > 0) || data.is_combo_mode;
         if (hasVariations) {
             showVariantPicker(productId, data, 'cart', qty);
         } else {
@@ -586,7 +586,7 @@ function smartAddToCart(productId, qty) {
 // Smart Order — checks variants first, then opens checkout
 function smartOrder(productId, qty) {
     fetchVariants(productId).then(data => {
-        const hasVariations = data.has_variants && Object.keys(data.variation_groups || {}).length > 0;
+        const hasVariations = (data.has_variants && Object.keys(data.variation_groups || {}).length > 0) || data.is_combo_mode;
         if (hasVariations) {
             showVariantPicker(productId, data, 'order', qty);
         } else {
@@ -601,6 +601,12 @@ function showVariantPicker(productId, data, mode, qty) {
     const product = data.product;
     const addonGroups = data.addon_groups || {};
     const variationGroups = data.variation_groups || {};
+    const isComboMode = data.is_combo_mode || false;
+    const comboLookup = data.combo_lookup || {};
+    
+    // Store combo data on popup for later use
+    popup._isComboMode = isComboMode;
+    popup._comboLookup = comboLookup;
     
     // Product info
     document.getElementById('vp-product-image').src = product.image;
@@ -664,22 +670,35 @@ function showVariantPicker(productId, data, mode, qty) {
     
     // Variations first (replace price)
     for (const [groupName, variants] of Object.entries(variationGroups)) {
+        const isComboGroup = isComboMode && variants.length > 0 && (variants[0].option_type === 'combo_attr');
         html += `<div class="mb-4">
             <label class="block text-sm font-semibold text-gray-700 mb-2">${groupName} <span class="text-xs font-normal text-purple-500">(ভ্যারিয়েশন)</span></label>
             <div class="flex flex-wrap gap-2">`;
         variants.forEach((v, i) => {
-            const priceTag = v.absolute_price ? ` (${CURRENCY}${Number(v.absolute_price).toLocaleString()})` : '';
-            const stockTag = v.stock_quantity <= 0 ? ' <span class="text-red-400 text-xs">(স্টক শেষ)</span>' : '';
-            const disabled = v.stock_quantity <= 0 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer';
-            const varReg = v.var_regular_price || v.absolute_price || 0;
-            const varSale = v.var_sale_price || 0;
-            html += `<label class="inline-flex items-center border-2 rounded-xl px-4 py-2.5 ${disabled} has-[:checked]:border-red-500 has-[:checked]:bg-red-50 hover:border-gray-400 transition">
-                <input type="radio" name="vp_group_${groupName}" value="${v.id}" 
-                       data-type="variation" data-abs="${v.absolute_price || 0}" data-adj="0" data-stock="${v.stock_quantity}"
-                       data-var-regular="${varReg}" data-var-sale="${varSale}"
-                       class="hidden vp-radio" ${((v.is_default == 1) || (i === 0 && !variants.some(x=>x.is_default==1))) && v.stock_quantity > 0 ? 'checked' : ''} ${v.stock_quantity <= 0 ? 'disabled' : ''}>
-                <span class="text-sm font-medium">${v.variant_value}${priceTag}${stockTag}</span>
-            </label>`;
+            if (isComboGroup) {
+                // Combo attribute option — price determined by combo lookup
+                html += `<label class="vp-option-label inline-flex items-center border-2 rounded-xl px-4 py-2.5 cursor-pointer has-[:checked]:border-red-500 has-[:checked]:bg-red-50 hover:border-gray-400 transition">
+                    <input type="radio" name="vp_group_${groupName}" value="combo_attr_${i}" 
+                           data-type="combo_attr" data-combo-attr-name="${v.variant_name}" data-combo-attr-value="${v.variant_value}"
+                           data-abs="0" data-adj="0" data-stock="999"
+                           class="hidden vp-radio">
+                    <span class="text-sm font-medium">${v.variant_value}</span>
+                </label>`;
+            } else {
+                // Legacy variation option
+                const priceTag = v.absolute_price ? ` (${CURRENCY}${Number(v.absolute_price).toLocaleString()})` : '';
+                const stockTag = v.stock_quantity <= 0 ? ' <span class="text-red-400 text-xs">(স্টক শেষ)</span>' : '';
+                const disabled = v.stock_quantity <= 0 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer';
+                const varReg = v.var_regular_price || v.absolute_price || 0;
+                const varSale = v.var_sale_price || 0;
+                html += `<label class="vp-option-label inline-flex items-center border-2 rounded-xl px-4 py-2.5 ${disabled} has-[:checked]:border-red-500 has-[:checked]:bg-red-50 hover:border-gray-400 transition">
+                    <input type="radio" name="vp_group_${groupName}" value="${v.id}" 
+                           data-type="variation" data-abs="${v.absolute_price || 0}" data-adj="0" data-stock="${v.stock_quantity}"
+                           data-var-regular="${varReg}" data-var-sale="${varSale}"
+                           class="hidden vp-radio" ${((v.is_default == 1) || (i === 0 && !variants.some(x=>x.is_default==1))) && v.stock_quantity > 0 ? 'checked' : ''} ${v.stock_quantity <= 0 ? 'disabled' : ''}>
+                    <span class="text-sm font-medium">${v.variant_value}${priceTag}${stockTag}</span>
+                </label>`;
+            }
         });
         html += `</div></div>`;
     }
@@ -694,7 +713,7 @@ function showVariantPicker(productId, data, mode, qty) {
                              v.price_adjustment < 0 ? ` (${CURRENCY}${Number(v.price_adjustment).toLocaleString()})` : '';
             const stockTag = v.stock_quantity <= 0 ? ' <span class="text-red-400 text-xs">(স্টক শেষ)</span>' : '';
             const disabled = v.stock_quantity <= 0 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer';
-            html += `<label class="inline-flex items-center border-2 rounded-xl px-4 py-2.5 ${disabled} has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50 hover:border-gray-400 transition">
+            html += `<label class="vp-option-label inline-flex items-center border-2 rounded-xl px-4 py-2.5 ${disabled} has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50 hover:border-gray-400 transition">
                 <input type="checkbox" name="vp_addon_${groupName}" value="${v.id}" 
                        data-type="addon" data-abs="0" data-adj="${v.price_adjustment}" data-stock="${v.stock_quantity}"
                        class="hidden vp-radio" ${v.stock_quantity <= 0 ? 'disabled' : ''}>
@@ -709,21 +728,17 @@ function showVariantPicker(productId, data, mode, qty) {
     
     // ── Attach select/deselect handlers to dynamically created radio buttons ──
     // Same mousedown/touchstart + click pattern as single product page
-    document.querySelectorAll('#vp-options .vp-radio').forEach(radio => {
-        const label = radio.closest('label');
-        if (!label || radio.disabled) return;
-        
-        // Remove inline onchange to prevent double-fire
-        radio.removeAttribute('onchange');
+    document.querySelectorAll('#vp-options .vp-option-label').forEach(label => {
+        const radio = label.querySelector('.vp-radio');
+        if (!label || !radio || radio.disabled) return;
         
         // Capture checked state BEFORE browser toggles it
         label.addEventListener('mousedown', function() { radio._wasChecked = radio.checked; });
         label.addEventListener('touchstart', function() { radio._wasChecked = radio.checked; }, {passive: true});
         
         label.addEventListener('click', function(e) {
-            // Only handle radio buttons for deselect (checkboxes toggle natively)
+            // For checkboxes (addons), let browser handle toggle, just update price
             if (radio.type === 'checkbox') {
-                // For checkboxes (addons), let browser handle toggle, just update price
                 setTimeout(() => updateVariantPickerPrice(), 0);
                 return;
             }
@@ -758,20 +773,69 @@ function updateVariantPickerPrice() {
     let finalPrice = basePrice;
     let hasVariation = false;
     let compareReg = regularPrice;
+    const isCombo = popup._isComboMode || false;
+    const comboLookup = popup._comboLookup || {};
+    popup._currentCombo = null;
     
-    document.querySelectorAll('.vp-radio:checked').forEach(r => {
-        const type = r.dataset.type;
-        if (type === 'variation') {
-            finalPrice = parseFloat(r.dataset.abs) || 0;
-            hasVariation = true;
-            // Use per-variant regular price if available
-            const varReg = parseFloat(r.dataset.varRegular) || 0;
-            if (varReg > 0) compareReg = varReg;
+    if (isCombo) {
+        // Combo mode: collect attribute selections and look up combination
+        const selectedAttrs = {};
+        document.querySelectorAll('.vp-radio:checked').forEach(r => {
+            if (r.dataset.type === 'combo_attr') {
+                selectedAttrs[r.dataset.comboAttrName] = r.dataset.comboAttrValue;
+            }
+        });
+        
+        // Count total combo groups to know if all are selected
+        const totalComboGroups = new Set();
+        document.querySelectorAll('.vp-radio[data-type="combo_attr"]').forEach(r => totalComboGroups.add(r.dataset.comboAttrName));
+        const allSelected = Object.keys(selectedAttrs).length === totalComboGroups.size && totalComboGroups.size > 0;
+        
+        if (allSelected) {
+            // Build combination key (sorted by attribute name)
+            const sortedKey = {};
+            Object.keys(selectedAttrs).sort().forEach(k => sortedKey[k] = selectedAttrs[k]);
+            const keyJson = JSON.stringify(sortedKey);
+            const origKey = JSON.stringify(selectedAttrs);
+            
+            // Look up in combo map (try sorted key, original key, then fuzzy)
+            let combo = comboLookup[keyJson] || comboLookup[origKey];
+            if (!combo) {
+                // Fuzzy lookup: try all keys in comboLookup
+                for (const ck in comboLookup) {
+                    try {
+                        const parsed = JSON.parse(ck);
+                        let match = true;
+                        const keys = Object.keys(selectedAttrs);
+                        for (const k of keys) { if (parsed[k] !== selectedAttrs[k]) { match = false; break; } }
+                        if (match && Object.keys(parsed).length === keys.length) { combo = comboLookup[ck]; break; }
+                    } catch(e) {}
+                }
+            }
+            
+            if (combo) {
+                popup._currentCombo = combo;
+                hasVariation = true;
+                finalPrice = combo.sell_price;
+                compareReg = combo.regular_price || regularPrice;
+            }
         }
-    });
+    } else {
+        // Legacy mode
+        document.querySelectorAll('.vp-radio:checked').forEach(r => {
+            const type = r.dataset.type;
+            if (type === 'variation') {
+                finalPrice = parseFloat(r.dataset.abs) || 0;
+                hasVariation = true;
+                const varReg = parseFloat(r.dataset.varRegular) || 0;
+                if (varReg > 0) compareReg = varReg;
+            }
+        });
+        
+        if (!hasVariation) finalPrice = basePrice;
+    }
     
-    if (!hasVariation) finalPrice = basePrice;
-    
+    // Add addon adjustments
     document.querySelectorAll('.vp-radio:checked').forEach(r => {
         if (r.dataset.type === 'addon') {
             finalPrice += parseFloat(r.dataset.adj) || 0;
@@ -821,6 +885,7 @@ function confirmVariantPicker() {
     const productId = parseInt(popup.dataset.productId);
     const mode = popup.dataset.mode;
     const qty = parseInt(document.getElementById('vp-qty').value) || 1;
+    const isCombo = popup._isComboMode || false;
     
     // Get all selected variants
     const checked = document.querySelectorAll('.vp-radio:checked');
@@ -829,21 +894,61 @@ function confirmVariantPicker() {
         return;
     }
     
-    // Check stock on all selected
-    let outOfStock = false;
-    checked.forEach(r => { if (parseInt(r.dataset.stock) <= 0) outOfStock = true; });
-    if (outOfStock) { showToast('নির্বাচিত অপশন স্টকে নেই'); return; }
+    let variantIdStr = '';
     
-    // Collect all selected variant IDs
-    const variantIds = [];
-    checked.forEach(r => variantIds.push(parseInt(r.value)));
+    if (isCombo) {
+        // Combo mode: verify all combo attribute groups are selected
+        const totalComboGroups = new Set();
+        const selectedComboGroups = new Set();
+        document.querySelectorAll('.vp-radio[data-type="combo_attr"]').forEach(r => {
+            totalComboGroups.add(r.dataset.comboAttrName);
+            if (r.checked) selectedComboGroups.add(r.dataset.comboAttrName);
+        });
+        
+        if (totalComboGroups.size > 0 && selectedComboGroups.size < totalComboGroups.size) {
+            showToast('অনুগ্রহ করে সকল ভ্যারিয়েশন নির্বাচন করুন');
+            return;
+        }
+        
+        // Get the matched combo
+        const combo = popup._currentCombo;
+        if (!combo) {
+            showToast('এই কম্বিনেশন পাওয়া যায়নি');
+            return;
+        }
+        
+        if (combo.stock <= 0) {
+            showToast('নির্বাচিত কম্বিনেশন স্টকে নেই');
+            return;
+        }
+        
+        // Build variant ID: combo_ID + any addon IDs
+        const ids = ['combo_' + combo.id];
+        checked.forEach(r => {
+            if (r.dataset.type === 'addon') {
+                const v = parseInt(r.value);
+                if (v) ids.push(v);
+            }
+        });
+        variantIdStr = ids.join(',');
+    } else {
+        // Legacy mode: collect variant IDs
+        // Check stock on all selected
+        let outOfStock = false;
+        checked.forEach(r => { if (parseInt(r.dataset.stock) <= 0) outOfStock = true; });
+        if (outOfStock) { showToast('নির্বাচিত অপশন স্টকে নেই'); return; }
+        
+        const variantIds = [];
+        checked.forEach(r => variantIds.push(parseInt(r.value)));
+        variantIdStr = variantIds.join(',');
+    }
     
     closeVariantPicker();
     
     if (mode === 'cart') {
-        addToCartAjax(productId, qty, variantIds.join(','));
+        addToCartAjax(productId, qty, variantIdStr);
     } else {
-        openCheckoutPopup(productId, qty, variantIds.join(','));
+        openCheckoutPopup(productId, qty, variantIdStr);
     }
 }
 
