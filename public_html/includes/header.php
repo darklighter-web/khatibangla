@@ -10,7 +10,7 @@ header("X-XSS-Protection: 1; mode=block");
 header("Referrer-Policy: strict-origin-when-cross-origin");
 header("Permissions-Policy: camera=(), microphone=(), geolocation=()");
 $__clerkCsp = isClerkEnabled() ? ' https://cdn.jsdelivr.net https://*.clerk.accounts.dev https://*.clerk.com https://clerk.khatibangla.com' : '';
-header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://cdnjs.cloudflare.com https://cdn.tailwindcss.com https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net{$__clerkCsp}; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com https://cdn.tailwindcss.com{$__clerkCsp}; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:; img-src 'self' data: https: blob:; connect-src 'self' https:; frame-src 'self' https://www.youtube.com https://www.facebook.com https://*.clerk.accounts.dev https://*.clerk.com https://clerk.khatibangla.com;");
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://cdnjs.cloudflare.com https://cdn.tailwindcss.com https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net{$__clerkCsp}; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com https://cdn.tailwindcss.com{$__clerkCsp}; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:; img-src 'self' data: https: blob:; media-src 'self' https://cdn-icons-mp4.flaticon.com; connect-src 'self' https:; frame-src 'self' https://www.youtube.com https://www.facebook.com https://*.clerk.accounts.dev https://*.clerk.com https://clerk.khatibangla.com;");
 if ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || ($_SERVER['SERVER_PORT'] ?? 0) == 443) {
     header("Strict-Transport-Security: max-age=31536000; includeSubDomains; preload");
 }
@@ -697,6 +697,14 @@ if ($headerBgStyle === 'glass') {
                     <i class="fas fa-search text-lg"></i>
                 </button>
                 <?php endif; ?>
+                
+                <!-- Order Tracking -->
+                <a href="<?= url('track-order') ?>" class="hidden sm:flex items-center gap-1 p-1.5 rounded-lg hover:bg-gray-100 transition group" title="অর্ডার ট্র্যাক করুন">
+                    <video autoplay loop muted playsinline class="w-7 h-7 rounded object-cover pointer-events-none">
+                        <source src="https://cdn-icons-mp4.flaticon.com/512/15309/15309735.mp4" type="video/mp4">
+                    </video>
+                    <span class="text-sm font-medium hidden md:inline group-hover:text-gray-900">ট্র্যাক অর্ডার</span>
+                </a>
                 
                 <!-- Account -->
                 <?php if ($hShowLogin): ?>

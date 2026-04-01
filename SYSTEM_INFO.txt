@@ -955,3 +955,21 @@ CHANGES:
    - Uses mousedown/touchstart + click pattern (same as single product page)
    - Radio buttons support tap-to-deselect
    - Checkboxes (addons) use native browser toggle
+
+================================================================================
+                  CHANGELOG — 2026-04-02 (Order Tracking Button in Header)
+================================================================================
+
+FEATURE: ORDER TRACKING BUTTON IN DESKTOP HEADER
+  Added an animated order tracking button to the left of the login/account
+  button in the desktop header navigation.
+  
+  - Uses animated MP4 video icon from Flaticon CDN (looping, muted, autoplay)
+  - Links to /track-order page
+  - Shows "ট্র্যাক অর্ডার" label on md+ screens
+  - Hidden on mobile (mobile menu already has track order link)
+  - Added media-src CSP directive for cdn-icons-mp4.flaticon.com
+  
+  File: includes/header.php
+  - Line ~701: Order tracking button HTML with video icon
+  - Line ~13: CSP media-src directive added
