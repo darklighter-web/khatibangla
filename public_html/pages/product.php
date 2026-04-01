@@ -1459,8 +1459,8 @@ function updateClearBtnVisibility(groupId) {
 
 // Update all clear buttons on variant change
 const _origOnVariantChange = onVariantChange;
-onVariantChange = function() {
-    _origOnVariantChange();
+onVariantChange = function(explicit) {
+    _origOnVariantChange(explicit);
     // Update clear button visibility for all addon groups
     document.querySelectorAll('.addon-clear-btn').forEach(btn => {
         const id = btn.id.replace('clear-btn-', '');
@@ -1599,8 +1599,8 @@ if (mainQtyInput) {
 // Update sticky price when variants change
 const origVariantChange = window.onVariantChange;
 if (typeof origVariantChange === 'function') {
-    window.onVariantChange = function() {
-        origVariantChange();
+    window.onVariantChange = function(explicit) {
+        origVariantChange(explicit);
         setTimeout(updateStickyPrice, 50);
     };
 }
