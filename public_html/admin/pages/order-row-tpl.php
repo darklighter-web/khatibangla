@@ -25,7 +25,7 @@ $tagColors=['REPEAT'=>'bg-orange-100 text-orange-700','URGENT'=>'bg-red-100 text
     <!-- Invoice -->
     <td data-col="invoice" style="white-space:nowrap">
         <a href="<?= adminUrl('pages/order-view.php?order='.urlencode($order['order_number'])) ?>" style="font-weight:600;color:#111827;font-size:<?=$__preConf?'13':'12'?>px;text-decoration:none" onmouseover="this.style.color='#2563eb'" onmouseout="this.style.color='#111827'"><?= e($order['order_number']) ?></a>
-        <span class="dot-menu" onclick="toggleRowMenu(this,<?= $order['id'] ?>,'<?= e($order['order_number']) ?>')" style="margin-left:2px">⋮</span>
+        <span class="dot-menu" onclick="toggleRowMenu(this,<?= $order['id'] ?>,'<?= e($order['order_number']) ?>','<?= e($order['order_status']) ?>')" style="margin-left:2px">⋮</span>
         <?php if (!empty($order['is_preorder'])): ?><br><span style="font-size:8px;background:#f3e8ff;color:#7c3aed;padding:1px 5px;border-radius:3px;font-weight:600">⏰ PRE</span><?php endif; ?>
     </td>
 

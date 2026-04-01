@@ -1931,7 +1931,7 @@ function subTag(t){
 }
 
 // Row context menu
-async function toggleRowMenu(el, orderId, orderNum) {
+async function toggleRowMenu(el, orderId, orderNum, orderStatus) {
     const rm = document.getElementById('rowMenu');
     if (rm._open === orderId) { rm.classList.add('hidden'); rm._open = null; return; }
     const r = el.getBoundingClientRect();
@@ -1942,11 +1942,35 @@ async function toggleRowMenu(el, orderId, orderNum) {
     document.getElementById('rmOpen').href = '<?= adminUrl('pages/order-view.php?order=') ?>' + encodeURIComponent(orderNum || orderId);
     document.getElementById('rmPrintInv').onclick = () => { rm.classList.add('hidden'); openInvPrint([orderId]); };
     document.getElementById('rmPrintStk').onclick = () => { rm.classList.add('hidden'); openStkPrint([orderId]); };
-    if (document.getElementById('rmEdit')) {
-        document.getElementById('rmEdit').onclick = () => { rm.classList.add('hidden'); openEditOrder(orderId, orderNum); };
+    
+    // Post-confirmation statuses where edit/cancel are locked
+    const lockedStatuses = ['confirmed','ready_to_ship','shipped','delivered','returned','partial_delivered','pending_return','pending_cancel','cancelled','lost'];
+    const isLocked = lockedStatuses.includes(orderStatus);
+    
+    // Hide Edit button for confirmed+ orders
+    const rmEdit = document.getElementById('rmEdit');
+    if (rmEdit) {
+        rmEdit.style.display = isLocked ? 'none' : '';
+        rmEdit.onclick = () => { rm.classList.add('hidden'); openEditOrder(orderId, orderNum); };
     }
+    
+    // Hide Cancel button for confirmed+ orders (must use pending_cancel flow)
+    const rmCancel = document.getElementById('rmCancel');
+    if (rmCancel) {
+        rmCancel.style.display = isLocked ? 'none' : '';
+    }
+    
+    // Show/hide status action buttons based on current status
+    const rmConfirm = document.getElementById('rmConfirm');
+    const rmShip = document.getElementById('rmShip');
+    const rmDeliver = document.getElementById('rmDeliver');
+    if (rmConfirm) rmConfirm.style.display = ['processing','pending'].includes(orderStatus) ? '' : 'none';
+    if (rmShip) rmShip.style.display = ['confirmed','ready_to_ship'].includes(orderStatus) ? '' : 'none';
+    if (rmDeliver) rmDeliver.style.display = ['shipped','partial_delivered'].includes(orderStatus) ? '' : 'none';
+    
     ['Confirm','Ship','Deliver','Cancel'].forEach(a => {
         const btn = document.getElementById('rm'+a);
+        if (!btn) return;
         btn.onclick = async () => {
             const ok = await window._confirmAsync(a+' this order?');
             if(ok){
