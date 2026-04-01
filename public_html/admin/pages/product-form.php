@@ -694,9 +694,10 @@ if ($product) {
                     <!-- Bulk actions -->
                     <div id="comboBulkActions" class="bg-gray-50 rounded-lg p-2 mb-3 flex items-center gap-3 flex-wrap <?= !empty($combinations) ? '' : 'hidden' ?>">
                         <span class="text-xs text-gray-500 font-medium">Bulk set:</span>
-                        <div class="flex items-center gap-1"><input type="number" id="bulkRegPrice" class="w-20 px-2 py-1 border rounded text-xs" placeholder="Regular ৳"><button type="button" onclick="bulkSetField('regular_price')" class="text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded">Apply</button></div>
-                        <div class="flex items-center gap-1"><input type="number" id="bulkSalePrice" class="w-20 px-2 py-1 border rounded text-xs" placeholder="Sale ৳"><button type="button" onclick="bulkSetField('sale_price')" class="text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded">Apply</button></div>
-                        <div class="flex items-center gap-1"><input type="number" id="bulkStock" class="w-16 px-2 py-1 border rounded text-xs" placeholder="Stock"><button type="button" onclick="bulkSetField('stock')" class="text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded">Apply</button></div>
+                        <div class="flex items-center gap-1"><input type="number" id="bulkRegPrice" class="w-20 px-2 py-1 border rounded text-xs" placeholder="Regular ৳" step="0.01"><button type="button" onclick="bulkSetField('regular_price')" class="text-xs bg-purple-100 text-purple-700 hover:bg-purple-200 px-2 py-1 rounded font-medium">Apply</button></div>
+                        <div class="flex items-center gap-1"><input type="number" id="bulkSalePrice" class="w-20 px-2 py-1 border rounded text-xs" placeholder="Sale ৳" step="0.01"><button type="button" onclick="bulkSetField('sale_price')" class="text-xs bg-purple-100 text-purple-700 hover:bg-purple-200 px-2 py-1 rounded font-medium">Apply</button></div>
+                        <div class="flex items-center gap-1"><input type="number" id="bulkCostPrice" class="w-20 px-2 py-1 border rounded text-xs" placeholder="Cost ৳" step="0.01"><button type="button" onclick="bulkSetField('cost_price')" class="text-xs bg-purple-100 text-purple-700 hover:bg-purple-200 px-2 py-1 rounded font-medium">Apply</button></div>
+                        <div class="flex items-center gap-1"><input type="number" id="bulkStock" class="w-16 px-2 py-1 border rounded text-xs" placeholder="Stock"><button type="button" onclick="bulkSetField('stock')" class="text-xs bg-purple-100 text-purple-700 hover:bg-purple-200 px-2 py-1 rounded font-medium">Apply</button></div>
                     </div>
                     <div id="combinationsContainer" class="space-y-2">
                         <?php foreach ($combinations as $ci => $combo):
@@ -728,7 +729,7 @@ if ($product) {
                                     <div class="grid grid-cols-12 gap-2">
                                         <div class="col-span-3"><label class="text-[10px] text-gray-500">Regular ৳ *</label><input type="number" name="combo_regular_price[]" value="<?= $combo['regular_price'] ?>" step="0.01" class="w-full px-2 py-1.5 border rounded text-sm combo-reg-price" oninput="recalcComboPreview()"></div>
                                         <div class="col-span-2"><label class="text-[10px] text-gray-500">Sale ৳</label><input type="number" name="combo_sale_price[]" value="<?= $combo['sale_price'] ?>" step="0.01" class="w-full px-2 py-1.5 border rounded text-sm combo-sale-price" oninput="recalcComboPreview()"></div>
-                                        <div class="col-span-2"><label class="text-[10px] text-gray-500">Cost ৳</label><input type="number" name="combo_cost_price[]" value="<?= $combo['cost_price'] ?>" step="0.01" class="w-full px-2 py-1.5 border rounded text-sm"></div>
+                                        <div class="col-span-2"><label class="text-[10px] text-gray-500">Cost ৳</label><input type="number" name="combo_cost_price[]" value="<?= $combo['cost_price'] ?>" step="0.01" class="w-full px-2 py-1.5 border rounded text-sm combo-cost-price"></div>
                                         <div class="col-span-2"><label class="text-[10px] text-gray-500">Stock</label><input type="number" name="combo_stock[]" value="<?= $combo['stock_quantity'] ?>" class="w-full px-2 py-1.5 border rounded text-sm combo-stock-input" oninput="recalcTotalStock()"></div>
                                         <div class="col-span-3"><label class="text-[10px] text-gray-500">SKU</label><input type="text" name="combo_sku[]" value="<?= e($combo['sku'] ?? '') ?>" class="w-full px-2 py-1.5 border rounded text-sm" placeholder="Auto"></div>
                                     </div>
@@ -1299,7 +1300,7 @@ function generateCombinations() {
                     <div class="grid grid-cols-12 gap-2">
                         <div class="col-span-3"><label class="text-[10px] text-gray-500">Regular ৳ *</label><input type="number" name="combo_regular_price[]" value="${ex.reg||''}" step="0.01" class="w-full px-2 py-1.5 border rounded text-sm combo-reg-price" oninput="recalcComboPreview()"></div>
                         <div class="col-span-2"><label class="text-[10px] text-gray-500">Sale ৳</label><input type="number" name="combo_sale_price[]" value="${ex.sale||''}" step="0.01" class="w-full px-2 py-1.5 border rounded text-sm combo-sale-price" oninput="recalcComboPreview()"></div>
-                        <div class="col-span-2"><label class="text-[10px] text-gray-500">Cost ৳</label><input type="number" name="combo_cost_price[]" value="${ex.cost||''}" step="0.01" class="w-full px-2 py-1.5 border rounded text-sm"></div>
+                        <div class="col-span-2"><label class="text-[10px] text-gray-500">Cost ৳</label><input type="number" name="combo_cost_price[]" value="${ex.cost||''}" step="0.01" class="w-full px-2 py-1.5 border rounded text-sm combo-cost-price"></div>
                         <div class="col-span-2"><label class="text-[10px] text-gray-500">Stock</label><input type="number" name="combo_stock[]" value="${ex.stock||'0'}" class="w-full px-2 py-1.5 border rounded text-sm combo-stock-input" oninput="recalcTotalStock()"></div>
                         <div class="col-span-3"><label class="text-[10px] text-gray-500">SKU</label><input type="text" name="combo_sku[]" value="${ex.sku||''}" class="w-full px-2 py-1.5 border rounded text-sm" placeholder="Auto"></div>
                     </div>
@@ -1325,10 +1326,42 @@ function removeComboRow(btn) {
 }
 
 function bulkSetField(field) {
-    if (field==='regular_price') { const v=document.getElementById('bulkRegPrice').value; if(v) document.querySelectorAll('.combo-reg-price').forEach(i=>i.value=v); }
-    else if (field==='sale_price') { const v=document.getElementById('bulkSalePrice').value; document.querySelectorAll('.combo-sale-price').forEach(i=>i.value=v); }
-    else if (field==='stock') { const v=document.getElementById('bulkStock').value; if(v) document.querySelectorAll('.combo-stock-input').forEach(i=>i.value=v); }
-    recalcComboPreview(); recalcTotalStock();
+    let targets = [], val = '';
+    if (field === 'regular_price') {
+        val = document.getElementById('bulkRegPrice').value;
+        targets = document.querySelectorAll('.combo-reg-price');
+    } else if (field === 'sale_price') {
+        val = document.getElementById('bulkSalePrice').value;
+        targets = document.querySelectorAll('.combo-sale-price');
+    } else if (field === 'cost_price') {
+        val = document.getElementById('bulkCostPrice').value;
+        targets = document.querySelectorAll('.combo-cost-price');
+    } else if (field === 'stock') {
+        val = document.getElementById('bulkStock').value;
+        targets = document.querySelectorAll('.combo-stock-input');
+    }
+    if (val === '' && field !== 'sale_price') return;
+    let count = 0;
+    targets.forEach(inp => {
+        inp.value = val;
+        // Dispatch native input event so oninput handlers fire
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+        // Visual flash
+        inp.style.transition = 'background 0.3s';
+        inp.style.background = '#e9d5ff';
+        setTimeout(() => { inp.style.background = ''; }, 600);
+        count++;
+    });
+    recalcComboPreview();
+    recalcTotalStock();
+    // Show confirmation
+    const btn = event?.target;
+    if (btn && count > 0) {
+        const origText = btn.textContent;
+        btn.textContent = '✓ ' + count;
+        btn.classList.add('bg-green-200', 'text-green-800');
+        setTimeout(() => { btn.textContent = origText; btn.classList.remove('bg-green-200', 'text-green-800'); }, 1000);
+    }
 }
 
 function recalcTotalStock() {
