@@ -153,7 +153,6 @@ $tab = $_GET['tab'] ?? 'shipping';
 @keyframes slideIn { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
 .slide-in { animation: slideIn 0.25s ease-out; }
 .scan-input:focus { box-shadow: 0 0 0 3px rgba(59,130,246,0.3); }
-@keyframes returnFlash { 0%{opacity:1} 30%{opacity:0.4} 60%{opacity:0.8} 100%{opacity:0} }
 </style>
 
 <!-- Tabs -->
@@ -345,43 +344,6 @@ function playDuplicate() {
     playBeep(440, 0.1);
     setTimeout(() => playBeep(440, 0.1), 120);
 }
-// ── Return/RTS alert: loud multi-tone siren for attention ──
-function playReturnAlert() {
-    ensureAudio();
-    // 3-tone descending siren
-    playBeep(1000, 0.15, 'sawtooth');
-    setTimeout(() => playBeep(700, 0.15, 'sawtooth'), 180);
-    setTimeout(() => playBeep(500, 0.25, 'sawtooth'), 360);
-    // Flash screen border red
-    const flash = document.createElement('div');
-    flash.style.cssText = 'position:fixed;inset:0;z-index:99999;border:6px solid #ef4444;pointer-events:none;animation:returnFlash 1s ease-out forwards;border-radius:12px;';
-    document.body.appendChild(flash);
-    setTimeout(() => flash.remove(), 1200);
-}
-
-// ── Global keyboard capture for barcode scanners ──
-// Scanners type rapidly then press Enter — capture any fast input not in a text field
-let _globalScanBuf = '';
-let _globalScanTimer = null;
-document.addEventListener('keydown', function(e) {
-    // Skip if focused on an input/textarea (except our scan input)
-    const tag = document.activeElement?.tagName;
-    const isScanInput = document.activeElement?.id === 'scanInput';
-    if (!isScanInput && (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT')) return;
-    if (isScanInput) return; // Let the scanInput handler deal with it
-    
-    if (e.key === 'Enter' && _globalScanBuf.length >= 4) {
-        e.preventDefault();
-        processScan(_globalScanBuf.trim());
-        _globalScanBuf = '';
-        return;
-    }
-    if (e.key.length === 1) {
-        _globalScanBuf += e.key;
-        clearTimeout(_globalScanTimer);
-        _globalScanTimer = setTimeout(() => { _globalScanBuf = ''; }, 200); // 200ms window for scanner speed
-    }
-});
 
 function toggleSound() {
     soundEnabled = !soundEnabled;
@@ -459,14 +421,7 @@ function processScan(barcode) {
         .then(data => {
             scannedBarcodes.add(barcode);
             addResult(data);
-            if (data.success) {
-                // Play return alert siren for return/rts modes, success beep otherwise
-                if (['return', 'pending_return', 'rts'].includes(SCAN_MODE)) {
-                    playReturnAlert();
-                } else {
-                    playSuccess();
-                }
-            } else { playError(); }
+            if (data.success) { playSuccess(); } else { playError(); }
         })
         .catch(err => {
             playError();

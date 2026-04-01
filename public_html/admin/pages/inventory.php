@@ -13,14 +13,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     if ($action === 'save_warehouse') {
         $id = (int)($_POST['id'] ?? 0);
-        $whCode = sanitize($_POST['code']);
-        // Auto-generate UUID-based code for new warehouses if code is empty
-        if ($id === 0 && empty(trim($whCode))) {
-            $whCode = 'WH-' . strtoupper(substr(bin2hex(random_bytes(4)), 0, 8));
-        }
         $data = [
             sanitize($_POST['name']),
-            $whCode,
+            sanitize($_POST['code']),
             sanitize($_POST['address'] ?? ''),
             sanitize($_POST['city'] ?? ''),
             sanitize($_POST['phone'] ?? ''),
@@ -28,8 +23,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             isset($_POST['is_active']) ? 1 : 0
         ];
         if ($id > 0) {
-            // Only allow updating name, address, city, phone, manager, active status (not code)
-            $db->query("UPDATE warehouses SET name=?, code=?, address=?, city=?, phone=?, manager_name=?, is_active=? WHERE id=?", array_merge($data, [$id]));
+            $data[] = $id;
+            $db->query("UPDATE warehouses SET name=?, code=?, address=?, city=?, phone=?, manager_name=?, is_active=? WHERE id=?", $data);
         } else {
             $db->query("INSERT INTO warehouses (name, code, address, city, phone, manager_name, is_active) VALUES (?,?,?,?,?,?,?)", $data);
         }
@@ -117,12 +112,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     if ($action === 'delete_warehouse') {
-        // ── Warehouse CRUD constraint: warehouses cannot be deleted, only deactivated ──
         $id = (int)$_POST['id'];
         $isDefault = $db->fetch("SELECT is_default FROM warehouses WHERE id=?", [$id]);
         if ($isDefault && !$isDefault['is_default']) {
-            // Soft-deactivate instead of hard delete — preserves stock history and references
-            $db->query("UPDATE warehouses SET is_active = 0 WHERE id = ? AND is_default = 0", [$id]);
+            $db->query("DELETE FROM warehouses WHERE id=? AND is_default=0", [$id]);
         }
         redirect(adminUrl('pages/inventory.php?tab=warehouses&msg=deleted'));
     }

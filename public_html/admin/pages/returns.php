@@ -5,17 +5,6 @@ require_once __DIR__ . '/../includes/auth.php';
 
 $db = Database::getInstance();
 
-// Detect available columns in customers table (password may not exist)
-$_hasPasswordCol = false;
-$_hasStoreCreditCol = false;
-try {
-    $cols = $db->fetchAll("SHOW COLUMNS FROM customers");
-    foreach ($cols as $col) {
-        if ($col['Field'] === 'password') $_hasPasswordCol = true;
-        if ($col['Field'] === 'store_credit') $_hasStoreCreditCol = true;
-    }
-} catch (\Throwable $e) {}
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     if ($action === 'update_return') {
@@ -37,6 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $result = refundToStoreCredit($rid, $refundAmount, getAdminId());
                 if (!$result) {
+                    // Customer is guest - fall back to cash
                     $db->update('return_orders', ['refund_type' => 'cash'], 'id = ?', [$rid]);
                 }
             } catch (\Throwable $e) {
@@ -54,49 +44,14 @@ $where = '1=1';
 $params = [];
 if ($status) { $where .= " AND r.return_status = ?"; $params[] = $status; }
 
-// Build safe SELECT with optional customer columns
-$custPassCol = $_hasPasswordCol ? 'c.password as customer_has_password,' : 'NULL as customer_has_password,';
-$custCreditCol = $_hasStoreCreditCol ? 'c.store_credit as customer_credit' : '0 as customer_credit';
-
-$returns = [];
-try {
-    $returns = $db->fetchAll(
-        "SELECT r.*, 
-         COALESCE(o.order_number, CONCAT('ORD-', r.order_id)) as order_number, 
-         COALESCE(o.customer_name, 'Unknown') as customer_name, 
-         COALESCE(o.customer_phone, '') as customer_phone, 
-         o.customer_id, 
-         COALESCE(o.total, 0) as order_total,
-         {$custPassCol}
-         {$custCreditCol}
-         FROM return_orders r 
-         LEFT JOIN orders o ON o.id = r.order_id 
-         LEFT JOIN customers c ON c.id = o.customer_id AND o.customer_id IS NOT NULL
-         WHERE {$where} ORDER BY r.created_at DESC LIMIT 100", $params
-    );
-} catch (\Throwable $e) {
-    // Fallback: query without customers table join
-    try {
-        $returns = $db->fetchAll(
-            "SELECT r.*, 
-             COALESCE(o.order_number, CONCAT('ORD-', r.order_id)) as order_number, 
-             COALESCE(o.customer_name, 'Unknown') as customer_name, 
-             COALESCE(o.customer_phone, '') as customer_phone, 
-             o.customer_id, 
-             COALESCE(o.total, 0) as order_total,
-             NULL as customer_has_password,
-             0 as customer_credit
-             FROM return_orders r 
-             LEFT JOIN orders o ON o.id = r.order_id 
-             WHERE {$where} ORDER BY r.created_at DESC LIMIT 100", $params
-        );
-    } catch (\Throwable $e2) {
-        error_log("Returns page query error: " . $e2->getMessage());
-    }
-}
-
-// All valid statuses including picked_up from the DB enum
-$allStatuses = ['requested'=>'Requested','approved'=>'Approved','picked_up'=>'Picked Up','received'=>'Received','refunded'=>'Refunded','rejected'=>'Rejected'];
+$returns = $db->fetchAll(
+    "SELECT r.*, o.order_number, o.customer_name, o.customer_phone, o.customer_id, o.total as order_total,
+     c.password as customer_has_password, c.store_credit as customer_credit
+     FROM return_orders r 
+     LEFT JOIN orders o ON o.id = r.order_id 
+     LEFT JOIN customers c ON c.id = o.customer_id
+     WHERE {$where} ORDER BY r.created_at DESC LIMIT 50", $params
+);
 
 require_once __DIR__ . '/../includes/header.php';
 ?>
@@ -105,9 +60,9 @@ require_once __DIR__ . '/../includes/header.php';
 <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4 text-sm">Return updated.</div>
 <?php endif; ?>
 
-<div class="flex gap-2 mb-6 flex-wrap">
+<div class="flex gap-2 mb-6">
     <a href="?status=" class="px-3 py-1.5 rounded-lg text-xs font-medium <?= !$status ? 'bg-blue-600 text-white' : 'bg-gray-100 hover:bg-gray-200' ?>">All</a>
-    <?php foreach ($allStatuses as $k=>$v): ?>
+    <?php foreach (['requested'=>'Requested','approved'=>'Approved','received'=>'Received','refunded'=>'Refunded','rejected'=>'Rejected'] as $k=>$v): ?>
     <a href="?status=<?= $k ?>" class="px-3 py-1.5 rounded-lg text-xs font-medium <?= $status === $k ? 'bg-blue-600 text-white' : 'bg-gray-100 hover:bg-gray-200' ?>"><?= $v ?></a>
     <?php endforeach; ?>
 </div>
@@ -151,6 +106,7 @@ require_once __DIR__ . '/../includes/header.php';
                             <input type="hidden" name="admin_notes" value="<?= e($r['admin_notes'] ?? '') ?>">
                             <input type="number" name="refund_amount" value="<?= $r['refund_amount'] ?>" 
                                    class="w-20 text-xs px-2 py-1 rounded border text-right" step="0.01" placeholder="৳">
+                            <!-- Refund Type -->
                             <div class="flex gap-1">
                                 <label class="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border cursor-pointer has-[:checked]:bg-green-100 has-[:checked]:border-green-400">
                                     <input type="radio" name="refund_type" value="cash" <?= $currentRefundType === 'cash' ? 'checked' : '' ?> class="hidden">
@@ -167,8 +123,8 @@ require_once __DIR__ . '/../includes/header.php';
                     </td>
                     <td class="px-4 py-3">
                         <select form="return-form-<?= $r['id'] ?>" name="status" onchange="document.getElementById('return-form-<?= $r['id'] ?>').submit()" class="text-xs px-2 py-1 rounded border">
-                            <?php foreach ($allStatuses as $st => $stLabel): ?>
-                            <option value="<?= $st ?>" <?= ($r['return_status'] ?? '') === $st ? 'selected' : '' ?>><?= $stLabel ?></option>
+                            <?php foreach (['requested','approved','received','refunded','rejected'] as $st): ?>
+                            <option value="<?= $st ?>" <?= ($r['return_status'] ?? '') === $st ? 'selected' : '' ?>><?= ucfirst($st) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </td>
@@ -176,7 +132,7 @@ require_once __DIR__ . '/../includes/header.php';
                     <td class="px-4 py-3"><a href="<?= adminUrl('pages/order-view.php?id=' . $r['order_id']) ?>" class="text-blue-600 text-xs hover:underline">View Order</a></td>
                 </tr>
                 <?php endforeach; ?>
-                <?php if (empty($returns)): ?><tr><td colspan="8" class="px-4 py-12 text-center text-gray-400">No returns found</td></tr><?php endif; ?>
+                <?php if (empty($returns)): ?><tr><td colspan="8" class="px-4 py-12 text-center text-gray-400">No returns</td></tr><?php endif; ?>
             </tbody>
         </table>
     </div>
