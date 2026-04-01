@@ -339,6 +339,12 @@ foreach ($variants as $v) {
                                 id="clear-btn-<?= $groupId ?>">
                             <i class="fas fa-times mr-0.5"></i>বাদ দিন
                         </button>
+                        <?php else: ?>
+                        <button type="button" onclick="clearAddonGroup('variant_group_<?= $groupId ?>')" 
+                                class="addon-clear-btn text-xs text-gray-400 hover:text-red-500 transition hidden" 
+                                id="clear-btn-<?= $groupId ?>">
+                            <i class="fas fa-times mr-0.5"></i>বাদ দিন
+                        </button>
                         <?php endif; ?>
                     </div>
                     <div class="flex flex-wrap gap-2">
@@ -912,6 +918,8 @@ function changeQty(d) {
 
 // Recalculate displayed price based on qty
 function updateDisplayedPrice() {
+    // If product has variations, re-run full variant logic (handles range vs single price)
+    if (HAS_VARIANTS) { onVariantChange(); return; }
     const qty = getQty();
     const priceEl = document.getElementById('display-price');
     if (!priceEl || !priceEl.dataset.unitPrice) return;
@@ -929,7 +937,12 @@ function getSelectedVariantId() {
 }
 
 // ── Variant Price Update (Addon vs Variation) ──
-let _variantUserClicked = false;
+// If a default variant is pre-checked on load, treat it as explicitly selected
+let _variantUserClicked = (function(){
+    const preChecked = document.querySelectorAll('.product-variant-radio:checked');
+    for(const r of preChecked) { if(r.dataset.optionType === 'variation') return true; }
+    return false;
+})();
 function onVariantChange(explicit) {
     if (explicit === true) _variantUserClicked = true;
     const checked = document.querySelectorAll('.product-variant-radio:checked');
@@ -1001,13 +1014,21 @@ function onVariantChange(explicit) {
     const qty = getQty();
     priceEl.dataset.unitPrice = finalPrice;
     
-    // Show price range on initial load (before user clicks a variation)
-    if (hasVariation && !_variantUserClicked && VAR_PRICE_MIN > 0 && VAR_PRICE_MAX > 0 && VAR_PRICE_MIN !== VAR_PRICE_MAX) {
+    // Determine if we should show range: when no variation is actively selected
+    // and we have variation options available (VAR_PRICE_MIN/MAX set from PHP)
+    const showRange = !_variantUserClicked && VAR_PRICE_MIN > 0 && VAR_PRICE_MAX > 0 && VAR_PRICE_MIN !== VAR_PRICE_MAX;
+    
+    // Show price range when no variation chosen, single price when chosen
+    if (showRange) {
         const rangeMin = Number(VAR_PRICE_MIN * qty).toLocaleString();
         const rangeMax = Number(VAR_PRICE_MAX * qty).toLocaleString();
         priceEl.textContent = CURRENCY + ' ' + rangeMin + ' – ' + CURRENCY + ' ' + rangeMax;
+        // Re-show range hint if it was hidden
+        if (rangeHint) rangeHint.classList.remove('hidden');
     } else {
         priceEl.textContent = CURRENCY + ' ' + Number(finalPrice * qty).toLocaleString();
+        // Hide range hint when a variation is selected
+        if (hasVariation && _variantUserClicked && rangeHint) rangeHint.classList.add('hidden');
     }
     
     // Show regular vs sale comparison (per-variant for variable products)
@@ -1022,8 +1043,8 @@ function onVariantChange(explicit) {
         });
     }
     
-    if (hasVariation && !_variantUserClicked && VAR_PRICE_MIN > 0 && VAR_PRICE_MAX > 0 && VAR_PRICE_MIN !== VAR_PRICE_MAX) {
-        // Initial load: show max discount based on price range vs max regular price
+    if (showRange) {
+        // Range mode: show max discount based on price range vs max regular price
         if (REGULAR_PRICE > VAR_PRICE_MIN) {
             const dMax = Math.round(((REGULAR_PRICE - VAR_PRICE_MIN) / REGULAR_PRICE) * 100);
             if (regEl) { regEl.textContent = CURRENCY + ' ' + Number(REGULAR_PRICE).toLocaleString(); regEl.classList.remove('hidden'); }
@@ -1368,10 +1389,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (HAS_VARIANTS) onVariantChange();
     
-    // Addon toggle: tap selected addon label to deselect it
+    // Variant toggle: tap selected label to deselect it (works for BOTH addon and variation)
     document.querySelectorAll('.variant-option').forEach(label => {
         const radio = label.querySelector('.product-variant-radio');
-        if (!radio || radio.dataset.optionType !== 'addon') return;
+        if (!radio) return;
         
         // Remove native onchange to prevent double-fire
         radio.removeAttribute('onchange');
@@ -1382,16 +1403,24 @@ document.addEventListener('DOMContentLoaded', () => {
         
         label.addEventListener('click', function(e) {
             if (radio._wasChecked) {
-                // Was already selected — deselect
+                // Was already selected — deselect (toggle off)
                 e.preventDefault();
                 radio.checked = false;
                 updateClearBtnVisibility(radio.dataset.groupId);
+                // If this was a variation, check if any variation is still selected
+                if (radio.dataset.optionType === 'variation') {
+                    const anyVariationStillSelected = [...document.querySelectorAll('.product-variant-radio:checked')]
+                        .some(r => r.dataset.optionType === 'variation');
+                    if (!anyVariationStillSelected) {
+                        _variantUserClicked = false;
+                    }
+                }
                 onVariantChange();
             } else {
                 // New selection — let browser check it, then update after
                 setTimeout(() => {
                     updateClearBtnVisibility(radio.dataset.groupId);
-                    onVariantChange();
+                    onVariantChange(true);
                 }, 0);
             }
         });
