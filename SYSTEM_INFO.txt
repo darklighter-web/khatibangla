@@ -886,3 +886,22 @@ FIX #4 — VARIATION SELECTION NOT WORKING (DUPLICATE CLICK HANDLERS)
   File: pages/product.php
   Lines removed: ~1097-1124 (old IIFE handler)
   Lines changed: ~1649-1669 (DOMContentLoaded handler — combo_attr support)
+
+FIX #5 — ARCHIVE VARIANT PICKER: DESELECT SUPPORT
+  Problem: The variant picker popup on shop/archive pages (product cards) had
+  no way to deselect a variation radio once selected. Radio buttons don't 
+  natively deselect, and no toggle mechanism existed.
+  
+  Fix: Added same mousedown/touchstart + click deselect pattern from single
+  product page to the archive variant picker popup. Since the popup HTML is
+  generated dynamically in showVariantPicker(), handlers are attached after
+  innerHTML injection. Removed inline onchange="updateVariantPickerPrice()"
+  from both variation radios and addon checkboxes to prevent double-fire.
+  Click handler now manages price updates for both selection and deselection.
+  Addon checkboxes (type=checkbox) pass through to native toggle behavior
+  with a setTimeout price update.
+  
+  File: includes/footer.php
+  - showVariantPicker(): Added handler attachment after HTML injection (~line 710)
+  - Variation radio HTML: removed inline onchange
+  - Addon checkbox HTML: removed inline onchange and onclick="toggleAddon(event)"

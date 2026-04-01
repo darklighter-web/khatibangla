@@ -677,8 +677,7 @@ function showVariantPicker(productId, data, mode, qty) {
                 <input type="radio" name="vp_group_${groupName}" value="${v.id}" 
                        data-type="variation" data-abs="${v.absolute_price || 0}" data-adj="0" data-stock="${v.stock_quantity}"
                        data-var-regular="${varReg}" data-var-sale="${varSale}"
-                       class="hidden vp-radio" ${((v.is_default == 1) || (i === 0 && !variants.some(x=>x.is_default==1))) && v.stock_quantity > 0 ? 'checked' : ''} ${v.stock_quantity <= 0 ? 'disabled' : ''}
-                       onchange="updateVariantPickerPrice()">
+                       class="hidden vp-radio" ${((v.is_default == 1) || (i === 0 && !variants.some(x=>x.is_default==1))) && v.stock_quantity > 0 ? 'checked' : ''} ${v.stock_quantity <= 0 ? 'disabled' : ''}>
                 <span class="text-sm font-medium">${v.variant_value}${priceTag}${stockTag}</span>
             </label>`;
         });
@@ -695,11 +694,10 @@ function showVariantPicker(productId, data, mode, qty) {
                              v.price_adjustment < 0 ? ` (${CURRENCY}${Number(v.price_adjustment).toLocaleString()})` : '';
             const stockTag = v.stock_quantity <= 0 ? ' <span class="text-red-400 text-xs">(স্টক শেষ)</span>' : '';
             const disabled = v.stock_quantity <= 0 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer';
-            html += `<label class="inline-flex items-center border-2 rounded-xl px-4 py-2.5 ${disabled} has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50 hover:border-gray-400 transition" onclick="toggleAddon(event)">
+            html += `<label class="inline-flex items-center border-2 rounded-xl px-4 py-2.5 ${disabled} has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50 hover:border-gray-400 transition">
                 <input type="checkbox" name="vp_addon_${groupName}" value="${v.id}" 
                        data-type="addon" data-abs="0" data-adj="${v.price_adjustment}" data-stock="${v.stock_quantity}"
-                       class="hidden vp-radio" ${v.stock_quantity <= 0 ? 'disabled' : ''}
-                       onchange="updateVariantPickerPrice()">
+                       class="hidden vp-radio" ${v.stock_quantity <= 0 ? 'disabled' : ''}>
                 <span class="text-sm font-medium">${v.variant_value}${priceTag}${stockTag}</span>
             </label>`;
         });
@@ -708,6 +706,39 @@ function showVariantPicker(productId, data, mode, qty) {
     
     document.getElementById('vp-options').innerHTML = html;
     document.getElementById('vp-qty').value = qty || 1;
+    
+    // ── Attach select/deselect handlers to dynamically created radio buttons ──
+    // Same mousedown/touchstart + click pattern as single product page
+    document.querySelectorAll('#vp-options .vp-radio').forEach(radio => {
+        const label = radio.closest('label');
+        if (!label || radio.disabled) return;
+        
+        // Remove inline onchange to prevent double-fire
+        radio.removeAttribute('onchange');
+        
+        // Capture checked state BEFORE browser toggles it
+        label.addEventListener('mousedown', function() { radio._wasChecked = radio.checked; });
+        label.addEventListener('touchstart', function() { radio._wasChecked = radio.checked; }, {passive: true});
+        
+        label.addEventListener('click', function(e) {
+            // Only handle radio buttons for deselect (checkboxes toggle natively)
+            if (radio.type === 'checkbox') {
+                // For checkboxes (addons), let browser handle toggle, just update price
+                setTimeout(() => updateVariantPickerPrice(), 0);
+                return;
+            }
+            
+            if (radio._wasChecked) {
+                // Was already selected — deselect (toggle off)
+                e.preventDefault();
+                radio.checked = false;
+                updateVariantPickerPrice();
+            } else {
+                // New selection — let browser check it, then update price
+                setTimeout(() => updateVariantPickerPrice(), 0);
+            }
+        });
+    });
     
     popup.dataset.productId = productId;
     popup.dataset.mode = mode;
