@@ -20,6 +20,34 @@ $variants = $db->fetchAll("SELECT * FROM product_variants WHERE product_id = ? A
 $relatedProducts = getProducts(['category_id' => $product['category_id'], 'limit' => 8]);
 $relatedProducts = array_filter($relatedProducts, fn($p) => $p['id'] !== $product['id']);
 
+// Detect combination mode and load combination data
+$isCombinationMode = false;
+$comboAttributes = [];
+$comboLookupMap = []; // JSON key → combination data
+try {
+    $prodVarMode = $db->fetch("SELECT variation_mode FROM products WHERE id = ?", [$product['id']]);
+    if ($prodVarMode && ($prodVarMode['variation_mode'] ?? '') === 'combination') {
+        $comboAttributes = $db->fetchAll("SELECT * FROM product_attributes WHERE product_id = ? AND is_variation = 1 ORDER BY sort_order", [$product['id']]);
+        $combos = $db->fetchAll("SELECT * FROM product_variant_combinations WHERE product_id = ? AND is_active = 1 ORDER BY sort_order", [$product['id']]);
+        if (!empty($comboAttributes) && !empty($combos)) {
+            $isCombinationMode = true;
+            foreach ($combos as $c) {
+                $comboLookupMap[$c['combination_key']] = [
+                    'id' => $c['id'],
+                    'label' => $c['combination_label'],
+                    'regular_price' => floatval($c['regular_price']),
+                    'sale_price' => floatval($c['sale_price'] ?? 0),
+                    'sell_price' => ($c['sale_price'] > 0 && $c['sale_price'] < $c['regular_price']) ? floatval($c['sale_price']) : floatval($c['regular_price']),
+                    'stock' => intval($c['stock_quantity']),
+                    'sku' => $c['sku'],
+                    'image' => $c['variant_image'] ? (SITE_URL . '/uploads/products/' . $c['variant_image']) : '',
+                    'is_default' => intval($c['is_default']),
+                ];
+            }
+        }
+    }
+} catch (\Throwable $e) { /* tables may not exist yet */ }
+
 // Load bundles
 $bundles = [];
 try {
@@ -165,12 +193,50 @@ $spButtonLayout = getSetting('sp_button_layout', 'standard');
 
 // Group variants by name (case-insensitive to merge "packaging" + "Packaging")
 $variantGroups = [];
-foreach ($variants as $v) {
-    $key = mb_strtolower(trim($v['variant_name']));
-    if (!isset($variantGroups[$key])) {
-        $variantGroups[$key] = ['display_name' => $v['variant_name'], 'items' => []];
+if ($isCombinationMode) {
+    // COMBINATION MODE: build groups from product_attributes (not flat variant rows)
+    // Each attribute becomes a separate selector group with unique values
+    foreach ($comboAttributes as $attr) {
+        $key = mb_strtolower(trim($attr['attribute_name']));
+        $attrValues = json_decode($attr['attribute_values'], true) ?: [];
+        if (empty($attrValues)) continue;
+        $items = [];
+        foreach ($attrValues as $val) {
+            $items[] = [
+                'id' => 0, // not a real variant ID — combo lookup handles pricing
+                'variant_name' => $attr['attribute_name'],
+                'variant_value' => $val,
+                'option_type' => 'variation',
+                'price_adjustment' => 0,
+                'absolute_price' => 0,
+                'var_regular_price' => 0,
+                'var_sale_price' => 0,
+                'stock_quantity' => 1, // will be determined by combo lookup
+                'is_default' => 0,
+                'variant_image' => '',
+                'manage_stock' => 0,
+            ];
+        }
+        $variantGroups[$key] = ['display_name' => $attr['attribute_name'], 'items' => $items, 'is_combo_attr' => true];
     }
-    $variantGroups[$key]['items'][] = $v;
+    // Also add addon groups from legacy variants
+    foreach ($variants as $v) {
+        if (($v['option_type'] ?? 'addon') !== 'addon') continue;
+        $key = mb_strtolower(trim($v['variant_name']));
+        if (!isset($variantGroups[$key])) {
+            $variantGroups[$key] = ['display_name' => $v['variant_name'], 'items' => [], 'is_combo_attr' => false];
+        }
+        $variantGroups[$key]['items'][] = $v;
+    }
+} else {
+    // LEGACY MODE: group from flat variant rows as before
+    foreach ($variants as $v) {
+        $key = mb_strtolower(trim($v['variant_name']));
+        if (!isset($variantGroups[$key])) {
+            $variantGroups[$key] = ['display_name' => $v['variant_name'], 'items' => [], 'is_combo_attr' => false];
+        }
+        $variantGroups[$key]['items'][] = $v;
+    }
 }
 ?>
 
@@ -317,7 +383,8 @@ foreach ($variants as $v) {
                 <?php foreach ($variantGroups as $groupKey => $groupData): 
                     $groupName = $groupData['display_name'];
                     $groupVariants = $groupData['items'];
-                    $optType = $groupVariants[0]['option_type'] ?? 'addon';
+                    $isComboAttr = !empty($groupData['is_combo_attr']);
+                    $optType = $isComboAttr ? 'variation' : ($groupVariants[0]['option_type'] ?? 'addon');
                     $groupId = md5($groupKey);
                     // Check if any variant in this group has is_default=1
                     $hasExplicitDefault = false;
@@ -327,34 +394,48 @@ foreach ($variants as $v) {
                     <div class="flex items-center justify-between mb-2">
                         <label class="block text-sm font-medium text-gray-700">
                             <?= htmlspecialchars($groupName) ?>
-                            <?php if ($optType === 'variation'): ?>
+                            <?php if ($isComboAttr): ?>
+                                <span class="text-xs text-purple-500 font-normal">(ভ্যারিয়েশন)</span>
+                            <?php elseif ($optType === 'variation'): ?>
                                 <span class="text-xs text-purple-500 font-normal">(ভ্যারিয়েশন)</span>
                             <?php else: ?>
                                 <span class="text-xs text-blue-500 font-normal">(অ্যাডঅন)</span>
                             <?php endif; ?>
                         </label>
-                        <?php if ($optType !== 'variation'): ?>
                         <button type="button" onclick="clearAddonGroup('variant_group_<?= $groupId ?>')" 
                                 class="addon-clear-btn text-xs text-gray-400 hover:text-red-500 transition hidden" 
                                 id="clear-btn-<?= $groupId ?>">
                             <i class="fas fa-times mr-0.5"></i>বাদ দিন
                         </button>
-                        <?php else: ?>
-                        <button type="button" onclick="clearAddonGroup('variant_group_<?= $groupId ?>')" 
-                                class="addon-clear-btn text-xs text-gray-400 hover:text-red-500 transition hidden" 
-                                id="clear-btn-<?= $groupId ?>">
-                            <i class="fas fa-times mr-0.5"></i>বাদ দিন
-                        </button>
-                        <?php endif; ?>
                     </div>
                     <div class="flex flex-wrap gap-2">
                         <?php foreach ($groupVariants as $i => $v): 
                             $isVariation = ($v['option_type'] ?? 'addon') === 'variation';
                             $varImg = $v['variant_image'] ?? '';
                             $varImgUrl = $varImg ? (SITE_URL . '/uploads/products/' . $varImg) : '';
-                            // Only pre-select if is_default is explicitly set on THIS variant
                             $shouldCheck = !empty($v['is_default']);
                         ?>
+                        <?php if ($isComboAttr): ?>
+                        <!-- COMBINATION ATTRIBUTE OPTION: price/stock determined by JS combo lookup -->
+                        <label class="variant-option inline-flex items-center border-2 rounded-xl px-4 py-2.5 cursor-pointer has-[:checked]:border-red-500 has-[:checked]:bg-red-50 hover:border-gray-400 transition">
+                            <input type="radio" name="variant_group_<?= $groupId ?>" 
+                                   value="combo_attr_<?= $groupId ?>_<?= $i ?>"
+                                   data-option-type="combo_attr"
+                                   data-combo-attr-name="<?= htmlspecialchars($v['variant_name']) ?>"
+                                   data-value="<?= htmlspecialchars($v['variant_value']) ?>"
+                                   data-group-id="<?= $groupId ?>"
+                                   data-price-adj="0"
+                                   data-abs-price="0"
+                                   data-var-regular="0"
+                                   data-var-sale="0"
+                                   data-stock="999"
+                                   data-variant-image=""
+                                   class="hidden product-variant-radio combo-attr-radio" 
+                                   onchange="onVariantChange(true)">
+                            <span class="text-sm font-medium"><?= htmlspecialchars($v['variant_value']) ?></span>
+                        </label>
+                        <?php else: ?>
+                        <!-- LEGACY / ADDON OPTION -->
                         <label class="variant-option inline-flex items-center border-2 rounded-xl px-4 py-2.5 cursor-pointer has-[:checked]:border-red-500 has-[:checked]:bg-red-50 hover:border-gray-400 transition <?= $v['stock_quantity'] <= 0 ? 'opacity-50' : '' ?>">
                             <input type="radio" name="variant_group_<?= $groupId ?>" 
                                    value="<?= $v['id'] ?>" 
@@ -395,6 +476,7 @@ foreach ($variants as $v) {
                                 <?php endif; ?>
                             </span>
                         </label>
+                        <?php endif; ?>
                         <?php endforeach; ?>
                     </div>
                 </div>
@@ -855,6 +937,12 @@ const VAR_PRICE_MAX = <?= $varPriceMax ?? 0 ?>;
 window._originalProductImage = document.getElementById('main-product-image')?.src || '';
 const BUNDLE_PRODUCTS = <?= json_encode(!empty($bundles)) ?>; // just true/false for existence check
 
+// ── Combination Mode Data ──
+const IS_COMBO_MODE = <?= $isCombinationMode ? 'true' : 'false' ?>;
+const COMBO_LOOKUP = <?= $isCombinationMode ? json_encode($comboLookupMap, JSON_UNESCAPED_UNICODE) : '{}' ?>;
+// Currently matched combination (set by onVariantChange)
+let _currentCombo = null;
+
 // ── Image Slider ──
 const SLIDE_IMAGES = <?= json_encode(array_map(function($img) { return imgSrc('products', $img['image_path']); }, $images)) ?>;
 const AUTO_SLIDE = <?= $autoSlide ? 'true' : 'false' ?>;
@@ -929,11 +1017,37 @@ function updateDisplayedPrice() {
 
 // Get all selected variant IDs from product page radio buttons
 function getSelectedVariantId() {
+    // In combo mode, return the combo ID if a match was found
+    if (IS_COMBO_MODE && _currentCombo) {
+        return 'combo_' + _currentCombo.id;
+    }
     const checked = document.querySelectorAll('.product-variant-radio:checked');
     if (checked.length === 0) return null;
     const ids = [];
-    checked.forEach(r => ids.push(parseInt(r.value)));
-    return ids.join(',');
+    checked.forEach(r => {
+        // Skip combo-attr radios (they don't have real variant IDs)
+        if (r.dataset.optionType === 'combo_attr') return;
+        ids.push(parseInt(r.value));
+    });
+    return ids.length ? ids.join(',') : null;
+}
+
+// Fuzzy lookup: try all key orderings to find a match in COMBO_LOOKUP
+function _comboFuzzyLookup(selectedAttrs) {
+    const keys = Object.keys(selectedAttrs);
+    // Try the exact JSON match with different key orderings
+    for (const comboKey in COMBO_LOOKUP) {
+        try {
+            const parsed = JSON.parse(comboKey);
+            // Check if all attribute values match regardless of key order
+            let match = true;
+            for (const k of keys) {
+                if (parsed[k] !== selectedAttrs[k]) { match = false; break; }
+            }
+            if (match && Object.keys(parsed).length === keys.length) return COMBO_LOOKUP[comboKey];
+        } catch(e) {}
+    }
+    return null;
 }
 
 // ── Variant Price Update (Addon vs Variation) ──
@@ -950,51 +1064,109 @@ function onVariantChange(explicit) {
     let hasVariation = false;
     let outOfStock = false;
     let selectedLabels = [];
+    _currentCombo = null;
     
-    // Swap main product image if variant has an image
-    const mainImg = document.getElementById('main-product-image');
-    if (mainImg) {
-        let swapped = false;
+    // ── COMBINATION MODE: Build attribute selection map and look up matching combo ──
+    if (IS_COMBO_MODE) {
+        const comboAttrRadios = document.querySelectorAll('.combo-attr-radio:checked');
+        const selectedAttrs = {};
+        comboAttrRadios.forEach(r => {
+            selectedAttrs[r.dataset.comboAttrName] = r.dataset.value;
+            selectedLabels.push(r.dataset.value);
+        });
+        
+        // Count total combo attribute groups to know if all are selected
+        const totalComboGroups = new Set();
+        document.querySelectorAll('.combo-attr-radio').forEach(r => totalComboGroups.add(r.dataset.comboAttrName));
+        const allSelected = Object.keys(selectedAttrs).length === totalComboGroups.size && totalComboGroups.size > 0;
+        
+        if (allSelected) {
+            // Build the combination key (sorted by attribute name to match backend JSON)
+            const sortedKey = {};
+            Object.keys(selectedAttrs).sort().forEach(k => sortedKey[k] = selectedAttrs[k]);
+            const keyJson = JSON.stringify(sortedKey);
+            
+            // Also try original order (backend may store in attribute sort order)
+            const origKey = JSON.stringify(selectedAttrs);
+            
+            // Look up in combo map
+            const combo = COMBO_LOOKUP[keyJson] || COMBO_LOOKUP[origKey] || _comboFuzzyLookup(selectedAttrs);
+            
+            if (combo) {
+                _currentCombo = combo;
+                hasVariation = true;
+                finalPrice = combo.sell_price;
+                outOfStock = combo.stock <= 0;
+                
+                // Swap image to combo image
+                const mainImg = document.getElementById('main-product-image');
+                if (mainImg && combo.image) {
+                    mainImg.src = combo.image;
+                    if (_slideTimer) clearInterval(_slideTimer);
+                } else if (mainImg) {
+                    if (SLIDE_IMAGES.length > 0) mainImg.src = SLIDE_IMAGES[_slideIdx];
+                    else if (window._originalProductImage) mainImg.src = window._originalProductImage;
+                    resetAutoSlide();
+                }
+            }
+        } else {
+            // Not all attributes selected yet — revert image
+            const mainImg = document.getElementById('main-product-image');
+            if (mainImg) {
+                if (SLIDE_IMAGES.length > 0) mainImg.src = SLIDE_IMAGES[_slideIdx];
+                else if (window._originalProductImage) mainImg.src = window._originalProductImage;
+                resetAutoSlide();
+            }
+        }
+        
+        // Also handle addon radios (non-combo)
         checked.forEach(r => {
-            if (!swapped && r.dataset.variantImage) {
-                mainImg.src = r.dataset.variantImage;
-                swapped = true;
-                if (_slideTimer) clearInterval(_slideTimer); // pause auto-slide
+            if (r.dataset.optionType === 'addon') {
+                const adj = parseFloat(r.dataset.priceAdj) || 0;
+                finalPrice += adj;
+                selectedLabels.push(r.dataset.value);
             }
         });
-        if (!swapped) {
-            // Revert to current slide position
-            if (SLIDE_IMAGES.length > 0) {
-                mainImg.src = SLIDE_IMAGES[_slideIdx];
-            } else if (window._originalProductImage) {
-                mainImg.src = window._originalProductImage;
-            }
-            resetAutoSlide(); // resume auto-slide
-        }
     }
-    
-    // First pass: check for variation type (replaces price)
-    checked.forEach(r => {
-        if (r.dataset.optionType === 'variation') {
-            finalPrice = parseFloat(r.dataset.absPrice) || 0;
-            hasVariation = true;
+    // ── LEGACY MODE: Original logic ──
+    else {
+        // Swap main product image if variant has an image
+        const mainImg = document.getElementById('main-product-image');
+        if (mainImg) {
+            let swapped = false;
+            checked.forEach(r => {
+                if (!swapped && r.dataset.variantImage) {
+                    mainImg.src = r.dataset.variantImage;
+                    swapped = true;
+                    if (_slideTimer) clearInterval(_slideTimer);
+                }
+            });
+            if (!swapped) {
+                if (SLIDE_IMAGES.length > 0) mainImg.src = SLIDE_IMAGES[_slideIdx];
+                else if (window._originalProductImage) mainImg.src = window._originalProductImage;
+                resetAutoSlide();
+            }
         }
-        if (parseInt(r.dataset.stock) <= 0) outOfStock = true;
-        selectedLabels.push(r.dataset.value);
-    });
-    
-    // If no variation, start from base price
-    if (!hasVariation) finalPrice = BASE_PRICE;
-    
-    // Second pass: add addon adjustments
-    let addonTotal = 0;
-    checked.forEach(r => {
-        if (r.dataset.optionType === 'addon') {
-            const adj = parseFloat(r.dataset.priceAdj) || 0;
-            finalPrice += adj;
-            addonTotal += adj;
-        }
-    });
+        
+        // First pass: check for variation type (replaces price)
+        checked.forEach(r => {
+            if (r.dataset.optionType === 'variation') {
+                finalPrice = parseFloat(r.dataset.absPrice) || 0;
+                hasVariation = true;
+            }
+            if (parseInt(r.dataset.stock) <= 0) outOfStock = true;
+            selectedLabels.push(r.dataset.value);
+        });
+        
+        if (!hasVariation) finalPrice = BASE_PRICE;
+        
+        // Second pass: add addon adjustments
+        checked.forEach(r => {
+            if (r.dataset.optionType === 'addon') {
+                finalPrice += parseFloat(r.dataset.priceAdj) || 0;
+            }
+        });
+    }
     
     // Animate price display
     const priceEl = document.getElementById('display-price');
@@ -1034,13 +1206,18 @@ function onVariantChange(explicit) {
     // Show regular vs sale comparison (per-variant for variable products)
     let compareReg = REGULAR_PRICE;
     if (hasVariation) {
-        // Check if selected variation has its own regular price
-        checked.forEach(r => {
-            if (r.dataset.optionType === 'variation') {
-                const varReg = parseFloat(r.dataset.varRegular) || 0;
-                if (varReg > 0) compareReg = varReg;
-            }
-        });
+        if (IS_COMBO_MODE && _currentCombo) {
+            // Combo mode: use the combination's regular_price
+            if (_currentCombo.regular_price > 0) compareReg = _currentCombo.regular_price;
+        } else {
+            // Legacy mode: check selected variation radio data
+            checked.forEach(r => {
+                if (r.dataset.optionType === 'variation') {
+                    const varReg = parseFloat(r.dataset.varRegular) || 0;
+                    if (varReg > 0) compareReg = varReg;
+                }
+            });
+        }
     }
     
     if (showRange) {

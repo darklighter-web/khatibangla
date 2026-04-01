@@ -470,13 +470,38 @@ function addToCart($productId, $quantity = 1, $variantId = null, $customerUpload
     $price = ($priceOverride !== null) ? $priceOverride : getProductPrice($product);
     $variantNames = [];
     $variantIds = [];
+    $db = Database::getInstance();
     
-    // Handle multiple variant IDs (comma-separated)
-    $ids = $variantId ? array_filter(array_map('intval', explode(',', $variantId))) : [];
-    
-    if (!empty($ids)) {
-        $db = Database::getInstance();
-        foreach ($ids as $vid) {
+    // Handle combination mode: variant_id starts with "combo_"
+    $comboId = null;
+    if ($variantId && str_starts_with((string)$variantId, 'combo_')) {
+        $comboId = intval(str_replace('combo_', '', $variantId));
+        try {
+            $combo = $db->fetch("SELECT * FROM product_variant_combinations WHERE id = ? AND product_id = ? AND is_active = 1", [$comboId, $productId]);
+            if ($combo) {
+                $sellPrice = ($combo['sale_price'] > 0 && $combo['sale_price'] < $combo['regular_price']) 
+                    ? floatval($combo['sale_price']) : floatval($combo['regular_price']);
+                $price = $sellPrice;
+                // Build variant name from combination key for order_items compatibility
+                $keyData = json_decode($combo['combination_key'], true);
+                if (is_array($keyData)) {
+                    foreach ($keyData as $attrName => $attrVal) {
+                        $variantNames[] = $attrName . ': ' . $attrVal;
+                    }
+                }
+                $variantIds[] = 'c' . $comboId;
+            }
+        } catch (\Throwable $e) {}
+    }
+    // Handle legacy variant IDs (comma-separated integers) 
+    elseif ($variantId) {
+        // Also handle addon IDs that may be appended after combo
+        $rawIds = array_filter(explode(',', (string)$variantId));
+        foreach ($rawIds as $rawId) {
+            $rawId = trim($rawId);
+            if (str_starts_with($rawId, 'combo_')) continue; // already handled above
+            $vid = intval($rawId);
+            if (!$vid) continue;
             $variant = $db->fetch("SELECT * FROM product_variants WHERE id = ? AND product_id = ? AND is_active = 1", [$vid, $productId]);
             if (!$variant) continue;
             $variantIds[] = $vid;
