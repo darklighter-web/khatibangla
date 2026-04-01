@@ -301,11 +301,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $tempNum = 'TEMP-' . $incId;
             
             // Check if TEMP order already exists
-            $existingTemp = $db->fetch("SELECT id FROM orders WHERE order_number = ?", [$tempNum]);
+            $existingTemp = $db->fetch("SELECT id, order_status FROM orders WHERE order_number = ?", [$tempNum]);
             if ($existingTemp) {
                 $itemCount = intval($db->fetch("SELECT COUNT(*) as c FROM order_items WHERE order_id = ?", [$existingTemp['id']])['c'] ?? 0);
                 if ($itemCount > 0) {
-                    $db->update('incomplete_orders', [$recCol2 => 1, 'recovered_order_id' => $existingTemp['id']], 'id = ?', [$incId]);
+                    // TEMP order exists with items — just open it (do NOT mark is_recovered)
                     header('Location: ' . adminUrl("pages/order-view.php?order=" . urlencode($tempNum))); exit;
                 }
                 // Bad order (0 items) — delete and recreate (ONLY if still incomplete/processing TEMP)
@@ -318,9 +318,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 }
             }
             
-            // Check recovered_order_id pointing to a good order
+            // Check recovered_order_id pointing to a confirmed+ order
             if (!empty($inc['recovered_order_id'])) {
-                $recOrd = $db->fetch("SELECT id, order_number FROM orders WHERE id = ? AND order_status NOT IN ('cancelled')", [$inc['recovered_order_id']]);
+                $recOrd = $db->fetch("SELECT id, order_number FROM orders WHERE id = ? AND order_status NOT IN ('cancelled','incomplete')", [$inc['recovered_order_id']]);
                 if ($recOrd && intval($db->fetch("SELECT COUNT(*) as c FROM order_items WHERE order_id = ?", [$recOrd['id']])['c'] ?? 0) > 0) {
                     header('Location: ' . adminUrl("pages/order-view.php?order=" . urlencode($recOrd['order_number']))); exit;
                 }
@@ -364,7 +364,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 if ($ok === 0) { try { $db->delete('orders', 'id = ?', [$orderId]); } catch (\Throwable $e) {} header('Location: ' . adminUrl('pages/order-management.php?status=incomplete&msg=error&detail=Failed+to+insert+order+items')); exit; }
                 try { $db->insert('order_status_history', ['order_id'=>$orderId,'status'=>'incomplete','changed_by'=>getAdminId(),'note'=>'From incomplete #'.$incId]); } catch (\Throwable $e) {}
                 try { $db->insert('order_tags', ['order_id'=>$orderId,'tag_name'=>'INCOMPLETE_ORDER']); } catch (\Throwable $e) {}
-                $db->update('incomplete_orders', [$recCol2 => 1, 'recovered_order_id' => $orderId], 'id = ?', [$incId]);
+                // Store the TEMP order reference but do NOT mark is_recovered yet
+                // is_recovered is only set when the order is actually confirmed in order-view.php
+                $db->update('incomplete_orders', ['recovered_order_id' => $orderId], 'id = ?', [$incId]);
                 header('Location: ' . adminUrl("pages/order-view.php?order={$tempNum}")); exit;
             } catch (\Throwable $e) { header('Location: ' . adminUrl('pages/order-management.php?status=incomplete&msg=error&detail=' . urlencode($e->getMessage()))); exit; }
         }
