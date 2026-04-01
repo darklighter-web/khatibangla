@@ -854,3 +854,35 @@ SUMMARY OF CHANGES:
   - $hasVariations: now derived from comboLookupMap for combo-mode products
   - $anyExplicitDefault: now checks combo defaults too
   - Price range (min/max) and regular price range: now from combo data
+
+================================================================================
+                          CHANGELOG — 2026-04-02 (Variation Selection Fix)
+================================================================================
+
+FIX #4 — VARIATION SELECTION NOT WORKING (DUPLICATE CLICK HANDLERS)
+  Root Cause: TWO competing click handlers on variant label elements:
+  
+  Handler #1 (IIFE, runs on script load): Used _lastChecked tracking to detect
+  second click for deselection. Added addEventListener('click') to every
+  .product-variant-radio's parent label.
+  
+  Handler #2 (DOMContentLoaded): Used mousedown/touchstart to capture _wasChecked
+  state before browser toggles radio. Added addEventListener('click') to every
+  .variant-option label. Also removed inline onchange="onVariantChange(true)"
+  from radios to prevent double-fire.
+  
+  CONFLICT: Both handlers fired on every click. Handler #1 ran first (attached 
+  earlier), its e.preventDefault() in deselect path prevented browser from 
+  toggling the radio, then Handler #2 saw stale state. Additionally, Handler #1
+  only checked optionType==='variation' for deselect cleanup, missing 'combo_attr'
+  used by combination-mode products.
+  
+  Fix: Removed Handler #1 entirely. Handler #2 (mousedown/touchstart + click)
+  is the correct implementation. Also fixed Handler #2 to check BOTH 'variation'
+  AND 'combo_attr' option types when resetting _variantUserClicked on deselect.
+  Changed onVariantChange() call in deselect branch to onVariantChange(false)
+  for consistency (explicit=false means deselection, not user click).
+  
+  File: pages/product.php
+  Lines removed: ~1097-1124 (old IIFE handler)
+  Lines changed: ~1649-1669 (DOMContentLoaded handler — combo_attr support)

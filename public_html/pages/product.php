@@ -1095,33 +1095,8 @@ let _variantUserClicked = (function(){
 })();
 
 // ── Deselect on second click/tap ──
-// Radio buttons don't natively deselect. Track last-clicked and uncheck if same.
-(function() {
-    const _lastChecked = {};
-    document.querySelectorAll('.product-variant-radio').forEach(radio => {
-        // Use the wrapping <label> click since radio is hidden
-        const label = radio.closest('label');
-        if (!label) return;
-        label.addEventListener('click', function(e) {
-            const name = radio.name;
-            if (_lastChecked[name] === radio && radio.checked) {
-                // Deselect: uncheck this radio
-                e.preventDefault();
-                radio.checked = false;
-                delete _lastChecked[name];
-                // If deselecting a combo_attr or variation, reset user-clicked flag if none remain
-                const anyStillSelected = [...document.querySelectorAll('.product-variant-radio:checked')]
-                    .some(r => r.dataset.optionType === 'variation' || r.dataset.optionType === 'combo_attr');
-                if (!anyStillSelected) _variantUserClicked = false;
-                // Update clear btn visibility
-                if (radio.dataset.groupId) updateClearBtnVisibility(radio.dataset.groupId);
-                onVariantChange(false);
-            } else {
-                _lastChecked[name] = radio;
-            }
-        });
-    });
-})();
+// Handled by the DOMContentLoaded handler below (variant-option click listeners)
+// which uses mousedown/touchstart to reliably capture pre-click checked state.
 function onVariantChange(explicit) {
     if (explicit === true) _variantUserClicked = true;
     const checked = document.querySelectorAll('.product-variant-radio:checked');
@@ -1674,15 +1649,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.preventDefault();
                 radio.checked = false;
                 updateClearBtnVisibility(radio.dataset.groupId);
-                // If this was a variation, check if any variation is still selected
-                if (radio.dataset.optionType === 'variation') {
+                // If this was a variation or combo_attr, check if any is still selected
+                const optType = radio.dataset.optionType;
+                if (optType === 'variation' || optType === 'combo_attr') {
                     const anyVariationStillSelected = [...document.querySelectorAll('.product-variant-radio:checked')]
-                        .some(r => r.dataset.optionType === 'variation');
+                        .some(r => r.dataset.optionType === 'variation' || r.dataset.optionType === 'combo_attr');
                     if (!anyVariationStillSelected) {
                         _variantUserClicked = false;
                     }
                 }
-                onVariantChange();
+                onVariantChange(false);
             } else {
                 // New selection — let browser check it, then update after
                 setTimeout(() => {
