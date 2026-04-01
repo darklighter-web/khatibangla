@@ -178,11 +178,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     }
                 }
                 
-                // ── Post-shipping immutability: prevent reverting shipped/delivered orders to pre-ship statuses ──
-                $postShipStatuses = ['shipped', 'delivered', 'partial_delivered'];
-                $preShipStatuses = ['pending', 'processing', 'confirmed', 'ready_to_ship', 'incomplete'];
-                if (in_array($oldStatus, $postShipStatuses) && in_array($status, $preShipStatuses)) {
-                    $errors[] = "Order #{$oid}: Cannot revert from '{$oldStatus}' to '{$status}' — order already shipped";
+                // ── Post-confirmation immutability: prevent reverting confirmed+ orders to pre-confirm statuses ──
+                $postConfirmStatuses = ['confirmed', 'ready_to_ship', 'shipped', 'delivered', 'partial_delivered', 'pending_return', 'pending_cancel'];
+                $preConfirmStatuses = ['pending', 'processing', 'incomplete'];
+                if (in_array($oldStatus, $postConfirmStatuses) && in_array($status, $preConfirmStatuses)) {
+                    $errors[] = "Order #{$oid}: Cannot revert from '{$oldStatus}' to '{$status}' — order already confirmed";
+                    continue;
+                }
+                
+                // Block cancellation of confirmed+ orders (must go through pending_cancel flow)
+                if ($status === 'cancelled' && in_array($oldStatus, ['confirmed', 'ready_to_ship', 'shipped', 'delivered', 'partial_delivered'])) {
+                    $errors[] = "Order #{$oid}: Cannot directly cancel a '{$oldStatus}' order — use Pending Cancel first";
                     continue;
                 }
                 

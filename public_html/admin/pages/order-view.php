@@ -62,21 +62,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'save_order' || $action === 'confirm_order') {
-        // ── Post-shipping immutability: block edits to shipped/delivered/returned orders ──
-        $immutableStatuses = ['shipped', 'delivered', 'returned', 'partial_delivered'];
+        // ── Post-confirmation immutability: block edits to confirmed+ orders ──
+        $immutableStatuses = ['confirmed', 'ready_to_ship', 'shipped', 'delivered', 'returned', 'partial_delivered', 'pending_return', 'pending_cancel'];
         if ($action === 'save_order' && in_array($order['order_status'], $immutableStatuses)) {
             if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) || (strpos($_SERVER['HTTP_ACCEPT'] ?? '', 'json') !== false)) {
                 while (ob_get_level()) ob_end_clean();
                 header('Content-Type: application/json');
-                echo json_encode(['success' => false, 'message' => 'Cannot edit order after shipping. Status: ' . $order['order_status']]);
+                echo json_encode(['success' => false, 'message' => 'Cannot edit order after confirmation. Status: ' . $order['order_status']]);
                 exit;
             }
             if (!empty($_POST['_iframe'])) {
                 while (ob_get_level()) ob_end_clean();
-                echo '<html><body><script>window.parent.postMessage({type:"orderError",errors:["Cannot edit order after shipping"]},"*");</script></body></html>';
+                echo '<html><body><script>window.parent.postMessage({type:"orderError",errors:["Cannot edit order after confirmation"]},"*");</script></body></html>';
                 exit;
             }
-            redirect(adminUrl("pages/order-view.php?id={$id}&msg=validation_error&detail=" . urlencode('Cannot edit order after shipping. Status: ' . $order['order_status'])));
+            redirect(adminUrl("pages/order-view.php?id={$id}&msg=validation_error&detail=" . urlencode('Cannot edit order after confirmation. Status: ' . $order['order_status'])));
         }
         // Conflict check: ensure we still hold the lock before saving
         try {
@@ -267,6 +267,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $newStatus = sanitize($_POST['status']);
         $notes     = sanitize($_POST['notes'] ?? '');
         $oldStatus = $order['order_status'];
+        
+        // ── Guard: prevent reverting confirmed+ orders to processing/pending ──
+        $postConfirmStatuses = ['confirmed', 'ready_to_ship', 'shipped', 'delivered', 'partial_delivered', 'pending_return', 'pending_cancel'];
+        $preConfirmStatuses = ['pending', 'processing', 'incomplete'];
+        if (in_array($oldStatus, $postConfirmStatuses) && in_array($newStatus, $preConfirmStatuses)) {
+            if (!empty($_SERVER['HTTP_X_REQUESTED_WITH'])) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => "Cannot revert '{$oldStatus}' order to '{$newStatus}'"]);
+                exit;
+            }
+            redirect(adminUrl("pages/order-view.php?id={$id}&msg=validation_error&detail=" . urlencode("Cannot revert '{$oldStatus}' order to '{$newStatus}'")));
+        }
+        
+        // ── Guard: block direct cancellation from confirmed+ (use pending_cancel) ──
+        if ($newStatus === 'cancelled' && in_array($oldStatus, ['confirmed', 'ready_to_ship', 'shipped', 'delivered', 'partial_delivered'])) {
+            if (!empty($_SERVER['HTTP_X_REQUESTED_WITH'])) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => "Cannot directly cancel a '{$oldStatus}' order. Use 'Pending Cancel' first."]);
+                exit;
+            }
+            redirect(adminUrl("pages/order-view.php?id={$id}&msg=validation_error&detail=" . urlencode("Cannot directly cancel '{$oldStatus}' order. Use Pending Cancel first.")));
+        }
+        
         $db->update('orders', ['order_status' => $newStatus, 'updated_at' => date('Y-m-d H:i:s')], 'id = ?', [$id]);
         $db->insert('order_status_history', ['order_id'=>$id,'status'=>$newStatus,'changed_by'=>getAdminId(),'note'=>$notes]);
         logActivity(getAdminId(), 'update_status', 'orders', $id, "Changed to {$newStatus}");
@@ -741,11 +764,11 @@ exit; endif; /* end lockBlocked */ ?>
 
 <!-- ══════════════════════════ MAIN LAYOUT ══════════════════════════ -->
 <?php
-$_isShippedLocked = in_array($order['order_status'], ['shipped', 'delivered', 'returned', 'partial_delivered']);
+$_isShippedLocked = in_array($order['order_status'], ['confirmed', 'ready_to_ship', 'shipped', 'delivered', 'returned', 'partial_delivered', 'pending_return', 'pending_cancel']);
 if ($_isShippedLocked): ?>
 <div class="bg-amber-50 border border-amber-300 text-amber-800 px-4 py-3 rounded-lg mb-4 text-sm flex items-center gap-2">
     <i class="fas fa-lock text-amber-500"></i>
-    <span><strong>Read-only:</strong> This order is <strong><?= ucfirst($order['order_status']) ?></strong> and cannot be edited. Only status changes via the status dropdown are allowed.</span>
+    <span><strong>Read-only:</strong> This order is <strong><?= ucfirst(str_replace('_', ' ', $order['order_status'])) ?></strong> and cannot be edited. Only status changes and courier actions are allowed.</span>
 </div>
 <?php endif; ?>
 <form method="POST" id="orderForm">
@@ -1280,7 +1303,29 @@ function validateConfirmOrder(e){
         <div class="bg-white border border-gray-200 rounded-lg p-3 space-y-2">
             <div class="text-xs font-semibold text-gray-700">Order Actions</div>
             <select id="statusSelect" class="w-full px-3 py-2 border border-gray-200 rounded-md text-sm">
-                <?php foreach(['processing','confirmed','ready_to_ship','shipped','delivered','pending_return','pending_cancel','partial_delivered','cancelled','returned','on_hold','no_response','good_but_no_response','advance_payment','lost'] as $s): ?>
+                <?php
+                // Define allowed transitions per status
+                $allowedTransitions = [
+                    'processing'       => ['processing','confirmed','on_hold','no_response','good_but_no_response','advance_payment','pending_cancel'],
+                    'pending'          => ['processing','confirmed','on_hold','no_response','good_but_no_response','advance_payment','pending_cancel'],
+                    'confirmed'        => ['confirmed','ready_to_ship','on_hold','pending_cancel'],
+                    'ready_to_ship'    => ['ready_to_ship','shipped','on_hold','pending_cancel'],
+                    'shipped'          => ['shipped','delivered','partial_delivered','pending_return','on_hold','lost'],
+                    'delivered'        => ['delivered','pending_return'],
+                    'partial_delivered'=> ['partial_delivered','delivered','pending_return','on_hold'],
+                    'pending_return'   => ['pending_return','returned'],
+                    'pending_cancel'   => ['pending_cancel','cancelled'],
+                    'on_hold'          => ['on_hold','processing','confirmed','ready_to_ship','pending_cancel'],
+                    'no_response'      => ['no_response','processing','confirmed','pending_cancel'],
+                    'good_but_no_response' => ['good_but_no_response','processing','confirmed','pending_cancel'],
+                    'advance_payment'  => ['advance_payment','processing','confirmed'],
+                    'cancelled'        => ['cancelled'],
+                    'returned'         => ['returned'],
+                    'lost'             => ['lost'],
+                ];
+                $currentStatus = $order['order_status'] === 'pending' ? 'processing' : $order['order_status'];
+                $allowed = $allowedTransitions[$currentStatus] ?? ['processing','confirmed','ready_to_ship','shipped','delivered','pending_return','pending_cancel','partial_delivered','cancelled','returned','on_hold','no_response','good_but_no_response','advance_payment','lost'];
+                foreach($allowed as $s): ?>
                 <option value="<?= $s ?>" <?= ($order['order_status']===$s||($s==='processing'&&$order['order_status']==='pending'))?'selected':'' ?>><?= getOrderStatusLabel($s) ?></option>
                 <?php endforeach; ?>
             </select>
