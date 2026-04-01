@@ -1123,10 +1123,8 @@ $_courierBarHidden = !$status || !in_array($status, $_courierVisibleStatuses);
             <?php endif; ?>
             <?php if ($isPreConfirmTab): ?>
             <button type="button" onclick="bStatus('cancelled')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-red-600">✗ Cancel</button>
-            <?php elseif (in_array($status, ['confirmed', 'ready_to_ship'])): ?>
+            <?php elseif (!in_array($status, ['cancelled', 'returned', 'lost'])): ?>
             <button type="button" onclick="bStatus('cancelled')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-red-600">✗ Cancel</button>
-            <?php elseif ($status === 'pending_cancel'): ?>
-            <button type="button" onclick="bStatus('cancelled')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-red-600">✗ Confirm Cancel</button>
             <?php endif; ?>
             <button type="button" onclick="openBulkStatusModal()" class="w-full text-left px-3 py-1.5 text-xs hover:bg-indigo-50 text-indigo-600 font-medium">🔄 Update Status (Any)</button>
             <?php else: ?>
@@ -1960,7 +1958,7 @@ async function toggleRowMenu(el, orderId, orderNum, orderStatus) {
     document.getElementById('rmPrintInv').onclick = () => { rm.classList.add('hidden'); openInvPrint([orderId]); };
     document.getElementById('rmPrintStk').onclick = () => { rm.classList.add('hidden'); openStkPrint([orderId]); };
     
-    // Post-confirmation statuses where edit/cancel are locked
+    // Post-confirmation statuses where edit is locked
     const lockedStatuses = ['confirmed','ready_to_ship','shipped','delivered','returned','partial_delivered','pending_return','pending_cancel','cancelled','lost'];
     const isLocked = lockedStatuses.includes(orderStatus);
     
@@ -1971,13 +1969,13 @@ async function toggleRowMenu(el, orderId, orderNum, orderStatus) {
         rmEdit.onclick = () => { rm.classList.add('hidden'); openEditOrder(orderId, orderNum); };
     }
     
-    // Hide Cancel button for confirmed+ orders (must use pending_cancel flow)
+    // Cancel available from any status except already terminal (cancelled/returned/lost)
     const rmCancel = document.getElementById('rmCancel');
     if (rmCancel) {
-        rmCancel.style.display = isLocked ? 'none' : '';
+        rmCancel.style.display = ['cancelled','returned','lost'].includes(orderStatus) ? 'none' : '';
     }
     
-    // Show/hide status action buttons based on current status
+    // Show/hide forward-progression buttons based on current status
     const rmConfirm = document.getElementById('rmConfirm');
     const rmShip = document.getElementById('rmShip');
     const rmDeliver = document.getElementById('rmDeliver');
