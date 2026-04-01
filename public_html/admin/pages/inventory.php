@@ -167,7 +167,9 @@ $stockSummary = $db->fetch("SELECT
     COUNT(*) as total_products,
     SUM(CASE WHEN stock_quantity <= 0 THEN 1 ELSE 0 END) as out_of_stock,
     SUM(CASE WHEN stock_quantity > 0 AND stock_quantity <= low_stock_threshold THEN 1 ELSE 0 END) as low_stock,
-    SUM(stock_quantity) as total_units
+    SUM(stock_quantity) as total_units,
+    COALESCE(SUM(COALESCE(sale_price, regular_price) * stock_quantity), 0) as sell_value,
+    COALESCE(SUM(cost_price * stock_quantity), 0) as cost_value
     FROM products WHERE is_active=1");
 
 // All products for adjustment dropdown
@@ -181,21 +183,47 @@ include __DIR__ . '/../includes/header.php';
 <?php if ($msg === 'deleted'): ?><div class="mb-4 p-3 bg-green-50 text-green-700 rounded-xl text-sm">Warehouse deleted!</div><?php endif; ?>
 
 <!-- Summary Cards -->
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+<div class="grid grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
     <div class="bg-white rounded-xl border p-4">
-        <p class="text-xs text-gray-500 mb-1">Total Products</p>
+        <div class="flex items-center justify-between mb-1">
+            <p class="text-xs text-gray-500">Products</p>
+            <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+        </div>
         <p class="text-2xl font-bold text-gray-800"><?= number_format($stockSummary['total_products']) ?></p>
     </div>
     <div class="bg-white rounded-xl border p-4">
-        <p class="text-xs text-gray-500 mb-1">Total Units</p>
+        <div class="flex items-center justify-between mb-1">
+            <p class="text-xs text-gray-500">Total Stock</p>
+            <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+        </div>
         <p class="text-2xl font-bold text-blue-600"><?= number_format($stockSummary['total_units']) ?></p>
     </div>
     <div class="bg-white rounded-xl border p-4">
-        <p class="text-xs text-gray-500 mb-1">Low Stock</p>
+        <div class="flex items-center justify-between mb-1">
+            <p class="text-xs text-gray-500">Sell Value</p>
+            <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+        </div>
+        <p class="text-2xl font-bold text-emerald-600">৳<?= number_format($stockSummary['sell_value']) ?></p>
+    </div>
+    <div class="bg-white rounded-xl border p-4">
+        <div class="flex items-center justify-between mb-1">
+            <p class="text-xs text-gray-500">Cost Value</p>
+            <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2v16z"/></svg>
+        </div>
+        <p class="text-2xl font-bold text-orange-600">৳<?= number_format($stockSummary['cost_value']) ?></p>
+    </div>
+    <div class="bg-white rounded-xl border p-4">
+        <div class="flex items-center justify-between mb-1">
+            <p class="text-xs text-gray-500">Low Stock</p>
+            <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+        </div>
         <p class="text-2xl font-bold text-yellow-600"><?= number_format($stockSummary['low_stock']) ?></p>
     </div>
     <div class="bg-white rounded-xl border p-4">
-        <p class="text-xs text-gray-500 mb-1">Out of Stock</p>
+        <div class="flex items-center justify-between mb-1">
+            <p class="text-xs text-gray-500">Out of Stock</p>
+            <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
         <p class="text-2xl font-bold text-red-600"><?= number_format($stockSummary['out_of_stock']) ?></p>
     </div>
 </div>
