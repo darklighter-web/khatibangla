@@ -64,6 +64,14 @@ $totalPages = ceil($total / $limit);
 $products = $db->fetchAll("SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE {$where} ORDER BY p.created_at DESC LIMIT {$limit} OFFSET {$offset}", $params);
 $categories = $db->fetchAll("SELECT * FROM categories WHERE is_active = 1 ORDER BY name");
 
+// Product summary stats
+$productSummary = $db->fetch("SELECT 
+    COUNT(*) as total_products,
+    COALESCE(SUM(stock_quantity), 0) as total_stock,
+    COALESCE(SUM(COALESCE(sale_price, regular_price) * stock_quantity), 0) as sell_value,
+    COALESCE(SUM(cost_price * stock_quantity), 0) as cost_value
+    FROM products WHERE is_active = 1") ?: ['total_products'=>0,'total_stock'=>0,'sell_value'=>0,'cost_value'=>0];
+
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
@@ -72,6 +80,38 @@ require_once __DIR__ . '/../includes/header.php';
     <?= $_GET['msg'] === 'saved' ? 'Product saved successfully.' : ($_GET['msg'] === 'deleted' ? 'Product deleted.' : 'Products deleted.') ?>
 </div>
 <?php endif; ?>
+
+<!-- Summary Cards -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white rounded-xl border p-4">
+        <div class="flex items-center justify-between mb-1">
+            <p class="text-xs text-gray-500">Products</p>
+            <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+        </div>
+        <p class="text-2xl font-bold text-gray-800"><?= number_format($productSummary['total_products']) ?></p>
+    </div>
+    <div class="bg-white rounded-xl border p-4">
+        <div class="flex items-center justify-between mb-1">
+            <p class="text-xs text-gray-500">Total Stock</p>
+            <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+        </div>
+        <p class="text-2xl font-bold text-gray-800"><?= number_format($productSummary['total_stock']) ?></p>
+    </div>
+    <div class="bg-white rounded-xl border p-4">
+        <div class="flex items-center justify-between mb-1">
+            <p class="text-xs text-gray-500">Sell Value</p>
+            <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+        </div>
+        <p class="text-2xl font-bold text-emerald-600">৳<?= number_format($productSummary['sell_value']) ?></p>
+    </div>
+    <div class="bg-white rounded-xl border p-4">
+        <div class="flex items-center justify-between mb-1">
+            <p class="text-xs text-gray-500">Cost Value</p>
+            <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2v16z"/></svg>
+        </div>
+        <p class="text-2xl font-bold text-orange-600">৳<?= number_format($productSummary['cost_value']) ?></p>
+    </div>
+</div>
 
 <!-- Filters -->
 <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
