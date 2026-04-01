@@ -186,12 +186,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     continue;
                 }
                 
-                // Block cancellation of confirmed+ orders (must go through pending_cancel flow)
-                if ($status === 'cancelled' && in_array($oldStatus, ['confirmed', 'ready_to_ship', 'shipped', 'delivered', 'partial_delivered'])) {
-                    $errors[] = "Order #{$oid}: Cannot directly cancel a '{$oldStatus}' order — use Pending Cancel first";
-                    continue;
-                }
-                
                 // Enforce return flow: 'returned' can only be set from 'pending_return'
                 if ($status === 'returned' && $oldStatus !== 'pending_return') {
                     $errors[] = "Order #{$oid}: Must be in Pending Return before confirming as Returned";
@@ -1130,7 +1124,7 @@ $_courierBarHidden = !$status || !in_array($status, $_courierVisibleStatuses);
             <?php if ($isPreConfirmTab): ?>
             <button type="button" onclick="bStatus('cancelled')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-red-600">✗ Cancel</button>
             <?php elseif (in_array($status, ['confirmed', 'ready_to_ship'])): ?>
-            <button type="button" onclick="bStatus('pending_cancel')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-red-600">⏳ Pending Cancel</button>
+            <button type="button" onclick="bStatus('cancelled')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-red-600">✗ Cancel</button>
             <?php elseif ($status === 'pending_cancel'): ?>
             <button type="button" onclick="bStatus('cancelled')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-red-600">✗ Confirm Cancel</button>
             <?php endif; ?>

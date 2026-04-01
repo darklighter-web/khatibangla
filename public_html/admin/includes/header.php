@@ -749,6 +749,7 @@ document.addEventListener('click',e=>{
                 subItem('report-web-orders', 'Web Order Report'),
                 subItem('report-meta-ads', 'Meta Ads Report'),
                 subItem('report-business', 'Business Reports'),
+                subItem('report-cancel-log', 'Cancel & Delete Log'),
             ]);
             if (trim($financeItems)): ?>
             <?= navSection('Finance') ?>

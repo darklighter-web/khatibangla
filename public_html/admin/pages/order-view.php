@@ -280,16 +280,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect(adminUrl("pages/order-view.php?id={$id}&msg=validation_error&detail=" . urlencode("Cannot revert '{$oldStatus}' order to '{$newStatus}'")));
         }
         
-        // ── Guard: block direct cancellation from confirmed+ (use pending_cancel) ──
-        if ($newStatus === 'cancelled' && in_array($oldStatus, ['confirmed', 'ready_to_ship', 'shipped', 'delivered', 'partial_delivered'])) {
-            if (!empty($_SERVER['HTTP_X_REQUESTED_WITH'])) {
-                header('Content-Type: application/json');
-                echo json_encode(['success' => false, 'message' => "Cannot directly cancel a '{$oldStatus}' order. Use 'Pending Cancel' first."]);
-                exit;
-            }
-            redirect(adminUrl("pages/order-view.php?id={$id}&msg=validation_error&detail=" . urlencode("Cannot directly cancel '{$oldStatus}' order. Use Pending Cancel first.")));
-        }
-        
         $db->update('orders', ['order_status' => $newStatus, 'updated_at' => date('Y-m-d H:i:s')], 'id = ?', [$id]);
         $db->insert('order_status_history', ['order_id'=>$id,'status'=>$newStatus,'changed_by'=>getAdminId(),'note'=>$notes]);
         logActivity(getAdminId(), 'update_status', 'orders', $id, "Changed to {$newStatus}");
@@ -1306,22 +1296,22 @@ function validateConfirmOrder(e){
                 <?php
                 // Define allowed transitions per status
                 $allowedTransitions = [
-                    'processing'       => ['processing','confirmed','on_hold','no_response','good_but_no_response','advance_payment','pending_cancel'],
-                    'pending'          => ['processing','confirmed','on_hold','no_response','good_but_no_response','advance_payment','pending_cancel'],
-                    'confirmed'        => ['confirmed','ready_to_ship','on_hold','pending_cancel'],
-                    'ready_to_ship'    => ['ready_to_ship','shipped','on_hold','pending_cancel'],
-                    'shipped'          => ['shipped','delivered','partial_delivered','pending_return','on_hold','lost'],
-                    'delivered'        => ['delivered','pending_return'],
-                    'partial_delivered'=> ['partial_delivered','delivered','pending_return','on_hold'],
-                    'pending_return'   => ['pending_return','returned'],
+                    'processing'       => ['processing','confirmed','cancelled','on_hold','no_response','good_but_no_response','advance_payment','pending_cancel'],
+                    'pending'          => ['processing','confirmed','cancelled','on_hold','no_response','good_but_no_response','advance_payment','pending_cancel'],
+                    'confirmed'        => ['confirmed','ready_to_ship','cancelled','on_hold','pending_cancel'],
+                    'ready_to_ship'    => ['ready_to_ship','shipped','cancelled','on_hold','pending_cancel'],
+                    'shipped'          => ['shipped','delivered','partial_delivered','cancelled','pending_return','on_hold','lost'],
+                    'delivered'        => ['delivered','cancelled','pending_return'],
+                    'partial_delivered'=> ['partial_delivered','delivered','cancelled','pending_return','on_hold'],
+                    'pending_return'   => ['pending_return','returned','cancelled'],
                     'pending_cancel'   => ['pending_cancel','cancelled'],
-                    'on_hold'          => ['on_hold','processing','confirmed','ready_to_ship','pending_cancel'],
-                    'no_response'      => ['no_response','processing','confirmed','pending_cancel'],
-                    'good_but_no_response' => ['good_but_no_response','processing','confirmed','pending_cancel'],
-                    'advance_payment'  => ['advance_payment','processing','confirmed'],
+                    'on_hold'          => ['on_hold','processing','confirmed','ready_to_ship','cancelled','pending_cancel'],
+                    'no_response'      => ['no_response','processing','confirmed','cancelled','pending_cancel'],
+                    'good_but_no_response' => ['good_but_no_response','processing','confirmed','cancelled','pending_cancel'],
+                    'advance_payment'  => ['advance_payment','processing','confirmed','cancelled'],
                     'cancelled'        => ['cancelled'],
                     'returned'         => ['returned'],
-                    'lost'             => ['lost'],
+                    'lost'             => ['lost','cancelled'],
                 ];
                 $currentStatus = $order['order_status'] === 'pending' ? 'processing' : $order['order_status'];
                 $allowed = $allowedTransitions[$currentStatus] ?? ['processing','confirmed','ready_to_ship','shipped','delivered','pending_return','pending_cancel','partial_delivered','cancelled','returned','on_hold','no_response','good_but_no_response','advance_payment','lost'];
