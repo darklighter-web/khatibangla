@@ -41,9 +41,20 @@ if ($isLockCheck && $id && $isProcSession) {
     }
     exit;
 }
-if (!$id) redirect(adminUrl('pages/order-management.php'));
+if (!$id) {
+    // If looking for a TEMP order that doesn't exist, redirect to incomplete tab
+    if (strpos($orderNum, 'TEMP-') === 0) {
+        redirect(adminUrl('pages/order-management.php?status=incomplete&msg=error&detail=' . urlencode('TEMP order not found. Please re-open the incomplete order.')));
+    }
+    redirect(adminUrl('pages/order-management.php'));
+}
 $order = $db->fetch("SELECT * FROM orders WHERE id = ?", [$id]);
-if (!$order) redirect(adminUrl('pages/order-management.php'));
+if (!$order) {
+    if (strpos($orderNum, 'TEMP-') === 0) {
+        redirect(adminUrl('pages/order-management.php?status=incomplete&msg=error&detail=' . urlencode('TEMP order was removed. Please re-open the incomplete order.')));
+    }
+    redirect(adminUrl('pages/order-management.php'));
+}
 
 /* ─── POST Actions ─── */
 $__currentAdminId = getAdminId(); // Needed early for lock conflict check

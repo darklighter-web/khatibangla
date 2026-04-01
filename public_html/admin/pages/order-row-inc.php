@@ -58,7 +58,7 @@
     <td data-col="shipping"><span style="color:#d1d5db">—</span></td>
     <td style="text-align:center;vertical-align:middle">
         <?php if(!$isRec):?>
-        <form method="POST" style="display:inline"<?php if($__isTooNew):?> onsubmit="return confirm('⚠️ Only <?=$__ageMin?>m old — customer may still be typing.\n\nOpen anyway?')"<?php endif;?>>
+        <form method="POST" style="display:inline" id="inc-form-<?= $inc['id'] ?>"<?php if($__isTooNew):?> onsubmit="event.preventDefault();(async()=>{const ok=await window._confirmAsync('⚠️ Only <?=$__ageMin?>m old. Customer may still be typing. Open anyway?');if(ok){this.removeAttribute('onsubmit');this.submit();}}).call(this);return false;"<?php endif;?>>
             <input type="hidden" name="action" value="open_incomplete">
             <input type="hidden" name="inc_id" value="<?= $inc['id'] ?>">
             <button type="submit" style="display:inline-flex;align-items:center;gap:3px;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:500;color:#16a34a;background:transparent;border:none;cursor:pointer" onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='transparent'">Open <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></button>

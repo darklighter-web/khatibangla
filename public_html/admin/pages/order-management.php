@@ -303,26 +303,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             // Check if TEMP order already exists
             $existingTemp = $db->fetch("SELECT id, order_status FROM orders WHERE order_number = ?", [$tempNum]);
             if ($existingTemp) {
+                // If the TEMP order was confirmed/shipped/delivered, redirect to its real order
+                if (in_array($existingTemp['order_status'], ['confirmed','ready_to_ship','shipped','delivered','partial_delivered'])) {
+                    header('Location: ' . adminUrl("pages/order-view.php?id=" . $existingTemp['id'])); exit;
+                }
+                
                 $itemCount = intval($db->fetch("SELECT COUNT(*) as c FROM order_items WHERE order_id = ?", [$existingTemp['id']])['c'] ?? 0);
-                if ($itemCount > 0) {
-                    // TEMP order exists with items — just open it (do NOT mark is_recovered)
+                
+                // If it's still a valid incomplete/processing TEMP with items, reuse it
+                if ($itemCount > 0 && in_array($existingTemp['order_status'], ['incomplete','processing','pending'])) {
                     header('Location: ' . adminUrl("pages/order-view.php?order=" . urlencode($tempNum))); exit;
                 }
-                // Bad order (0 items) — delete and recreate (ONLY if still incomplete/processing TEMP)
-                $__safeToDelete = in_array($existingTemp['order_status'] ?? 'incomplete', ['incomplete', 'processing', 'pending']);
+                
+                // Bad or cancelled TEMP order — clean up and recreate
+                $__safeToDelete = in_array($existingTemp['order_status'], ['incomplete', 'processing', 'pending', 'cancelled']);
                 if ($__safeToDelete) {
                     try { $db->delete('order_items', 'order_id = ?', [$existingTemp['id']]); } catch (\Throwable $e) {}
                     try { $db->delete('order_status_history', 'order_id = ?', [$existingTemp['id']]); } catch (\Throwable $e) {}
                     try { $db->delete('order_tags', 'order_id = ?', [$existingTemp['id']]); } catch (\Throwable $e) {}
-                    try { $db->query("DELETE FROM orders WHERE id = ? AND order_status IN ('incomplete','processing','pending')", [$existingTemp['id']]); } catch (\Throwable $e) {}
+                    try { $db->query("DELETE FROM orders WHERE id = ?", [$existingTemp['id']]); } catch (\Throwable $e) {}
+                    // Reset the recovered_order_id since we're recreating
+                    try { $db->update('incomplete_orders', ['recovered_order_id' => null], 'id = ?', [$incId]); } catch (\Throwable $e) {}
                 }
             }
             
-            // Check recovered_order_id pointing to a confirmed+ order
+            // Check recovered_order_id pointing to a confirmed+ order (not cancelled, not incomplete TEMP)
             if (!empty($inc['recovered_order_id'])) {
-                $recOrd = $db->fetch("SELECT id, order_number FROM orders WHERE id = ? AND order_status NOT IN ('cancelled','incomplete')", [$inc['recovered_order_id']]);
+                $recOrd = $db->fetch("SELECT id, order_number, order_status FROM orders WHERE id = ? AND order_status NOT IN ('cancelled','incomplete')", [$inc['recovered_order_id']]);
                 if ($recOrd && intval($db->fetch("SELECT COUNT(*) as c FROM order_items WHERE order_id = ?", [$recOrd['id']])['c'] ?? 0) > 0) {
-                    header('Location: ' . adminUrl("pages/order-view.php?order=" . urlencode($recOrd['order_number']))); exit;
+                    // Only redirect if it's a real confirmed+ order (not another TEMP)
+                    if (strpos($recOrd['order_number'], 'TEMP-') !== 0) {
+                        header('Location: ' . adminUrl("pages/order-view.php?order=" . urlencode($recOrd['order_number']))); exit;
+                    }
                 }
             }
             
@@ -500,7 +512,7 @@ $nextAction = [
 $statusCounts = [];
 foreach ($allStatuses as $s) { $statusCounts[$s] = 0; }
 try {
-    $scRows = $db->fetchAll("SELECT order_status, COUNT(*) as cnt FROM orders GROUP BY order_status");
+    $scRows = $db->fetchAll("SELECT order_status, COUNT(*) as cnt FROM orders WHERE order_number NOT LIKE 'TEMP-%' GROUP BY order_status");
     foreach ($scRows as $scr) {
         $st = $scr['order_status'];
         if (isset($statusCounts[$st])) $statusCounts[$st] = intval($scr['cnt']);
@@ -575,6 +587,8 @@ if ($_isIncompleteView) {
 $where = '1=1'; $params = [];
 // Incomplete orders have their own tab — never show in other tabs
 $where .= " AND o.order_status != 'incomplete'";
+// TEMP orders (from incomplete recovery) should never show in main list
+$where .= " AND o.order_number NOT LIKE 'TEMP-%'";
 if ($status && $status !== 'incomplete') {
     if ($status === 'processing') {
         $where .= " AND o.order_status IN ('processing','pending')";
@@ -1234,6 +1248,7 @@ $_courierBarHidden = !$status || !in_array($status, $_courierVisibleStatuses);
         <?php if(!$isRec):?>
         <div style="display:flex;align-items:center;justify-content:center;gap:4px">
             <button onclick='viewDetails(<?=json_encode($inc,JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE)?>,<?=json_encode($cart,JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE)?>)' style="font-size:11px;background:#f3f4f6;color:#374151;padding:5px 10px;border-radius:6px;border:none;cursor:pointer;font-weight:500">Details</button>
+            <button onclick='openIncomplete(<?=json_encode($inc,JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE)?>,<?=$__isTooNew?'true':'false'?>,<?=$__ageMin?>)' style="font-size:11px;background:transparent;color:#16a34a;padding:5px 10px;border-radius:6px;border:1px solid #16a34a;cursor:pointer;font-weight:500">Open</button>
             <?php if(!empty($inc['customer_phone'])):?>
             <button onclick='confirmIncomplete(<?=json_encode($inc,JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE)?>,<?=json_encode($cart,JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE)?>,<?=$__isTooNew?'true':'false'?>,<?=$__ageMin?>)' style="font-size:11px;background:#16a34a;color:#fff;padding:5px 10px;border-radius:6px;border:none;cursor:pointer;font-weight:600">✓ Confirm</button>
             <?php endif;?>
@@ -2080,7 +2095,7 @@ OM._fetch = async function(params) {
 
 // ── Rate Popup: Refresh (rebuild from DB) & Fetch All (call courier APIs) ──
 // ── Incomplete Order Functions ──
-async function openIncomplete(inc, cart, isTooNew, ageMin) {
+async function openIncomplete(inc, isTooNew, ageMin) {
     if (isTooNew) {
         var ok = await window._confirmAsync('⚠️ This incomplete order is only '+ageMin+' minute(s) old!\n\nThe customer may still be typing.\nAre you sure you want to open it?');
         if (!ok) return;
