@@ -1104,13 +1104,36 @@ $_courierBarHidden = !$status || !in_array($status, $_courierVisibleStatuses);
             <button type="button" onclick="openPickingList()" class="w-full text-left px-3 py-1.5 text-xs hover:bg-green-50 text-green-700 font-medium">📦 Picking List</button>
             <?php if (empty($_isProcessingView)): ?>
             <hr class="my-0.5"><p class="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase">Status</p>
+            <?php
+            // Only show status actions relevant to the current tab
+            $preConfirmTabs = ['', 'processing', 'no_response', 'good_but_no_response', 'advance_payment', 'on_hold', 'incomplete'];
+            $isPreConfirmTab = in_array($status, $preConfirmTabs);
+            ?>
+            <?php if ($isPreConfirmTab): ?>
             <button type="button" onclick="bStatus('confirmed')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">✅ Confirm</button>
+            <?php endif; ?>
+            <?php if (in_array($status, ['', 'confirmed', 'on_hold'])): ?>
             <button type="button" onclick="bStatus('ready_to_ship')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">📦 Ready to Ship</button>
+            <?php endif; ?>
+            <?php if (in_array($status, ['', 'confirmed', 'ready_to_ship'])): ?>
             <button type="button" onclick="bStatus('shipped')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">🚚 Ship</button>
+            <?php endif; ?>
+            <?php if (in_array($status, ['', 'shipped', 'partial_delivered'])): ?>
             <button type="button" onclick="bStatus('delivered')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">📦 Deliver</button>
+            <?php endif; ?>
+            <?php if (in_array($status, ['', 'shipped', 'delivered', 'partial_delivered'])): ?>
             <button type="button" onclick="bStatus('pending_return')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-amber-600">📦 Pending Return</button>
+            <?php endif; ?>
+            <?php if (in_array($status, ['', 'pending_return'])): ?>
             <button type="button" onclick="bStatus('returned')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-orange-600">↩ Confirm Return</button>
+            <?php endif; ?>
+            <?php if ($isPreConfirmTab): ?>
             <button type="button" onclick="bStatus('cancelled')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-red-600">✗ Cancel</button>
+            <?php elseif (in_array($status, ['confirmed', 'ready_to_ship'])): ?>
+            <button type="button" onclick="bStatus('pending_cancel')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-red-600">⏳ Pending Cancel</button>
+            <?php elseif ($status === 'pending_cancel'): ?>
+            <button type="button" onclick="bStatus('cancelled')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-red-600">✗ Confirm Cancel</button>
+            <?php endif; ?>
             <button type="button" onclick="openBulkStatusModal()" class="w-full text-left px-3 py-1.5 text-xs hover:bg-indigo-50 text-indigo-600 font-medium">🔄 Update Status (Any)</button>
             <?php else: ?>
             <hr class="my-0.5"><p class="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase">Quick Action</p>
