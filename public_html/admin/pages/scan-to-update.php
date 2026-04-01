@@ -55,22 +55,17 @@ if (isset($_POST['ajax_scan'])) {
             $allowedFrom = ['processing', 'confirmed', 'pending', 'on_hold', 'advance_payment', 'ready_to_ship'];
             break;
         case 'pending_return':
-            // Parcel physically received back from courier — mark as pending return for admin review
-            $targetStatus = 'pending_return';
-            $statusLabel = 'Pending Return';
-            $allowedFrom = ['shipped', 'delivered', 'partial_delivered', 'on_hold'];
-            break;
         case 'return':
-            // Admin confirms the return after reviewing — only from pending_return
+            // Direct return — no pending step
             $targetStatus = 'returned';
             $statusLabel = 'Returned';
-            $allowedFrom = ['pending_return'];
+            $allowedFrom = ['shipped', 'delivered', 'partial_delivered', 'on_hold', 'pending_return'];
             break;
         case 'rts':
-            // Return To Sender — parcel received, mark pending return (not directly returned)
-            $targetStatus = 'pending_return';
-            $statusLabel = 'Pending Return (RTS)';
-            $allowedFrom = ['shipped', 'pending_return', 'on_hold'];
+            // Return To Sender — mark directly as returned
+            $targetStatus = 'returned';
+            $statusLabel = 'Returned (RTS)';
+            $allowedFrom = ['shipped', 'delivered', 'partial_delivered', 'pending_return', 'on_hold'];
             break;
         case 'delivered':
             $targetStatus = 'delivered';
@@ -161,7 +156,7 @@ $tab = $_GET['tab'] ?? 'shipping';
         <?php
         $tabs = [
             'shipping'       => ['Scan To Shipping', 'fa-truck', 'blue'],
-            'pending_return' => ['Scan To Pending Return', 'fa-box-open', 'amber'],
+            'pending_return' => ['Scan To Return', 'fa-box-open', 'amber'],
             'return'         => ['Confirm Return', 'fa-undo-alt', 'orange'],
             'rts'            => ['Scan To RTS', 'fa-reply-all', 'red'],
             'delivered'      => ['Scan To Delivered', 'fa-check-circle', 'green'],

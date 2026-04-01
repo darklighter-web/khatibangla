@@ -86,14 +86,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $orderId = intval($_POST['order_id']);
         $newStatus = sanitize($_POST['status']);
         
-        // Enforce return flow
         $currentOrder = $db->fetch("SELECT order_status FROM orders WHERE id=?", [$orderId]);
         $curStat = $currentOrder['order_status'] ?? '';
-        if ($newStatus === 'returned' && $curStat !== 'pending_return') {
-            header('Content-Type: application/json');
-            echo json_encode(['success' => false, 'error' => 'Order must be in Pending Return before confirming as Returned']);
-            exit;
-        }
         
         $db->update('orders', ['order_status' => $newStatus, 'updated_at' => date('Y-m-d H:i:s')], 'id = ?', [$orderId]);
         try { $db->insert('order_status_history', ['order_id' => $orderId, 'status' => $newStatus, 'changed_by' => getAdminId(), 'note' => sanitize($_POST['notes'] ?? '')]); } catch (Exception $e) {}
@@ -183,18 +177,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $preConfirmStatuses = ['pending', 'processing', 'incomplete'];
                 if (in_array($oldStatus, $postConfirmStatuses) && in_array($status, $preConfirmStatuses)) {
                     $errors[] = "Order #{$oid}: Cannot revert from '{$oldStatus}' to '{$status}' — order already confirmed";
-                    continue;
-                }
-                
-                // Enforce return flow: 'returned' can only be set from 'pending_return'
-                if ($status === 'returned' && $oldStatus !== 'pending_return') {
-                    $errors[] = "Order #{$oid}: Must be in Pending Return before confirming as Returned";
-                    continue;
-                }
-                
-                // Enforce pending_return: only from shipped/delivered/partial_delivered/on_hold
-                if ($status === 'pending_return' && !in_array($oldStatus, ['shipped', 'delivered', 'partial_delivered', 'on_hold'])) {
-                    $errors[] = "Order #{$oid}: Cannot move to Pending Return from {$oldStatus}";
                     continue;
                 }
                 
@@ -503,7 +485,7 @@ $nextAction = [
     'confirmed'  => ['status' => 'ready_to_ship', 'label' => 'Ready to Ship', 'icon' => '📦', 'color' => 'violet'],
     'ready_to_ship' => ['status' => 'shipped', 'label' => 'Ship', 'icon' => '🚚', 'color' => 'purple'],
     'shipped'    => ['status' => 'delivered',  'label' => 'Deliver', 'icon' => '📦', 'color' => 'green'],
-    'pending_return' => ['status' => 'returned', 'label' => 'Confirm Return', 'icon' => '↩', 'color' => 'orange'],
+    'pending_return' => ['status' => 'returned', 'label' => 'Confirm Return', 'icon' => '↩', 'color' => 'orange'],  // legacy: still handle if orders are stuck in this state
     'pending_cancel' => ['status' => 'cancelled', 'label' => 'Confirm Cancel', 'icon' => '✗', 'color' => 'red'],
     'partial_delivered' => ['status' => 'delivered', 'label' => 'Mark Delivered', 'icon' => '📦', 'color' => 'green'],
 ];
@@ -1116,10 +1098,7 @@ $_courierBarHidden = !$status || !in_array($status, $_courierVisibleStatuses);
             <button type="button" onclick="bStatus('delivered')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">📦 Deliver</button>
             <?php endif; ?>
             <?php if (in_array($status, ['', 'shipped', 'delivered', 'partial_delivered'])): ?>
-            <button type="button" onclick="bStatus('pending_return')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-amber-600">📦 Pending Return</button>
-            <?php endif; ?>
-            <?php if (in_array($status, ['', 'pending_return'])): ?>
-            <button type="button" onclick="bStatus('returned')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-orange-600">↩ Confirm Return</button>
+            <button type="button" onclick="bStatus('returned')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-orange-600">↩ Return</button>
             <?php endif; ?>
             <?php if ($isPreConfirmTab): ?>
             <button type="button" onclick="bStatus('cancelled')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-red-600">✗ Cancel</button>
