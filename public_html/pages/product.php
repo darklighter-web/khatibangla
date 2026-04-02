@@ -876,7 +876,7 @@ if ($isCombinationMode) {
                 </div>
             </div>
 
-            <!-- Variation groups (only variation type, not addons) -->
+            <!-- Variation groups (variation type) -->
             <?php foreach ($variantGroups as $groupKey => $groupData):
                 $gVariants = $groupData['items'];
                 $isComboGroup = !empty($groupData['is_combo_attr']);
@@ -901,9 +901,10 @@ if ($isCombinationMode) {
                                data-main-val="<?= $gvValue ?>"
                                <?php if ($isComboGroup): ?>
                                data-combo-attr-name="<?= htmlspecialchars($gv['variant_name']) ?>"
+                               data-combo-attr-value="<?= htmlspecialchars($gv['variant_value']) ?>"
                                data-option-type="combo_attr"
                                <?php endif; ?>
-                               class="hidden vp-radio"
+                               class="hidden vp-radio vp-variation-radio"
                                <?= $gvOos ? 'disabled' : '' ?>
                                onchange="onVarPickerChange()">
                         <?php if ($gvImg): ?>
@@ -913,6 +914,51 @@ if ($isCombinationMode) {
                             <?= htmlspecialchars($gv['variant_value']) ?>
                             <?php if (!$isComboGroup && $gv['absolute_price']): ?>
                             <span class="text-xs text-gray-500">(<?= formatPrice($gv['absolute_price']) ?>)</span>
+                            <?php endif; ?>
+                            <?php if ($gvOos): ?>
+                            <span class="text-xs text-red-400">(স্টক শেষ)</span>
+                            <?php endif; ?>
+                        </span>
+                    </label>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endforeach; ?>
+
+            <!-- Addon groups (optional, toggleable) -->
+            <?php foreach ($variantGroups as $groupKey => $groupData):
+                $gVariants = $groupData['items'];
+                $isComboGroup = !empty($groupData['is_combo_attr']);
+                $gOptType = $isComboGroup ? 'variation' : ($gVariants[0]['option_type'] ?? 'addon');
+                if ($gOptType !== 'addon') continue;
+                $gId = md5($groupKey);
+            ?>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    <?= htmlspecialchars($groupData['display_name']) ?>
+                    <span class="text-xs text-blue-500 font-normal">(অ্যাডঅন)</span>
+                </label>
+                <div class="flex flex-wrap gap-2">
+                    <?php foreach ($gVariants as $gv):
+                        $gvOos = $gv['stock_quantity'] <= 0;
+                        $gvAdj = floatval($gv['price_adjustment'] ?? 0);
+                    ?>
+                    <label class="vp-addon-label inline-flex items-center border-2 rounded-xl px-4 py-2.5 cursor-pointer has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50 hover:border-gray-400 transition <?= $gvOos ? 'opacity-50' : '' ?>">
+                        <input type="checkbox" name="vp_addon_<?= $gId ?>" 
+                               value="<?= $gv['id'] ?>"
+                               data-price-adj="<?= $gvAdj ?>"
+                               data-main-radio="variant_group_<?= $gId ?>"
+                               data-main-val="<?= $gv['id'] ?>"
+                               data-option-type="addon"
+                               class="hidden vp-radio vp-addon-radio"
+                               <?= $gvOos ? 'disabled' : '' ?>
+                               onchange="onVarPickerChange()">
+                        <span class="text-sm font-medium">
+                            <?= htmlspecialchars($gv['variant_value']) ?>
+                            <?php if ($gvAdj > 0): ?>
+                            <span class="text-xs text-gray-500">(+<?= formatPrice($gvAdj) ?>)</span>
+                            <?php elseif ($gvAdj < 0): ?>
+                            <span class="text-xs text-green-600">(<?= formatPrice($gvAdj) ?>)</span>
                             <?php endif; ?>
                             <?php if ($gvOos): ?>
                             <span class="text-xs text-red-400">(স্টক শেষ)</span>
@@ -1104,6 +1150,7 @@ function onVariantChange(explicit) {
     let hasVariation = false;
     let outOfStock = false;
     let selectedLabels = [];
+    let addonTotal = 0;
     _currentCombo = null;
     
     // ── COMBINATION MODE: Build attribute selection map and look up matching combo ──
@@ -1163,6 +1210,7 @@ function onVariantChange(explicit) {
         checked.forEach(r => {
             if (r.dataset.optionType === 'addon') {
                 const adj = parseFloat(r.dataset.priceAdj) || 0;
+                addonTotal += adj;
                 finalPrice += adj;
                 selectedLabels.push(r.dataset.value);
             }
@@ -1203,7 +1251,9 @@ function onVariantChange(explicit) {
         // Second pass: add addon adjustments
         checked.forEach(r => {
             if (r.dataset.optionType === 'addon') {
-                finalPrice += parseFloat(r.dataset.priceAdj) || 0;
+                const adj = parseFloat(r.dataset.priceAdj) || 0;
+                addonTotal += adj;
+                finalPrice += adj;
             }
         });
     }
@@ -1480,25 +1530,28 @@ function openVarPicker() {
     const overlay = document.getElementById('varPickerOverlay');
     if (!overlay) return;
     
-    // Check if we can auto-select (single option per group → skip popup entirely)
-    const vpRadios = overlay.querySelectorAll('.vp-radio:not(:disabled)');
+    // Check if we can auto-select variations (single option per variation group → skip popup)
+    // Only skip if there are NO addon groups (so user can still pick addons)
+    const vpVarRadios = overlay.querySelectorAll('.vp-variation-radio:not(:disabled)');
+    const hasAddons = overlay.querySelectorAll('.vp-addon-radio').length > 0;
     const vpGroups = {};
-    vpRadios.forEach(r => {
+    vpVarRadios.forEach(r => {
         if (!vpGroups[r.name]) vpGroups[r.name] = [];
         vpGroups[r.name].push(r);
     });
     const groupNames = Object.keys(vpGroups);
     const allSingleOption = groupNames.every(g => vpGroups[g].length === 1);
     
-    if (allSingleOption && groupNames.length > 0) {
-        // Auto-select all single options and confirm immediately (skip popup)
+    if (allSingleOption && groupNames.length > 0 && !hasAddons) {
+        // Auto-select all single variation options and confirm immediately (skip popup)
         groupNames.forEach(g => { vpGroups[g][0].checked = true; });
         confirmVarPicker();
         return;
     }
     
-    // Reset popup selections
-    overlay.querySelectorAll('.vp-radio').forEach(r => r.checked = false);
+    // Reset popup selections (both variations and addons)
+    overlay.querySelectorAll('.vp-radio').forEach(r => { if (r.type === 'radio') r.checked = false; });
+    overlay.querySelectorAll('.vp-addon-radio').forEach(r => r.checked = false);
     document.getElementById('varPickerConfirmBtn').disabled = true;
     document.getElementById('varPickerBtnText').textContent = 'ভ্যারিয়েশন সিলেক্ট করুন';
     overlay.classList.remove('hidden');
@@ -1519,21 +1572,27 @@ function onVarPickerChange() {
     // IMPORTANT: scope to #varPickerOverlay to avoid picking up footer variant-picker-popup radios
     const overlay = document.getElementById('varPickerOverlay');
     if (!overlay) return;
-    const allRadios = overlay.querySelectorAll('.vp-radio');
-    const groups = new Set();
-    const selectedGroups = new Set();
+    
+    // Count only VARIATION groups for the "all selected" requirement (addons are optional)
+    const varRadios = overlay.querySelectorAll('.vp-variation-radio');
+    const varGroups = new Set();
+    const selectedVarGroups = new Set();
     let price = 0;
     const selectedAttrs = {};
-    allRadios.forEach(r => {
-        groups.add(r.name);
+    
+    varRadios.forEach(r => {
+        varGroups.add(r.name);
         if (r.checked) {
-            selectedGroups.add(r.name);
+            selectedVarGroups.add(r.name);
             if (IS_COMBO_MODE && r.dataset.comboAttrName) {
-                // Combo mode: collect attribute selections for lookup
-                selectedAttrs[r.dataset.comboAttrName] = r.closest('label')?.querySelector('span.text-sm')?.textContent?.trim()?.split('\n')[0]?.trim() || '';
-                // Better: get value from the main page radio this maps to
-                const mainRadio = document.querySelector(`input[name="${r.dataset.mainRadio}"][value="${r.dataset.mainVal}"]`);
-                if (mainRadio) selectedAttrs[r.dataset.comboAttrName] = mainRadio.dataset.value || '';
+                // Combo mode: use data-combo-attr-value directly (most reliable)
+                if (r.dataset.comboAttrValue) {
+                    selectedAttrs[r.dataset.comboAttrName] = r.dataset.comboAttrValue;
+                } else {
+                    // Fallback: get value from the main page radio this maps to
+                    const mainRadio = document.querySelector(`input[name="${r.dataset.mainRadio}"][value="${r.dataset.mainVal}"]`);
+                    if (mainRadio) selectedAttrs[r.dataset.comboAttrName] = mainRadio.dataset.value || '';
+                }
             } else {
                 price = parseFloat(r.dataset.absPrice) || price;
             }
@@ -1548,14 +1607,22 @@ function onVarPickerChange() {
         if (combo) price = combo.sell_price;
     }
     
-    const allSelected = selectedGroups.size >= groups.size;
+    // Add addon price adjustments (checkboxes, optional)
+    let addonAdj = 0;
+    overlay.querySelectorAll('.vp-addon-radio:checked').forEach(r => {
+        addonAdj += parseFloat(r.dataset.priceAdj) || 0;
+    });
+    price += addonAdj;
+    
+    // Only variation groups must be selected (addons are optional)
+    const allVariationsSelected = varGroups.size === 0 || selectedVarGroups.size >= varGroups.size;
     const btn = document.getElementById('varPickerConfirmBtn');
     const btnText = document.getElementById('varPickerBtnText');
     const priceEl = document.getElementById('varPickerPrice');
     const regPriceEl = document.getElementById('varPickerRegPrice');
     const discountEl = document.getElementById('varPickerDiscount');
-    btn.disabled = !allSelected;
-    if (allSelected) {
+    btn.disabled = !allVariationsSelected;
+    if (allVariationsSelected) {
         btnText.textContent = 'নিশ্চিত করুন — ' + CURRENCY + ' ' + Number(price).toLocaleString();
     } else {
         btnText.textContent = 'ভ্যারিয়েশন সিলেক্ট করুন';
@@ -1581,7 +1648,9 @@ function confirmVarPicker() {
     // IMPORTANT: scope to #varPickerOverlay to avoid footer popup radios
     const overlay = document.getElementById('varPickerOverlay');
     if (!overlay) return;
-    overlay.querySelectorAll('.vp-radio:checked').forEach(r => {
+    
+    // Sync variation radios (checked → check main page equivalent)
+    overlay.querySelectorAll('.vp-variation-radio:checked').forEach(r => {
         const mainName = r.dataset.mainRadio;
         const mainVal = r.dataset.mainVal;
         const mainRadio = document.querySelector(`input[name="${mainName}"][value="${mainVal}"]`);
@@ -1589,24 +1658,34 @@ function confirmVarPicker() {
             mainRadio.checked = true;
         }
     });
-    // Trigger variant change on main page to update price display
+    
+    // Sync addon checkboxes: first uncheck all addon radios on main page for these groups,
+    // then check the ones selected in popup
+    overlay.querySelectorAll('.vp-addon-radio').forEach(r => {
+        const mainName = r.dataset.mainRadio;
+        const mainVal = r.dataset.mainVal;
+        const mainRadio = document.querySelector(`input[name="${mainName}"][value="${mainVal}"]`);
+        if (mainRadio) {
+            mainRadio.checked = r.checked;
+        }
+    });
+    
+    // Trigger variant change on main page to update price display and set _currentCombo
     onVariantChange(true);
-    // Close popup with proper animation
-    overlay.classList.remove('vp-open');
-    setTimeout(() => { overlay.classList.add('hidden'); }, 300);
-    document.body.style.overflow = '';
-    // Execute pending action (default to 'order' if user opened picker without a pending action)
+    // Capture action and variant BEFORE closing (so state is stable)
     const action = _pendingAction || 'order';
     _pendingAction = null;
-    if (action === 'order') {
-        const variantId = getSelectedVariantId();
-        openCheckoutPopup(PRODUCT_ID, getQty(), variantId, getCustUpload());
+    const variantId = getSelectedVariantId();
+    const upload = getCustUpload();
+    // Close popup immediately (no animation delay that could block checkout z-index)
+    overlay.classList.remove('vp-open');
+    overlay.classList.add('hidden');
+    document.body.style.overflow = '';
+    // Execute pending action after overlay is fully hidden
+    if (action === 'order' || action === 'buynow') {
+        openCheckoutPopup(PRODUCT_ID, getQty(), variantId, upload);
     } else if (action === 'cart') {
-        const variantId = getSelectedVariantId();
-        addToCartAjax(PRODUCT_ID, getQty(), variantId, getCustUpload());
-    } else if (action === 'buynow') {
-        const variantId = getSelectedVariantId();
-        openCheckoutPopup(PRODUCT_ID, getQty(), variantId, getCustUpload());
+        addToCartAjax(PRODUCT_ID, getQty(), variantId, upload);
     }
 }
 

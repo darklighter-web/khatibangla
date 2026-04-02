@@ -1032,3 +1032,68 @@ FIX #6 — VAR PICKER POPUP: MULTIPLE BUGS IN VARIATION CONFIRMATION FLOW
     Fix: Default to 'order' action when _pendingAction is null.
   
   Files Modified: pages/product.php (onVarPickerChange ~line 1557, confirmVarPicker ~line 1579)
+
+================================================================================
+                          CHANGELOG — 2026-04-02 (Var Picker Confirm Not Responding)
+================================================================================
+
+FIX #7 — VAR PICKER POPUP: CONFIRM BUTTON NOT RESPONDING (CRITICAL)
+
+  PRIMARY ROOT CAUSE — ReferenceError: addonTotal is not defined
+    In onVariantChange(), the variable `addonTotal` was used at line ~1291 to display
+    addon pricing info ("মূল দাম + অ্যাডঅন ...") but was NEVER declared or assigned
+    anywhere in the function. Both combo mode and legacy mode added addon price
+    adjustments directly to `finalPrice` without tracking `addonTotal` separately.
+    
+    When confirmVarPicker() called onVariantChange(true) to sync main page state and
+    set _currentCombo, the uncaught ReferenceError crashed execution mid-function.
+    This meant:
+      - _currentCombo was never set (combo lookup may not have completed)
+      - getSelectedVariantId() returned null (no combo matched)
+      - openCheckoutPopup() was never called (JS error killed the call stack)
+    
+    Fix: Added `let addonTotal = 0;` declaration at top of onVariantChange(), and
+    tracked addon totals in both combo mode (line ~1168) and legacy mode (line ~1210).
+
+  SECONDARY BUG — Overlay z-index blocking checkout popup
+    The varPickerOverlay (z-60) was closed with a 300ms animation delay before hiding,
+    while openCheckoutPopup (z-50) was called immediately. The checkout popup opened
+    BEHIND the still-visible overlay during those 300ms.
+    
+    Fix: Changed confirmVarPicker() to hide overlay immediately (no animation delay)
+    before firing the action. Also capture variantId and upload values before closing
+    to ensure stable state.
+
+  SECONDARY BUG — Fragile combo attribute value extraction in popup
+    onVarPickerChange() extracted combo attribute values by scraping label text content
+    with .closest('label')?.querySelector('span.text-sm')?.textContent — brittle and
+    could fail if markup changed or had extra whitespace/nested elements.
+    
+    Fix: Added `data-combo-attr-value` attribute to popup radio inputs, populated from
+    PHP $gv['variant_value']. onVarPickerChange() now reads r.dataset.comboAttrValue
+    directly, with fallback to main page radio data-value.
+
+  Files Modified: pages/product.php
+    - onVariantChange(): Added `let addonTotal = 0;` + tracking in both code paths
+    - Popup radio HTML: Added data-combo-attr-value attribute
+    - onVarPickerChange(): Use data-combo-attr-value instead of DOM scraping
+    - confirmVarPicker(): Immediate overlay hide, capture state before close
+
+  FEATURE — Addon groups now shown in variation picker popup
+    Previously the popup only rendered variation groups (line 884: `if ($gOptType !== 
+    'variation') continue;`). Addon groups were silently skipped. If a product had both 
+    variations and addons, users had to select addons on the main page BEFORE triggering 
+    the popup — unintuitive and easy to miss.
+    
+    Fix: Added a second PHP foreach loop after the variation groups that renders addon 
+    groups as checkboxes (multi-select, blue styling) matching the footer popup's addon 
+    UI. Popup radios use class `vp-variation-radio` and addon checkboxes use class 
+    `vp-addon-radio` to differentiate them.
+    
+    JS changes:
+    - onVarPickerChange(): Only counts `.vp-variation-radio` groups for the "all selected"
+      check (addons are optional). Addon price adjustments added to total price.
+    - openVarPicker(): Auto-select shortcut only skips popup if all variation groups have 
+      single options AND there are no addon groups. If addons exist, always show popup.
+    - confirmVarPicker(): Syncs both variation radios and addon checkbox states back to 
+      main page before triggering the action.
