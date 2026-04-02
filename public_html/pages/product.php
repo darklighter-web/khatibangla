@@ -1516,7 +1516,10 @@ function closeVarPicker() {
 }
 
 function onVarPickerChange() {
-    const allRadios = document.querySelectorAll('.vp-radio');
+    // IMPORTANT: scope to #varPickerOverlay to avoid picking up footer variant-picker-popup radios
+    const overlay = document.getElementById('varPickerOverlay');
+    if (!overlay) return;
+    const allRadios = overlay.querySelectorAll('.vp-radio');
     const groups = new Set();
     const selectedGroups = new Set();
     let price = 0;
@@ -1574,7 +1577,10 @@ function onVarPickerChange() {
 
 function confirmVarPicker() {
     // Sync popup selections to the main page radio buttons
-    document.querySelectorAll('.vp-radio:checked').forEach(r => {
+    // IMPORTANT: scope to #varPickerOverlay to avoid footer popup radios
+    const overlay = document.getElementById('varPickerOverlay');
+    if (!overlay) return;
+    overlay.querySelectorAll('.vp-radio:checked').forEach(r => {
         const mainName = r.dataset.mainRadio;
         const mainVal = r.dataset.mainVal;
         const mainRadio = document.querySelector(`input[name="${mainName}"][value="${mainVal}"]`);

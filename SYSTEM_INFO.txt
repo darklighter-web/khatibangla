@@ -973,3 +973,26 @@ FEATURE: ORDER TRACKING BUTTON IN DESKTOP HEADER
   File: includes/header.php
   - Line ~701: Order tracking button HTML with video icon
   - Line ~13: CSP media-src directive added
+
+================================================================================
+                          CHANGELOG — 2026-04-02 (Var Picker Selector Scope Fix)
+================================================================================
+
+FIX #5 — VAR PICKER POPUP: SELECTING VARIATION DOESN'T TRIGGER CHECKOUT
+  Root Cause: onVarPickerChange() used unscoped document.querySelectorAll('.vp-radio')
+  which matched radios from BOTH the single-product-page var picker (#varPickerOverlay)
+  AND the footer's product-card variant picker (#variant-picker-popup). If a user had
+  previously opened a product card's variant picker (from related products, homepage, etc),
+  those .vp-radio elements persisted in the DOM. This made the 'groups' Set contain
+  extra group names from the footer popup, so 'allSelected' was always false even when
+  all groups in the actual var picker were selected. Result: auto-confirm never fired,
+  confirm button stayed disabled, checkout never opened.
+  
+  Same issue in confirmVarPicker() — its .vp-radio:checked query also matched footer
+  popup radios, potentially syncing wrong selections to the main page.
+  
+  Fix: Scoped both queries to #varPickerOverlay:
+  - onVarPickerChange(): overlay.querySelectorAll('.vp-radio') instead of document
+  - confirmVarPicker(): overlay.querySelectorAll('.vp-radio:checked') instead of document
+  
+  File: pages/product.php (lines ~1519, ~1579)
