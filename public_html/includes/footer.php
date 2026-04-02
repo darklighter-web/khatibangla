@@ -121,27 +121,71 @@ $footerPages = Database::getInstance()->fetchAll("SELECT title, slug FROM pages 
 </footer>
 
 <!-- Mobile Bottom Nav -->
+<?php
+$_mobileNavJson = getSetting('mobile_nav_buttons', '');
+$_mobileNavBtns = $_mobileNavJson ? json_decode($_mobileNavJson, true) : null;
+if (!is_array($_mobileNavBtns) || empty($_mobileNavBtns)) {
+    // Default buttons (backwards compatible)
+    $_mobileNavBtns = [
+        ['icon' => 'fa-home', 'label' => 'Home', 'url' => '/', 'type' => 'link', 'active_style' => 'primary'],
+        ['icon' => 'fa-th-large', 'label' => 'Shop', 'url' => '/shop', 'type' => 'link', 'active_style' => ''],
+        ['icon' => 'fa-phone-alt', 'label' => 'Call', 'url' => 'tel:' . ($sitePhone ?? ''), 'type' => 'call', 'active_style' => ''],
+        ['icon' => 'fa-shopping-bag', 'label' => 'Cart', 'url' => '/cart', 'type' => 'cart', 'active_style' => ''],
+    ];
+}
+// Determine current path for active highlight
+$_currentPath = rtrim(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH), '/') ?: '/';
+?>
 <nav class="lg:hidden fixed bottom-0 left-0 right-0 border-t shadow-lg z-40" style="background-color:var(--mobile-nav-bg, #fff)">
     <div class="flex items-center justify-around py-2">
-        <a href="<?= url() ?>" class="flex flex-col items-center gap-0.5 text-xs" style="color:var(--mobile-nav-active, var(--primary))">
-            <i class="fas fa-home text-lg"></i>
-            <span>Home</span>
-        </a>
-        <a href="<?= url('shop') ?>" class="flex flex-col items-center gap-0.5 text-xs text-gray-500">
-            <i class="fas fa-th-large text-lg"></i>
-            <span>Shop</span>
-        </a>
-        <a href="tel:<?= $sitePhone ?>" class="flex flex-col items-center gap-0.5 text-xs text-gray-500">
-            <i class="fas fa-phone-alt text-lg"></i>
-            <span>Call</span>
-        </a>
-        <a href="<?= url('cart') ?>" class="flex flex-col items-center gap-0.5 text-xs text-gray-500 relative">
-            <i class="fas fa-shopping-bag text-lg"></i>
-            <span>Cart</span>
-            <?php if ($cartCount > 0): ?>
+        <?php foreach ($_mobileNavBtns as $_mnIdx => $_mnBtn):
+            $_mnIcon = $_mnBtn['icon'] ?? 'fa-link';
+            $_mnLabel = $_mnBtn['label'] ?? '';
+            $_mnUrl = $_mnBtn['url'] ?? '/';
+            $_mnType = $_mnBtn['type'] ?? 'link';
+            
+            // Resolve special URL tokens
+            if ($_mnType === 'call') {
+                $_mnUrl = (strpos($_mnUrl, 'tel:') === 0) ? $_mnUrl : 'tel:' . ($sitePhone ?? '');
+            } elseif ($_mnType === 'cart') {
+                $_mnUrl = url('cart');
+            } elseif ($_mnType === 'account') {
+                $_mnUrl = url('account');
+            } elseif ($_mnType === 'search') {
+                $_mnUrl = url('search');
+            }
+            // Ensure internal links use url() helper
+            if ($_mnType === 'link' && strpos($_mnUrl, '/') === 0 && strpos($_mnUrl, '//') !== 0) {
+                $_mnUrl = url(ltrim($_mnUrl, '/'));
+            }
+            
+            // Active state: first button or matching path
+            $_mnBtnPath = rtrim(parse_url($_mnUrl, PHP_URL_PATH) ?? '', '/') ?: '/';
+            $_isActive = ($_mnIdx === 0 && $_currentPath === '/') || ($_mnBtnPath === $_currentPath && $_mnBtnPath !== '/') || ($_mnIdx === 0 && $_currentPath === '/' && $_mnBtnPath === '/');
+            $_mnColor = $_isActive ? 'color:var(--mobile-nav-active, var(--primary))' : '';
+            $_mnClass = $_isActive ? '' : 'text-gray-500';
+            
+            // Detect brand icons for fab prefix
+            $_isBrand = preg_match('/fa-(whatsapp|facebook|messenger|telegram|instagram|tiktok|youtube)/', $_mnIcon);
+            $_iconPrefix = $_isBrand ? 'fab' : 'fas';
+            
+            // Special onclick for chat type
+            $_mnOnclick = '';
+            if ($_mnType === 'chat') {
+                $_mnOnclick = "event.preventDefault();if(typeof toggleChatWidget==='function')toggleChatWidget();";
+                $_mnUrl = 'javascript:void(0)';
+            } elseif ($_mnType === 'search') {
+                $_mnOnclick = "event.preventDefault();document.querySelector('.search-input')?.focus();window.scrollTo({top:0,behavior:'smooth'});";
+            }
+        ?>
+        <a href="<?= $_mnUrl ?>" <?= $_mnOnclick ? 'onclick="'.htmlspecialchars($_mnOnclick).'"' : '' ?> class="flex flex-col items-center gap-0.5 text-xs <?= $_mnClass ?> <?= $_mnType === 'cart' ? 'relative' : '' ?>" <?= $_mnColor ? 'style="'.$_mnColor.'"' : '' ?>>
+            <i class="<?= $_iconPrefix ?> <?= htmlspecialchars($_mnIcon) ?> text-lg"></i>
+            <span><?= htmlspecialchars($_mnLabel) ?></span>
+            <?php if ($_mnType === 'cart' && $cartCount > 0): ?>
             <span class="absolute -top-1 right-2 w-4 h-4 flex items-center justify-center text-[10px] font-bold rounded-full sale-badge cart-count"><?= $cartCount ?></span>
             <?php endif; ?>
         </a>
+        <?php endforeach; ?>
     </div>
 </nav>
 

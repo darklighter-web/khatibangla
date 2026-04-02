@@ -1097,3 +1097,45 @@ FIX #7 — VAR PICKER POPUP: CONFIRM BUTTON NOT RESPONDING (CRITICAL)
       single options AND there are no addon groups. If addons exist, always show popup.
     - confirmVarPicker(): Syncs both variation radios and addon checkbox states back to 
       main page before triggering the action.
+
+================================================================================
+                          CHANGELOG — 2026-04-02 (Mobile Nav Buttons Settings)
+================================================================================
+
+FEATURE #8 — CUSTOMIZABLE MOBILE BOTTOM NAVIGATION BUTTONS
+
+  Overview:
+    Admin can now create, edit, delete, and reorder mobile bottom nav buttons from
+    Settings > Header & Nav. Buttons are stored as JSON in `mobile_nav_buttons` setting.
+    The footer renders them dynamically instead of hardcoded HTML.
+    
+  Settings UI (pages/settings.php — Header & Nav tab):
+    - "Mobile Bottom Nav Buttons" card with drag-to-reorder list
+    - Each button has: icon picker, label, URL, type (link/cart/call/chat/search/account)
+    - Add button (max 6), delete with confirmation, drag reorder
+    - Icon picker modal with 130+ Font Awesome icons, searchable
+    - Supports both 'fas' (solid) and 'fab' (brand) icon prefixes
+    - Default 4 buttons: Home, Shop, Call, Cart (backwards compatible)
+    
+  Button Types:
+    - link: Standard navigation link (internal or external)
+    - cart: Cart page with badge counter showing cart count
+    - call: Phone call link (auto-prefixes tel: if needed, falls back to site phone)
+    - chat: Opens live chat widget via toggleChatWidget()
+    - search: Scrolls to top and focuses search input
+    - account: Links to account page
+    
+  Footer Rendering (includes/footer.php):
+    - Reads `mobile_nav_buttons` JSON setting
+    - Falls back to default 4 buttons if setting is empty (backwards compatible)
+    - Active state detection based on current URL path
+    - Brand icon detection (whatsapp, facebook, etc.) for 'fab' prefix
+    - Cart badge counter for 'cart' type buttons
+    
+  Files Modified:
+    - pages/settings.php: Added Mobile Nav Buttons management UI in header tab
+    - includes/footer.php: Dynamic mobile nav rendering from settings
+    
+  Setting Key: mobile_nav_buttons (JSON array)
+  Example Value: [{"icon":"fa-home","label":"Home","url":"/","type":"link"},
+                  {"icon":"fa-shopping-bag","label":"Cart","url":"/cart","type":"cart"}]
