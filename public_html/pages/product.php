@@ -1557,12 +1557,10 @@ function onVarPickerChange() {
     btn.disabled = !allSelected;
     if (allSelected) {
         btnText.textContent = 'নিশ্চিত করুন — ' + CURRENCY + ' ' + Number(price).toLocaleString();
-        // Auto-confirm: skip the confirm button, go directly to action
-        setTimeout(() => confirmVarPicker(), 150);
-        return;
     } else {
         btnText.textContent = 'ভ্যারিয়েশন সিলেক্ট করুন';
     }
+    // Always update popup header price/discount when a selection changes
     if (price > 0 && priceEl) {
         priceEl.textContent = CURRENCY + ' ' + Number(price).toLocaleString();
         if (price < REGULAR_PRICE && regPriceEl && discountEl) {
@@ -1571,6 +1569,9 @@ function onVarPickerChange() {
             discountEl.textContent = '-' + disc + '%';
             regPriceEl.classList.remove('hidden');
             discountEl.classList.remove('hidden');
+        } else if (regPriceEl && discountEl) {
+            regPriceEl.classList.add('hidden');
+            discountEl.classList.add('hidden');
         }
     }
 }
@@ -1590,11 +1591,12 @@ function confirmVarPicker() {
     });
     // Trigger variant change on main page to update price display
     onVariantChange(true);
-    // Close popup
-    document.getElementById('varPickerOverlay')?.classList.add('hidden');
+    // Close popup with proper animation
+    overlay.classList.remove('vp-open');
+    setTimeout(() => { overlay.classList.add('hidden'); }, 300);
     document.body.style.overflow = '';
-    // Execute pending action
-    const action = _pendingAction;
+    // Execute pending action (default to 'order' if user opened picker without a pending action)
+    const action = _pendingAction || 'order';
     _pendingAction = null;
     if (action === 'order') {
         const variantId = getSelectedVariantId();

@@ -996,3 +996,39 @@ FIX #5 — VAR PICKER POPUP: SELECTING VARIATION DOESN'T TRIGGER CHECKOUT
   - confirmVarPicker(): overlay.querySelectorAll('.vp-radio:checked') instead of document
   
   File: pages/product.php (lines ~1519, ~1579)
+
+================================================================================
+                          CHANGELOG — 2026-04-02 (Var Picker Popup Checkout Bugs)
+================================================================================
+
+FIX #6 — VAR PICKER POPUP: MULTIPLE BUGS IN VARIATION CONFIRMATION FLOW
+
+  Bug A — Auto-confirm fires instantly (150ms), skipping user interaction:
+    Root Cause: onVarPickerChange() called setTimeout(() => confirmVarPicker(), 150)
+    as soon as all variation groups were selected. This gave the user no time to review
+    their selection or see the price. The popup would flash the confirm button text then
+    immediately close and fire the checkout/cart action.
+    Fix: Removed the auto-confirm setTimeout entirely. The confirm button now becomes
+    enabled and shows the price, but the user must explicitly click it.
+  
+  Bug B — Popup close animation skipped on confirm:
+    Root Cause: confirmVarPicker() used classList.add('hidden') directly instead of
+    the proper animation flow (remove 'vp-open' class → wait 300ms → add 'hidden').
+    This caused the popup to snap-disappear instead of sliding/fading out.
+    Fix: Changed to use the proper animation: overlay.classList.remove('vp-open') 
+    followed by setTimeout(() => overlay.classList.add('hidden'), 300).
+  
+  Bug C — Popup header price/discount not updating for combo selections:
+    Root Cause: The early return at the auto-confirm point meant the price display
+    update code (lines 1566-1575) was never reached when all groups were selected.
+    Users would see stale price range or initial price in the popup header.
+    Fix: Price/discount update code now runs unconditionally on every selection change,
+    regardless of whether all groups are selected. Also added else-branch to hide
+    discount/regular-price elements when the selected price is NOT on sale.
+  
+  Bug D — Confirm button does nothing if pendingAction is null:
+    Root Cause: If the user reached the popup in an edge case where _pendingAction
+    wasn't set, confirmVarPicker() would sync selections and close but take no action.
+    Fix: Default to 'order' action when _pendingAction is null.
+  
+  Files Modified: pages/product.php (onVarPickerChange ~line 1557, confirmVarPicker ~line 1579)
