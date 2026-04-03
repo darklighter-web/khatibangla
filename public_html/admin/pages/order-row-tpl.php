@@ -24,7 +24,7 @@ $tagColors=['REPEAT'=>'bg-orange-100 text-orange-700','URGENT'=>'bg-red-100 text
 
     <!-- Invoice -->
     <td data-col="invoice" style="white-space:nowrap">
-        <a href="<?= adminUrl('pages/order-view.php?order='.urlencode($order['order_number'])) ?>" style="font-weight:600;color:#111827;font-size:<?=$__preConf?'13':'12'?>px;text-decoration:none" onmouseover="this.style.color='#2563eb'" onmouseout="this.style.color='#111827'"><?= e($order['order_number']) ?></a>
+        <a href="<?= adminUrl('pages/order-view.php?order='.urlencode($order['order_number']).($status ? '&return_status='.urlencode($status) : '')) ?>" style="font-weight:600;color:#111827;font-size:<?=$__preConf?'13':'12'?>px;text-decoration:none" onmouseover="this.style.color='#2563eb'" onmouseout="this.style.color='#111827'"><?= e($order['order_number']) ?></a>
         <span class="dot-menu" onclick="toggleRowMenu(this,<?= $order['id'] ?>,'<?= e($order['order_number']) ?>','<?= e($order['order_status']) ?>')" style="margin-left:2px">⋮</span>
         <?php if (!empty($order['is_preorder'])): ?><br><span style="font-size:8px;background:#f3e8ff;color:#7c3aed;padding:1px 5px;border-radius:3px;font-weight:600">⏰ PRE</span><?php endif; ?>
     </td>
@@ -168,7 +168,7 @@ $tagColors=['REPEAT'=>'bg-orange-100 text-orange-700','URGENT'=>'bg-red-100 text
     <td style="text-align:center;vertical-align:middle">
         <?php $__isProc=in_array($order['order_status'],['processing','pending','incomplete']);?>
         <?php if($__preConf): ?>
-            <a href="<?=adminUrl('pages/order-view.php?order='.urlencode($order['order_number']))?>" class="order-open-link" data-oid="<?=$order['id']?>" style="display:inline-flex;align-items:center;gap:3px;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:500;color:#16a34a;text-decoration:none" onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='transparent'">Open <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
+            <a href="<?=adminUrl('pages/order-view.php?order='.urlencode($order['order_number']).($status ? '&return_status='.urlencode($status) : ''))?>" class="order-open-link" data-oid="<?=$order['id']?>" style="display:inline-flex;align-items:center;gap:3px;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:500;color:#16a34a;text-decoration:none" onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='transparent'">Open <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
         <?php else: ?>
             <a href="<?=adminUrl('pages/order-view.php?order='.urlencode($order['order_number']))?>" class="order-open-link om-btn om-btn-open" data-oid="<?=$order['id']?>" onclick="return openOrderModal(this.href,event)">Open</a>
         <?php endif; ?>

@@ -205,10 +205,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     }
                 }
                 
-                // ── Post-confirmation immutability: prevent reverting confirmed+ orders to pre-confirm statuses ──
+                // ── Post-confirmation immutability: prevent reverting confirmed+ orders to pre-confirm statuses (Super Admin bypasses) ──
                 $postConfirmStatuses = ['confirmed', 'ready_to_ship', 'shipped', 'delivered', 'partial_delivered', 'pending_return', 'pending_cancel'];
                 $preConfirmStatuses = ['pending', 'processing', 'incomplete'];
-                if (in_array($oldStatus, $postConfirmStatuses) && in_array($status, $preConfirmStatuses)) {
+                if (in_array($oldStatus, $postConfirmStatuses) && in_array($status, $preConfirmStatuses) && !isSuperAdmin()) {
                     $errors[] = "Order #{$oid}: Cannot revert from '{$oldStatus}' to '{$status}' — order already confirmed";
                     continue;
                 }
@@ -1966,34 +1966,36 @@ async function toggleRowMenu(el, orderId, orderNum, orderStatus) {
     rm.style.left = Math.min(r.left, window.innerWidth - 190) + 'px';
     rm.classList.remove('hidden');
     rm._open = orderId;
-    document.getElementById('rmOpen').href = '<?= adminUrl('pages/order-view.php?order=') ?>' + encodeURIComponent(orderNum || orderId);
+    var _curStatus = (new URLSearchParams(window.location.search)).get('status') || '';
+    document.getElementById('rmOpen').href = '<?= adminUrl('pages/order-view.php?order=') ?>' + encodeURIComponent(orderNum || orderId) + (_curStatus ? '&return_status=' + encodeURIComponent(_curStatus) : '');
     document.getElementById('rmPrintInv').onclick = () => { rm.classList.add('hidden'); openInvPrint([orderId]); };
     document.getElementById('rmPrintStk').onclick = () => { rm.classList.add('hidden'); openStkPrint([orderId]); };
     
-    // Post-confirmation statuses where edit is locked
+    // Post-confirmation statuses where edit is locked (Super Admin bypasses)
     const lockedStatuses = ['confirmed','ready_to_ship','shipped','delivered','returned','partial_delivered','pending_return','pending_cancel','cancelled','lost'];
-    const isLocked = lockedStatuses.includes(orderStatus);
+    const isSuperAdmin = <?= isSuperAdmin() ? 'true' : 'false' ?>;
+    const isLocked = lockedStatuses.includes(orderStatus) && !isSuperAdmin;
     
-    // Hide Edit button for confirmed+ orders
+    // Hide Edit button for confirmed+ orders (unless Super Admin)
     const rmEdit = document.getElementById('rmEdit');
     if (rmEdit) {
         rmEdit.style.display = isLocked ? 'none' : '';
         rmEdit.onclick = () => { rm.classList.add('hidden'); openEditOrder(orderId, orderNum); };
     }
     
-    // Cancel available from any status except already terminal (cancelled/returned/lost)
+    // Cancel available from any status except already terminal (cancelled/returned/lost) — Super Admin can cancel from any
     const rmCancel = document.getElementById('rmCancel');
     if (rmCancel) {
-        rmCancel.style.display = ['cancelled','returned','lost'].includes(orderStatus) ? 'none' : '';
+        rmCancel.style.display = (!isSuperAdmin && ['cancelled','returned','lost'].includes(orderStatus)) ? 'none' : '';
     }
     
-    // Show/hide forward-progression buttons based on current status
+    // Show/hide forward-progression buttons based on current status (Super Admin sees all)
     const rmConfirm = document.getElementById('rmConfirm');
     const rmShip = document.getElementById('rmShip');
     const rmDeliver = document.getElementById('rmDeliver');
-    if (rmConfirm) rmConfirm.style.display = ['processing','pending'].includes(orderStatus) ? '' : 'none';
-    if (rmShip) rmShip.style.display = ['confirmed','ready_to_ship'].includes(orderStatus) ? '' : 'none';
-    if (rmDeliver) rmDeliver.style.display = ['shipped','partial_delivered'].includes(orderStatus) ? '' : 'none';
+    if (rmConfirm) rmConfirm.style.display = (isSuperAdmin || ['processing','pending'].includes(orderStatus)) ? '' : 'none';
+    if (rmShip) rmShip.style.display = (isSuperAdmin || ['confirmed','ready_to_ship'].includes(orderStatus)) ? '' : 'none';
+    if (rmDeliver) rmDeliver.style.display = (isSuperAdmin || ['shipped','partial_delivered'].includes(orderStatus)) ? '' : 'none';
     
     ['Confirm','Ship','Deliver','Cancel'].forEach(a => {
         const btn = document.getElementById('rm'+a);
@@ -3048,7 +3050,10 @@ function openOrderModal(url, e) {
     _orderModalSaved = false;
     var modal = document.getElementById('orderEditModal');
     var iframe = document.getElementById('orderEditFrame');
-    iframe.src = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'modal=1';
+    // Pass current status tab as return_status so order-view knows origin panel
+    var returnStatus = (new URLSearchParams(window.location.search)).get('status') || '';
+    var sep = url.indexOf('?') >= 0 ? '&' : '?';
+    iframe.src = url + sep + 'modal=1' + (returnStatus ? '&return_status=' + encodeURIComponent(returnStatus) : '');
     modal.classList.remove('hidden');
     return false;
 }

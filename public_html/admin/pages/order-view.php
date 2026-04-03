@@ -62,9 +62,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'save_order' || $action === 'confirm_order') {
-        // ── Post-confirmation immutability: block edits to confirmed+ orders ──
+        // ── Post-confirmation immutability: block edits to confirmed+ orders (Super Admin bypasses) ──
         $immutableStatuses = ['confirmed', 'ready_to_ship', 'shipped', 'delivered', 'returned', 'partial_delivered', 'pending_return', 'pending_cancel'];
-        if ($action === 'save_order' && in_array($order['order_status'], $immutableStatuses)) {
+        if ($action === 'save_order' && in_array($order['order_status'], $immutableStatuses) && !isSuperAdmin()) {
             if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) || (strpos($_SERVER['HTTP_ACCEPT'] ?? '', 'json') !== false)) {
                 while (ob_get_level()) ob_end_clean();
                 header('Content-Type: application/json');
@@ -268,10 +268,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $notes     = sanitize($_POST['notes'] ?? '');
         $oldStatus = $order['order_status'];
         
-        // ── Guard: prevent reverting confirmed+ orders to processing/pending ──
+        // ── Guard: prevent reverting confirmed+ orders to processing/pending (Super Admin bypasses) ──
         $postConfirmStatuses = ['confirmed', 'ready_to_ship', 'shipped', 'delivered', 'partial_delivered', 'pending_return', 'pending_cancel'];
         $preConfirmStatuses = ['pending', 'processing', 'incomplete'];
-        if (in_array($oldStatus, $postConfirmStatuses) && in_array($newStatus, $preConfirmStatuses)) {
+        if (in_array($oldStatus, $postConfirmStatuses) && in_array($newStatus, $preConfirmStatuses) && !isSuperAdmin()) {
             if (!empty($_SERVER['HTTP_X_REQUESTED_WITH'])) {
                 header('Content-Type: application/json');
                 echo json_encode(['success' => false, 'message' => "Cannot revert '{$oldStatus}' order to '{$newStatus}'"]);
@@ -378,7 +378,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$ex) $db->insert('blocked_phones', ['phone'=>$order['customer_phone'],'reason'=>'Fake order #'.$order['order_number'],'blocked_by'=>getAdminId()]);
         logActivity(getAdminId(), 'mark_fake', 'orders', $id);
         try { $db->query("DELETE FROM order_locks WHERE order_id = ?", [$id]); } catch (\Throwable $e) {}
-        redirect(adminUrl("pages/order-management.php?highlight={$id}&msg=marked_fake"));
+        redirect(adminUrl("pages/order-management.php?{$_returnQs}highlight={$id}&msg=marked_fake"));
     }
 
     if ($action === 'add_note') {
@@ -398,7 +398,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             if ($isAjax) { header('Content-Type: application/json'); echo json_encode(['ok'=>false,'error'=>'Empty note']); exit; }
         }
-        redirect(adminUrl("pages/order-management.php?highlight={$id}&msg=note_added"));
+        redirect(adminUrl("pages/order-management.php?{$_returnQs}highlight={$id}&msg=note_added"));
     }
 
     if ($action === 'clear_panel_notes') {
@@ -586,7 +586,7 @@ if ($__existingLock && intval($__existingLock['admin_user_id']) !== $__currentAd
                 <button onclick="location.reload()" class="bg-white hover:bg-gray-50 text-gray-700 font-semibold px-5 py-2.5 rounded-lg border border-gray-300 transition text-sm">
                     Retry
                 </button>
-                <a href="<?= adminUrl('pages/order-management.php') ?>" class="text-gray-400 hover:text-gray-600 font-medium px-4 py-2.5 text-sm transition">
+                <a href="<?= adminUrl('pages/order-management.php' . ($_returnStatus ? '?status=' . urlencode($_returnStatus) : '')) ?>" class="text-gray-400 hover:text-gray-600 font-medium px-4 py-2.5 text-sm transition">
                     ← Back to Orders
                 </a>
             </div>
@@ -755,6 +755,8 @@ exit; endif; /* end lockBlocked */ ?>
 <!-- ══════════════════════════ MAIN LAYOUT ══════════════════════════ -->
 <?php
 $_isShippedLocked = in_array($order['order_status'], ['confirmed', 'ready_to_ship', 'shipped', 'delivered', 'returned', 'partial_delivered', 'pending_return', 'pending_cancel']);
+// Super Admin bypasses all readonly restrictions
+if (isSuperAdmin()) $_isShippedLocked = false;
 if ($_isShippedLocked): ?>
 <div class="bg-amber-50 border border-amber-300 text-amber-800 px-4 py-3 rounded-lg mb-4 text-sm flex items-center gap-2">
     <i class="fas fa-lock text-amber-500"></i>
@@ -1291,37 +1293,52 @@ function validateConfirmOrder(e){
 
         <!-- Order Actions -->
         <div class="bg-white border border-gray-200 rounded-lg p-3 space-y-2">
-            <div class="text-xs font-semibold text-gray-700">Order Actions</div>
+            <div class="text-xs font-semibold text-gray-700">Order Actions<?php if (isSuperAdmin()): ?> <span class="text-[9px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded ml-1">Super Admin</span><?php endif; ?></div>
             <select id="statusSelect" class="w-full px-3 py-2 border border-gray-200 rounded-md text-sm">
                 <?php
-                // Define allowed transitions per status
-                $allowedTransitions = [
-                    'processing'       => ['processing','confirmed','cancelled','on_hold','no_response','good_but_no_response','advance_payment','pending_cancel'],
-                    'pending'          => ['processing','confirmed','cancelled','on_hold','no_response','good_but_no_response','advance_payment','pending_cancel'],
-                    'confirmed'        => ['confirmed','ready_to_ship','cancelled','on_hold','pending_cancel'],
-                    'ready_to_ship'    => ['ready_to_ship','shipped','cancelled','on_hold','pending_cancel'],
-                    'shipped'          => ['shipped','delivered','partial_delivered','cancelled','returned','on_hold','lost'],
-                    'delivered'        => ['delivered','cancelled','returned'],
-                    'partial_delivered'=> ['partial_delivered','delivered','cancelled','returned','on_hold'],
-                    'pending_return'   => ['pending_return','returned','cancelled'],
-                    'pending_cancel'   => ['pending_cancel','cancelled'],
-                    'on_hold'          => ['on_hold','processing','confirmed','ready_to_ship','cancelled','pending_cancel'],
-                    'no_response'      => ['no_response','processing','confirmed','cancelled','pending_cancel'],
-                    'good_but_no_response' => ['good_but_no_response','processing','confirmed','cancelled','pending_cancel'],
-                    'advance_payment'  => ['advance_payment','processing','confirmed','cancelled'],
-                    'cancelled'        => ['cancelled'],
-                    'returned'         => ['returned'],
-                    'lost'             => ['lost','cancelled'],
-                ];
-                $currentStatus = $order['order_status'] === 'pending' ? 'processing' : $order['order_status'];
-                $allowed = $allowedTransitions[$currentStatus] ?? ['processing','confirmed','ready_to_ship','shipped','delivered','pending_return','pending_cancel','partial_delivered','cancelled','returned','on_hold','no_response','good_but_no_response','advance_payment','lost'];
+                // Super Admin: all statuses available for any transition
+                $allStatuses = ['processing','confirmed','ready_to_ship','shipped','delivered','pending_return','pending_cancel','partial_delivered','cancelled','returned','on_hold','no_response','good_but_no_response','advance_payment','lost'];
+                
+                if (isSuperAdmin()) {
+                    // Super Admin bypasses all transition restrictions
+                    $allowed = $allStatuses;
+                } else {
+                    // Define allowed transitions per status
+                    $allowedTransitions = [
+                        'processing'       => ['processing','confirmed','cancelled','on_hold','no_response','good_but_no_response','advance_payment','pending_cancel'],
+                        'pending'          => ['processing','confirmed','cancelled','on_hold','no_response','good_but_no_response','advance_payment','pending_cancel'],
+                        'confirmed'        => ['confirmed','ready_to_ship','cancelled','on_hold','pending_cancel'],
+                        'ready_to_ship'    => ['ready_to_ship','shipped','cancelled','on_hold','pending_cancel'],
+                        'shipped'          => ['shipped','delivered','partial_delivered','cancelled','returned','on_hold','lost'],
+                        'delivered'        => ['delivered','cancelled','returned'],
+                        'partial_delivered'=> ['partial_delivered','delivered','cancelled','returned','on_hold'],
+                        'pending_return'   => ['pending_return','returned','cancelled'],
+                        'pending_cancel'   => ['pending_cancel','cancelled'],
+                        'on_hold'          => ['on_hold','processing','confirmed','ready_to_ship','cancelled','pending_cancel'],
+                        'no_response'      => ['no_response','processing','confirmed','cancelled','pending_cancel'],
+                        'good_but_no_response' => ['good_but_no_response','processing','confirmed','cancelled','pending_cancel'],
+                        'advance_payment'  => ['advance_payment','processing','confirmed','cancelled'],
+                        'cancelled'        => ['cancelled'],
+                        'returned'         => ['returned'],
+                        'lost'             => ['lost','cancelled'],
+                    ];
+                    $currentStatus = $order['order_status'] === 'pending' ? 'processing' : $order['order_status'];
+                    $allowed = $allowedTransitions[$currentStatus] ?? $allStatuses;
+                }
                 foreach($allowed as $s): ?>
                 <option value="<?= $s ?>" <?= ($order['order_status']===$s||($s==='processing'&&$order['order_status']==='pending'))?'selected':'' ?>><?= getOrderStatusLabel($s) ?></option>
                 <?php endforeach; ?>
             </select>
             <div class="flex items-center justify-between">
                 <button type="button" onclick="updateStatus()" class="px-4 py-1.5 bg-emerald-500 text-white rounded-md text-xs font-semibold hover:bg-emerald-600 transition">Update</button>
-                <a href="<?= adminUrl('pages/order-management.php') ?>" class="text-xs text-gray-500 hover:text-gray-700">← Back to List</a>
+                <?php
+                // Return-to-Source: link back to the specific sub-panel the user came from
+                $_backUrl = adminUrl('pages/order-management.php');
+                if ($_returnStatus) {
+                    $_backUrl .= '?status=' . urlencode($_returnStatus);
+                }
+                ?>
+                <a href="<?= $_backUrl ?>" class="text-xs text-gray-500 hover:text-gray-700">← Back to List</a>
             </div>
         </div>
 
