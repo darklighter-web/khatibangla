@@ -1139,3 +1139,51 @@ FEATURE #8 — CUSTOMIZABLE MOBILE BOTTOM NAVIGATION BUTTONS
   Setting Key: mobile_nav_buttons (JSON array)
   Example Value: [{"icon":"fa-home","label":"Home","url":"/","type":"link"},
                   {"icon":"fa-shopping-bag","label":"Cart","url":"/cart","type":"cart"}]
+
+
+================================================================================
+                    SHADCN UI DESIGN SYSTEM (Admin Panel)
+================================================================================
+Updated: 2026-04-03
+
+DESIGN SYSTEM: shadcn/ui New York variant
+  - CSS Variables based theming (HSL color tokens)
+  - Tailwind CSS extended with shadcn color palette
+  - All 81 admin pages inherit the design via header.php + footer.php
+
+THREE TOGGLEABLE THEMES (Header → Theme Switcher icon):
+  1. Light  — Clean white/gray, shadcn default
+  2. Dark   — Deep charcoal/slate, full dark mode
+  3. UI     — Branded blue sidebar, blue primary accent
+
+HOW IT WORKS:
+  - header.php defines CSS variables in :root via [data-theme="light|dark|ui"]
+  - Tailwind config extended with shadcn semantic colors (bg-background, text-foreground, etc.)
+  - Global CSS overrides convert old Tailwind classes (bg-white, text-gray-800, etc.)
+    to use CSS variables — so existing pages auto-inherit the new design
+  - Theme saved per-admin in admin_users.admin_theme column
+  - API endpoint: admin/api/admin-theme.php (POST theme=light|dark|ui)
+
+SHADCN CSS VARIABLE TOKENS:
+  --background, --foreground, --card, --card-foreground, --popover, --popover-foreground
+  --primary, --primary-foreground, --secondary, --secondary-foreground
+  --muted, --muted-foreground, --accent, --accent-foreground
+  --destructive, --destructive-foreground, --border, --input, --ring
+  --sidebar-background, --sidebar-foreground, --sidebar-border
+  --sidebar-accent, --sidebar-accent-foreground, --radius
+
+GLOBAL COMPONENT STYLES (auto-apply to all pages):
+  - .panel-card → shadcn Card component styling
+  - .data-table → shadcn Table styling
+  - .badge-sm → shadcn Badge styling
+  - form inputs/selects/textareas → shadcn Input styling
+  - Confirm modal → shadcn AlertDialog styling
+  - Prompt modal → shadcn Dialog styling
+  - Toast notifications → shadcn Sonner-style
+  - KBDatePicker → shadcn Popover + Calendar styling
+  - Page Guide modal → shadcn Sheet styling
+
+FILES CHANGED:
+  - admin/includes/header.php  — Complete shadcn redesign (CSS vars, theme map, layout)
+  - admin/includes/footer.php  — KBDatePicker, toast, page guide restyled with shadcn tokens
+  - SYSTEM_INFO.txt            — This documentation
