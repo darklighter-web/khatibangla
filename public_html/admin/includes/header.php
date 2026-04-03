@@ -843,7 +843,7 @@ document.addEventListener('click',e=>{
                 subItem('order-management', 'All Orders'),
                 subItem('order-processing', 'Processing', $stats['pending_orders']),
                 subItem('order-add', 'New Order'),
-                subItem('incomplete-orders', 'Incomplete Orders', $stats['incomplete_orders']),
+
                 subItem('returns', 'Returns'),
                 subItem('scan-to-update', 'Scan To Update'),
             ], $stats['pending_orders'] + $stats['approved_orders']);
