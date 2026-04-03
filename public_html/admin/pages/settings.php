@@ -1249,6 +1249,299 @@ require_once __DIR__ . '/../includes/header.php';
                 </div>
             </div>
 
+            <!-- Mobile Bottom Nav Buttons -->
+            <div class="bg-white rounded-xl shadow-sm border p-5 space-y-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h4 class="font-semibold text-gray-800"><i class="fas fa-mobile-alt mr-2 text-purple-500"></i>Mobile Bottom Nav Buttons</h4>
+                        <p class="text-xs text-gray-500 mt-1">Configure the mobile bottom navigation bar buttons. Drag to reorder. Max 5 buttons recommended.</p>
+                    </div>
+                    <button type="button" onclick="addMobileNavBtn()" class="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"><i class="fas fa-plus mr-1"></i>Add Button</button>
+                </div>
+
+                <!-- Prebuilt Templates -->
+                <div class="border rounded-lg p-3 bg-gray-50/50">
+                    <p class="text-xs font-semibold text-gray-600 mb-2"><i class="fas fa-magic mr-1 text-amber-500"></i>Quick Presets</p>
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" onclick="loadNavPreset('default')" class="px-3 py-1.5 text-xs font-medium bg-white border rounded-lg hover:bg-blue-50 hover:border-blue-300 transition">🏠 Default (4-btn)</button>
+                        <button type="button" onclick="loadNavPreset('shop')" class="px-3 py-1.5 text-xs font-medium bg-white border rounded-lg hover:bg-blue-50 hover:border-blue-300 transition">🛍️ Shop Focus</button>
+                        <button type="button" onclick="loadNavPreset('support')" class="px-3 py-1.5 text-xs font-medium bg-white border rounded-lg hover:bg-blue-50 hover:border-blue-300 transition">📞 Support Heavy</button>
+                        <button type="button" onclick="loadNavPreset('social')" class="px-3 py-1.5 text-xs font-medium bg-white border rounded-lg hover:bg-blue-50 hover:border-blue-300 transition">💬 Social + Chat</button>
+                        <button type="button" onclick="loadNavPreset('minimal')" class="px-3 py-1.5 text-xs font-medium bg-white border rounded-lg hover:bg-blue-50 hover:border-blue-300 transition">✨ Minimal (3-btn)</button>
+                    </div>
+                </div>
+
+                <div id="mobileNavList" class="space-y-2">
+                    <!-- Populated by JS -->
+                </div>
+
+                <!-- Hidden input to store JSON -->
+                <input type="hidden" name="mobile_nav_buttons" id="mobileNavButtonsJson" value="">
+
+                <!-- Live Preview -->
+                <div class="border rounded-lg p-4 bg-gray-50/50">
+                    <p class="text-xs font-semibold text-gray-600 mb-3"><i class="fas fa-eye mr-1 text-green-500"></i>Live Preview</p>
+                    <div class="max-w-xs mx-auto">
+                        <div id="mobileNavPreview" class="flex items-center justify-around py-2.5 bg-white rounded-xl border shadow-sm">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Icon Picker Modal -->
+                <div id="iconPickerModal" class="hidden fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4" onclick="if(event.target===this)closeIconPicker()">
+                    <div class="bg-white rounded-2xl w-full max-w-lg max-h-[80vh] flex flex-col shadow-xl">
+                        <div class="flex items-center justify-between px-5 py-3 border-b">
+                            <h4 class="font-semibold text-gray-800">Select Icon</h4>
+                            <button type="button" onclick="closeIconPicker()" class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center"><i class="fas fa-times text-gray-400"></i></button>
+                        </div>
+                        <div class="px-5 pt-3">
+                            <input type="text" id="iconSearchInput" placeholder="Search icons..." class="w-full px-3 py-2 border rounded-lg text-sm" oninput="filterIcons(this.value)">
+                        </div>
+                        <div id="iconGrid" class="flex-1 overflow-y-auto p-5 grid grid-cols-8 gap-1">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <script>
+            // ── Mobile Nav Buttons Manager ──
+            const ICON_LIST = [
+                'fa-home','fa-store','fa-shop','fa-th-large','fa-grip-horizontal','fa-grip-vertical',
+                'fa-phone-alt','fa-phone','fa-phone-volume','fa-headset','fa-envelope','fa-paper-plane',
+                'fa-shopping-bag','fa-shopping-cart','fa-cart-plus','fa-basket-shopping','fa-bag-shopping',
+                'fa-heart','fa-star','fa-bookmark','fa-thumbs-up','fa-fire','fa-bolt',
+                'fa-user','fa-user-circle','fa-users','fa-id-card','fa-address-book',
+                'fa-search','fa-magnifying-glass','fa-filter','fa-sliders',
+                'fa-bars','fa-ellipsis-h','fa-cog','fa-gear','fa-tools','fa-wrench',
+                'fa-truck','fa-shipping-fast','fa-truck-fast','fa-dolly','fa-box','fa-boxes-stacked',
+                'fa-map-marker-alt','fa-location-dot','fa-map','fa-compass','fa-globe',
+                'fa-tag','fa-tags','fa-percent','fa-gift','fa-money-bill','fa-coins','fa-wallet',
+                'fa-bell','fa-clock','fa-calendar','fa-history','fa-redo',
+                'fa-comment','fa-comments','fa-comment-dots','fa-message',
+                'fa-share-alt','fa-share-nodes','fa-link','fa-external-link-alt',
+                'fa-camera','fa-image','fa-images','fa-video','fa-play','fa-music',
+                'fa-list','fa-list-ul','fa-table','fa-grip','fa-border-all',
+                'fa-arrow-right','fa-arrow-left','fa-arrow-up','fa-chevron-right','fa-angles-right',
+                'fa-check','fa-check-circle','fa-circle-check','fa-shield','fa-shield-alt',
+                'fa-info-circle','fa-question-circle','fa-exclamation-circle','fa-lightbulb',
+                'fa-sign-in-alt','fa-right-to-bracket','fa-sign-out-alt','fa-right-from-bracket',
+                'fa-download','fa-upload','fa-cloud','fa-file','fa-file-alt','fa-clipboard',
+                'fa-crown','fa-gem','fa-medal','fa-award','fa-trophy','fa-certificate',
+                'fa-palette','fa-paint-brush','fa-pen','fa-pencil','fa-edit',
+                'fa-book','fa-book-open','fa-graduation-cap','fa-newspaper',
+                'fa-motorcycle','fa-bicycle','fa-car','fa-plane','fa-ship',
+                'fa-wifi','fa-signal','fa-battery-full','fa-plug','fa-power-off',
+                'fa-sun','fa-moon','fa-cloud-sun','fa-snowflake','fa-umbrella',
+                'fa-utensils','fa-coffee','fa-mug-hot','fa-wine-glass','fa-pizza-slice',
+                'fa-tshirt','fa-shoe-prints','fa-glasses','fa-hat-wizard',
+                'fa-headphones','fa-microphone','fa-volume-up','fa-bullhorn',
+                'fa-code','fa-terminal','fa-database','fa-server','fa-laptop',
+                'fa-mobile-alt','fa-tablet-alt','fa-desktop','fa-tv','fa-keyboard',
+                'fa-lock','fa-unlock','fa-key','fa-fingerprint','fa-eye',
+                'fa-trash','fa-trash-alt','fa-times','fa-times-circle','fa-ban',
+                'fa-plus','fa-plus-circle','fa-minus','fa-minus-circle',
+                'fa-whatsapp','fa-facebook-messenger','fa-telegram','fa-instagram','fa-facebook','fa-tiktok','fa-youtube'
+            ];
+
+            const NAV_PRESETS = {
+                default: [
+                    { icon: 'fa-home', label: 'Home', url: '/', type: 'link' },
+                    { icon: 'fa-th-large', label: 'Shop', url: '/shop', type: 'link' },
+                    { icon: 'fa-phone-alt', label: 'Call', url: 'tel:<?= e($s['site_phone'] ?? '') ?>', type: 'call' },
+                    { icon: 'fa-shopping-bag', label: 'Cart', url: '/cart', type: 'cart' }
+                ],
+                shop: [
+                    { icon: 'fa-home', label: 'Home', url: '/', type: 'link' },
+                    { icon: 'fa-th-large', label: 'Shop', url: '/shop', type: 'link' },
+                    { icon: 'fa-search', label: 'Search', url: '/search', type: 'search' },
+                    { icon: 'fa-heart', label: 'Wishlist', url: '/wishlist', type: 'link' },
+                    { icon: 'fa-shopping-bag', label: 'Cart', url: '/cart', type: 'cart' }
+                ],
+                support: [
+                    { icon: 'fa-home', label: 'Home', url: '/', type: 'link' },
+                    { icon: 'fa-phone-alt', label: 'Call', url: 'tel:<?= e($s['site_phone'] ?? '') ?>', type: 'call' },
+                    { icon: 'fa-whatsapp', label: 'WhatsApp', url: 'https://wa.me/<?= preg_replace('/[^0-9]/', '', $s['whatsapp_number'] ?? '') ?>', type: 'link' },
+                    { icon: 'fa-comment-dots', label: 'Chat', url: '#', type: 'chat' },
+                    { icon: 'fa-shopping-bag', label: 'Cart', url: '/cart', type: 'cart' }
+                ],
+                social: [
+                    { icon: 'fa-home', label: 'Home', url: '/', type: 'link' },
+                    { icon: 'fa-whatsapp', label: 'WhatsApp', url: 'https://wa.me/<?= preg_replace('/[^0-9]/', '', $s['whatsapp_number'] ?? '') ?>', type: 'link' },
+                    { icon: 'fa-facebook-messenger', label: 'Messenger', url: 'https://m.me/<?= e($s['facebook_page_id'] ?? '') ?>', type: 'link' },
+                    { icon: 'fa-comment-dots', label: 'Chat', url: '#', type: 'chat' },
+                    { icon: 'fa-shopping-bag', label: 'Cart', url: '/cart', type: 'cart' }
+                ],
+                minimal: [
+                    { icon: 'fa-home', label: 'Home', url: '/', type: 'link' },
+                    { icon: 'fa-th-large', label: 'Shop', url: '/shop', type: 'link' },
+                    { icon: 'fa-shopping-bag', label: 'Cart', url: '/cart', type: 'cart' }
+                ]
+            };
+
+            let _navBtns = [];
+            let _iconPickerTarget = null;
+            let _dragItem = null;
+
+            function initMobileNav() {
+                const saved = <?= json_encode($s['mobile_nav_buttons'] ?? '', JSON_UNESCAPED_UNICODE) ?>;
+                try { _navBtns = JSON.parse(saved); } catch(e) { _navBtns = null; }
+                if (!Array.isArray(_navBtns) || _navBtns.length === 0) _navBtns = [...NAV_PRESETS.default];
+                renderNavList();
+            }
+
+            function loadNavPreset(key) {
+                if (!NAV_PRESETS[key]) return;
+                _confirmAsync('Load preset?\nThis will replace all current mobile nav buttons.').then(ok => {
+                    if (!ok) return;
+                    _navBtns = JSON.parse(JSON.stringify(NAV_PRESETS[key]));
+                    renderNavList();
+                    showToast('Preset loaded — click Save to apply', 'info');
+                });
+            }
+
+            function renderNavList() {
+                const list = document.getElementById('mobileNavList');
+                list.innerHTML = '';
+                _navBtns.forEach((btn, i) => {
+                    const isBrand = (btn.icon || '').match(/fa-(whatsapp|facebook|messenger|telegram|instagram|tiktok|youtube)/);
+                    const iconPrefix = isBrand ? 'fab' : 'fas';
+                    const div = document.createElement('div');
+                    div.className = 'flex items-center gap-2 p-3 bg-gray-50 rounded-xl border border-gray-200 group';
+                    div.draggable = true;
+                    div.dataset.idx = i;
+                    div.ondragstart = function(e) { _dragItem = i; e.dataTransfer.effectAllowed = 'move'; this.classList.add('opacity-50'); };
+                    div.ondragend = function() { this.classList.remove('opacity-50'); _dragItem = null; };
+                    div.ondragover = function(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; this.classList.add('border-blue-400','bg-blue-50'); };
+                    div.ondragleave = function() { this.classList.remove('border-blue-400','bg-blue-50'); };
+                    div.ondrop = function(e) {
+                        e.preventDefault(); this.classList.remove('border-blue-400','bg-blue-50');
+                        if (_dragItem === null) return;
+                        const from = _dragItem; const to = parseInt(this.dataset.idx);
+                        if (from === to) return;
+                        const item = _navBtns.splice(from, 1)[0];
+                        _navBtns.splice(to, 0, item);
+                        renderNavList(); syncJson();
+                    };
+
+                    div.innerHTML = `
+                        <div class="cursor-grab text-gray-400 hover:text-gray-600 px-1"><i class="fas fa-grip-vertical"></i></div>
+                        <button type="button" onclick="openIconPicker(${i})" class="w-10 h-10 rounded-lg bg-white border-2 border-dashed border-gray-300 hover:border-blue-400 flex items-center justify-center text-lg text-gray-600 hover:text-blue-600 transition flex-shrink-0" title="Change icon">
+                            <i class="${iconPrefix} ${btn.icon || 'fa-circle'}"></i>
+                        </button>
+                        <div class="flex-1 grid grid-cols-2 gap-2">
+                            <input type="text" value="${escHtml(btn.label || '')}" placeholder="Label" class="px-2.5 py-1.5 border rounded-lg text-sm" onchange="updateNavBtn(${i},'label',this.value)">
+                            <input type="text" value="${escHtml(btn.url || '')}" placeholder="/page or tel:... or #action" class="px-2.5 py-1.5 border rounded-lg text-sm font-mono text-xs" onchange="updateNavBtn(${i},'url',this.value)">
+                        </div>
+                        <select class="px-2 py-1.5 border rounded-lg text-xs" onchange="updateNavBtn(${i},'type',this.value)">
+                            <option value="link" ${btn.type==='link'?'selected':''}>Link</option>
+                            <option value="cart" ${btn.type==='cart'?'selected':''}>Cart (badge)</option>
+                            <option value="call" ${btn.type==='call'?'selected':''}>Call</option>
+                            <option value="chat" ${btn.type==='chat'?'selected':''}>Chat</option>
+                            <option value="search" ${btn.type==='search'?'selected':''}>Search</option>
+                            <option value="account" ${btn.type==='account'?'selected':''}>Account</option>
+                        </select>
+                        <button type="button" onclick="removeNavBtn(${i})" class="w-8 h-8 rounded-full text-red-400 hover:text-red-600 hover:bg-red-50 flex items-center justify-center transition flex-shrink-0" title="Delete">
+                            <i class="fas fa-trash-alt text-sm"></i>
+                        </button>
+                    `;
+                    list.appendChild(div);
+                });
+                syncJson();
+                renderNavPreview();
+            }
+
+            function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML.replace(/"/g, '&quot;'); }
+
+            function addMobileNavBtn() {
+                if (_navBtns.length >= 6) { showToast('Maximum 6 buttons allowed', 'warning'); return; }
+                _navBtns.push({ icon: 'fa-link', label: 'New', url: '/', type: 'link' });
+                renderNavList();
+            }
+
+            function removeNavBtn(i) {
+                _confirmAsync('Delete this button?').then(ok => {
+                    if (!ok) return;
+                    _navBtns.splice(i, 1);
+                    renderNavList();
+                });
+            }
+
+            function updateNavBtn(i, key, val) {
+                _navBtns[i][key] = val;
+                syncJson();
+                renderNavPreview();
+            }
+
+            function syncJson() {
+                document.getElementById('mobileNavButtonsJson').value = JSON.stringify(_navBtns);
+            }
+
+            function renderNavPreview() {
+                const preview = document.getElementById('mobileNavPreview');
+                if (!preview) return;
+                preview.innerHTML = '';
+                _navBtns.forEach((btn, i) => {
+                    const isBrand = (btn.icon || '').match(/fa-(whatsapp|facebook|messenger|telegram|instagram|tiktok|youtube)/);
+                    const prefix = isBrand ? 'fab' : 'fas';
+                    const isFirst = i === 0;
+                    const color = isFirst ? 'text-blue-600' : 'text-gray-400';
+                    const el = document.createElement('div');
+                    el.className = `flex flex-col items-center gap-0.5 text-[10px] ${color}`;
+                    el.innerHTML = `<i class="${prefix} ${btn.icon || 'fa-circle'} text-base"></i><span>${escHtml(btn.label || '')}</span>`;
+                    preview.appendChild(el);
+                });
+            }
+
+            // ── Icon Picker ──
+            function openIconPicker(idx) {
+                _iconPickerTarget = idx;
+                const grid = document.getElementById('iconGrid');
+                grid.innerHTML = '';
+                ICON_LIST.forEach(ic => {
+                    const isBrand = ic.match(/fa-(whatsapp|facebook|messenger|telegram|instagram|tiktok|youtube)/);
+                    const prefix = isBrand ? 'fab' : 'fas';
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'icon-pick-btn w-10 h-10 rounded-lg hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center text-gray-600 transition border border-transparent hover:border-blue-300';
+                    btn.dataset.icon = ic;
+                    btn.innerHTML = `<i class="${prefix} ${ic}"></i>`;
+                    btn.title = ic.replace('fa-', '');
+                    btn.onclick = function() { selectIcon(ic); };
+                    if (_navBtns[idx] && _navBtns[idx].icon === ic) {
+                        btn.className += ' bg-blue-100 text-blue-700 border-blue-400';
+                    }
+                    grid.appendChild(btn);
+                });
+                document.getElementById('iconSearchInput').value = '';
+                document.getElementById('iconPickerModal').classList.remove('hidden');
+            }
+
+            function closeIconPicker() {
+                document.getElementById('iconPickerModal').classList.add('hidden');
+                _iconPickerTarget = null;
+            }
+
+            function selectIcon(ic) {
+                if (_iconPickerTarget !== null && _navBtns[_iconPickerTarget]) {
+                    _navBtns[_iconPickerTarget].icon = ic;
+                    renderNavList();
+                }
+                closeIconPicker();
+            }
+
+            function filterIcons(q) {
+                q = q.toLowerCase().trim();
+                document.querySelectorAll('#iconGrid .icon-pick-btn').forEach(btn => {
+                    const name = btn.dataset.icon.replace('fa-', '').replace(/-/g, ' ');
+                    btn.style.display = (!q || name.includes(q) || btn.dataset.icon.includes(q)) ? '' : 'none';
+                });
+            }
+
+            document.addEventListener('DOMContentLoaded', initMobileNav);
+            </script>
+
             <!-- Mobile Product Page Sticky Bar -->
             <div class="bg-white rounded-xl shadow-sm border p-5 space-y-4">
                 <h4 class="font-semibold text-gray-800"><i class="fas fa-mobile-alt mr-2 text-green-500"></i>Mobile Product Page Design</h4>
