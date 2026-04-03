@@ -36,6 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save'
         'archive_page' => [
             'ar_show_card_buttons', 'ar_show_overlay', 'ar_show_discount_badge',
             'ar_show_sort', 'ar_show_order_btn', 'ar_show_cart_btn',
+            'ar_clean_card_border', 'ar_clean_old_price', 'ar_clean_show_offered',
         ],
     ];
     
@@ -360,8 +361,127 @@ require_once __DIR__ . '/../includes/header.php';
                                 <p class="text-[10px] text-gray-400">Full-width order</p>
                             </div>
                         </label>
+                        <label class="relative border-2 rounded-xl p-4 cursor-pointer transition hover:border-blue-300 <?= $cardStyle === 'clean' ? 'border-blue-500 bg-blue-50' : '' ?>">
+                            <input type="radio" name="ar_card_style" value="clean" class="sr-only" <?= $cardStyle === 'clean' ? 'checked' : '' ?>>
+                            <div class="text-center">
+                                <div class="w-full aspect-square bg-white rounded-lg mb-2 border border-gray-200 relative flex items-center justify-center p-3">
+                                    <div class="w-8 h-8 bg-gray-100 rounded"></div>
+                                    <span class="absolute top-1 right-1 bg-green-500 text-white text-[6px] px-1 rounded font-bold">Save</span>
+                                </div>
+                                <div class="h-2 bg-gray-200 rounded w-3/4 mx-auto mb-1"></div>
+                                <div class="flex gap-1 justify-center mb-2"><div class="h-2 bg-orange-200 rounded w-8"></div><div class="h-2 bg-gray-100 rounded w-6 line-through"></div></div>
+                                <div class="h-5 border border-orange-300 rounded text-[7px] text-orange-500 flex items-center justify-center font-bold">🛒 Add To Cart</div>
+                                <p class="text-xs font-medium text-gray-700 mt-2">Clean</p>
+                                <p class="text-[10px] text-gray-400">Outlined buttons</p>
+                            </div>
+                        </label>
                     </div>
                 </div>
+
+                <!-- ═══ Clean Card Settings (shown when "Clean" is selected) ═══ -->
+                <div id="cleanCardSettings" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-5 <?= $cardStyle !== 'clean' ? 'hidden' : '' ?>">
+                    <h4 class="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                        <i class="fas fa-sliders-h text-emerald-500"></i> Clean Card Settings
+                        <span class="ml-auto text-[10px] text-gray-400 font-normal">Only applies when "Clean" style is selected</span>
+                    </h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Button Style</label>
+                            <select name="ar_clean_btn_style" class="w-full px-3 py-2 border rounded-lg text-sm">
+                                <option value="outlined" <?= ($s['ar_clean_btn_style'] ?? 'outlined') === 'outlined' ? 'selected' : '' ?>>Outlined (border)</option>
+                                <option value="filled" <?= ($s['ar_clean_btn_style'] ?? '') === 'filled' ? 'selected' : '' ?>>Filled (solid)</option>
+                                <option value="ghost" <?= ($s['ar_clean_btn_style'] ?? '') === 'ghost' ? 'selected' : '' ?>>Ghost (gray bg)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Button Label</label>
+                            <input type="text" name="ar_clean_btn_label" value="<?= e($s['ar_clean_btn_label'] ?? 'Add To Cart') ?>" class="w-full px-3 py-2 border rounded-lg text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Button Icon</label>
+                            <select name="ar_clean_btn_icon" class="w-full px-3 py-2 border rounded-lg text-sm">
+                                <?php $btnIcons = ['fa-cart-arrow-down'=>'Cart Arrow','fa-cart-plus'=>'Cart Plus','fa-shopping-cart'=>'Shopping Cart','fa-shopping-bag'=>'Shopping Bag','fa-shopping-basket'=>'Basket','fa-plus'=>'Plus','fa-heart'=>'Heart','fa-bolt'=>'Bolt'];
+                                foreach ($btnIcons as $ic => $il): ?>
+                                <option value="<?= $ic ?>" <?= ($s['ar_clean_btn_icon'] ?? 'fa-cart-arrow-down') === $ic ? 'selected' : '' ?>><?= $il ?> (<?= $ic ?>)</option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Badge Position</label>
+                            <select name="ar_clean_badge_pos" class="w-full px-3 py-2 border rounded-lg text-sm">
+                                <option value="top_right" <?= ($s['ar_clean_badge_pos'] ?? 'top_right') === 'top_right' ? 'selected' : '' ?>>Top Right</option>
+                                <option value="top_left" <?= ($s['ar_clean_badge_pos'] ?? '') === 'top_left' ? 'selected' : '' ?>>Top Left</option>
+                                <option value="bottom_right" <?= ($s['ar_clean_badge_pos'] ?? '') === 'bottom_right' ? 'selected' : '' ?>>Bottom Right</option>
+                                <option value="bottom_left" <?= ($s['ar_clean_badge_pos'] ?? '') === 'bottom_left' ? 'selected' : '' ?>>Bottom Left</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Image Fit</label>
+                            <select name="ar_clean_img_fit" class="w-full px-3 py-2 border rounded-lg text-sm">
+                                <option value="contain" <?= ($s['ar_clean_img_fit'] ?? 'contain') === 'contain' ? 'selected' : '' ?>>Contain (full image, no crop)</option>
+                                <option value="cover" <?= ($s['ar_clean_img_fit'] ?? '') === 'cover' ? 'selected' : '' ?>>Cover (fill, may crop)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Image Background</label>
+                            <input type="color" name="ar_clean_img_bg" value="<?= e($s['ar_clean_img_bg'] ?? '#ffffff') ?>" class="h-10 w-full rounded-lg border cursor-pointer">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Card Border Radius (px)</label>
+                            <input type="number" name="ar_clean_card_radius" value="<?= e($s['ar_clean_card_radius'] ?? '8') ?>" class="w-full px-3 py-2 border rounded-lg text-sm" min="0" max="30">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Product Name Lines</label>
+                            <select name="ar_clean_name_lines" class="w-full px-3 py-2 border rounded-lg text-sm">
+                                <option value="1" <?= ($s['ar_clean_name_lines'] ?? '1') === '1' ? 'selected' : '' ?>>1 line</option>
+                                <option value="2" <?= ($s['ar_clean_name_lines'] ?? '') === '2' ? 'selected' : '' ?>>2 lines</option>
+                                <option value="3" <?= ($s['ar_clean_name_lines'] ?? '') === '3' ? 'selected' : '' ?>>3 lines</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Badge Color</label>
+                            <input type="color" name="ar_clean_badge_color" value="<?= e($s['ar_clean_badge_color'] ?? '#22c55e') ?>" class="h-10 w-full rounded-lg border cursor-pointer">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Badge Text Color</label>
+                            <input type="color" name="ar_clean_badge_text_color" value="<?= e($s['ar_clean_badge_text_color'] ?? '#ffffff') ?>" class="h-10 w-full rounded-lg border cursor-pointer">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">"Offered" Label</label>
+                            <input type="text" name="ar_clean_offered_label" value="<?= e($s['ar_clean_offered_label'] ?? 'Offered Items') ?>" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Offered Items">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        <label class="flex items-center gap-2 p-3 rounded-lg border hover:bg-gray-50 cursor-pointer">
+                            <input type="hidden" name="ar_clean_card_border" value="0">
+                            <input type="checkbox" name="ar_clean_card_border" value="1" class="w-4 h-4 text-blue-600 rounded" <?= ($s['ar_clean_card_border'] ?? '1') === '1' ? 'checked' : '' ?>>
+                            <span class="text-sm">Card Border</span>
+                        </label>
+                        <label class="flex items-center gap-2 p-3 rounded-lg border hover:bg-gray-50 cursor-pointer">
+                            <input type="hidden" name="ar_clean_old_price" value="0">
+                            <input type="checkbox" name="ar_clean_old_price" value="1" class="w-4 h-4 text-blue-600 rounded" <?= ($s['ar_clean_old_price'] ?? '1') === '1' ? 'checked' : '' ?>>
+                            <span class="text-sm">Show Old Price</span>
+                        </label>
+                        <label class="flex items-center gap-2 p-3 rounded-lg border hover:bg-gray-50 cursor-pointer">
+                            <input type="hidden" name="ar_clean_show_offered" value="0">
+                            <input type="checkbox" name="ar_clean_show_offered" value="1" class="w-4 h-4 text-blue-600 rounded" <?= ($s['ar_clean_show_offered'] ?? '1') === '1' ? 'checked' : '' ?>>
+                            <span class="text-sm">Show "Offered" Badge</span>
+                        </label>
+                    </div>
+                </div>
+                <script>
+                document.querySelectorAll('input[name="ar_card_style"]').forEach(r => {
+                    r.addEventListener('change', function(){
+                        document.getElementById('cleanCardSettings').classList.toggle('hidden', this.value !== 'clean');
+                        // Update radio card active states
+                        document.querySelectorAll('input[name="ar_card_style"]').forEach(r2 => {
+                            const lbl = r2.closest('label');
+                            lbl.classList.toggle('border-blue-500', r2.checked);
+                            lbl.classList.toggle('bg-blue-50', r2.checked);
+                        });
+                    });
+                });
+                </script>
 
                 <?php endif; ?>
 
