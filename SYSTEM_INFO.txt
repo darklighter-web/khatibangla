@@ -1278,3 +1278,41 @@ WHERE RETURN_STATUS IS CONSUMED (redirects):
 
 FILES CHANGED:
   order-view.php, order-management.php, order-row-tpl.php
+
+
+================================================================================
+              SECTION VISIBILITY (PER-DEVICE TOGGLES)
+================================================================================
+Updated: 2026-04-04
+
+LOCATION: Admin → Settings → Header & Nav tab (top panel)
+
+Each header/nav section can be independently shown or hidden for Desktop (PC)
+and Mobile devices using toggle switches.
+
+SECTIONS CONTROLLED:
+  1. Top Bar / Announcement   — vis_topbar_desktop, vis_topbar_mobile
+  2. Main Header              — vis_main_header_desktop, vis_main_header_mobile
+  3. Category Navigation Bar  — vis_cat_nav_desktop, vis_cat_nav_mobile
+  4. Mobile Bottom Nav        — vis_mobile_bottom_nav_desktop, vis_mobile_bottom_nav_mobile
+  5. Mobile Sticky Buy Bar    — vis_mobile_sticky_bar_desktop, vis_mobile_sticky_bar_mobile
+
+HOW IT WORKS:
+  • Settings stored in site_settings table as vis_{section}_{device} = '0' or '1'
+  • Default: all sections visible ('1') on all devices
+  • CSS media queries injected in includes/header.php <style> block
+  • Desktop = min-width: 1024px, Mobile = max-width: 1023px
+  • Uses !important to override existing Tailwind classes
+  • CSS classes on elements: vis-topbar, vis-main-header, vis-cat-nav,
+    vis-mobile-bottom-nav, vis-mobile-sticky-bar
+
+ADMIN UI:
+  • Indigo (purple-ish) toggle = Desktop, Purple toggle = Mobile
+  • Hidden input value="0" + checkbox value="1" pattern ensures proper save
+  • Checkbox map in settings.php save handler covers all vis_* keys
+
+FILES:
+  • Admin UI:    admin/pages/settings.php (Header & Nav tab, checkbox map)
+  • Frontend:    includes/header.php (CSS + class on topbar, header, cat nav)
+  • Footer:      includes/footer.php (class on mobile bottom nav)
+  • Product:     pages/product.php (class on mobile sticky buy bar)
