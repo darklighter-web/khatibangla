@@ -136,7 +136,7 @@ if (!is_array($_mobileNavBtns) || empty($_mobileNavBtns)) {
 // Determine current path for active highlight
 $_currentPath = rtrim(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH), '/') ?: '/';
 ?>
-<nav class="lg:hidden fixed bottom-0 left-0 right-0 border-t shadow-lg z-40" style="background-color:var(--mobile-nav-bg, #fff)">
+<nav class="vis-mobile-bottom-nav lg:hidden fixed bottom-0 left-0 right-0 border-t shadow-lg z-40" style="background-color:var(--mobile-nav-bg, #fff)">
     <div class="flex items-center justify-around py-2">
         <?php foreach ($_mobileNavBtns as $_mnIdx => $_mnBtn):
             $_mnIcon = $_mnBtn['icon'] ?? 'fa-link';

@@ -121,6 +121,17 @@ $mobileStickyTextColor = getSetting('mobile_sticky_text_color', '#1f2937');
 $isProductPage = (isset($product) && is_array($product) && !empty($product['id']));
 $hideMobileNav = $mobileProductStickyBar && $mobileHideNavProduct && $isProductPage;
 
+// ── Section Visibility (per device) ──
+$visTopbarDesktop       = getSetting('vis_topbar_desktop', '1') === '1';
+$visTopbarMobile        = getSetting('vis_topbar_mobile', '1') === '1';
+$visMainHeaderDesktop   = getSetting('vis_main_header_desktop', '1') === '1';
+$visMainHeaderMobile    = getSetting('vis_main_header_mobile', '1') === '1';
+$visCatNavDesktop       = getSetting('vis_cat_nav_desktop', '1') === '1';
+$visCatNavMobile        = getSetting('vis_cat_nav_mobile', '1') === '1';
+$visMobileBottomNav     = getSetting('vis_mobile_bottom_nav_mobile', '1') === '1';
+$visMobileStickyDesktop = getSetting('vis_mobile_sticky_bar_desktop', '1') === '1';
+$visMobileStickyMobile  = getSetting('vis_mobile_sticky_bar_mobile', '1') === '1';
+
 $metaTitle = $pageTitle ?? getSetting('meta_title', $siteName);
 $metaDesc = $pageDescription ?? getSetting('meta_description', '');
 
@@ -338,6 +349,35 @@ $_autoDesc = seoAutoDescription($seo);
         /* Announcement marquee */
         @keyframes marquee { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
         .animate-marquee { animation: marquee 20s linear infinite; }
+        
+        /* ── Section Visibility (per device) ── */
+        <?php if (!$visTopbarDesktop): ?>
+        @media(min-width:1024px){ .vis-topbar { display:none !important; } }
+        <?php endif; ?>
+        <?php if (!$visTopbarMobile): ?>
+        @media(max-width:1023px){ .vis-topbar { display:none !important; } }
+        <?php endif; ?>
+        <?php if (!$visMainHeaderDesktop): ?>
+        @media(min-width:1024px){ .vis-main-header { display:none !important; } }
+        <?php endif; ?>
+        <?php if (!$visMainHeaderMobile): ?>
+        @media(max-width:1023px){ .vis-main-header { display:none !important; } }
+        <?php endif; ?>
+        <?php if (!$visCatNavDesktop): ?>
+        @media(min-width:1024px){ .vis-cat-nav { display:none !important; } }
+        <?php endif; ?>
+        <?php if (!$visCatNavMobile): ?>
+        @media(max-width:1023px){ .vis-cat-nav { display:none !important; } }
+        <?php endif; ?>
+        <?php if (!$visMobileBottomNav): ?>
+        .vis-mobile-bottom-nav { display:none !important; }
+        <?php endif; ?>
+        <?php if (!$visMobileStickyDesktop): ?>
+        @media(min-width:1024px){ .vis-mobile-sticky-bar { display:none !important; } }
+        <?php endif; ?>
+        <?php if (!$visMobileStickyMobile): ?>
+        @media(max-width:1023px){ .vis-mobile-sticky-bar { display:none !important; } }
+        <?php endif; ?>
         
         /* Popup animation */
         .popup-overlay { transition: opacity 0.3s; }
@@ -628,7 +668,7 @@ $_autoDesc = seoAutoDescription($seo);
 <?php endif; ?>
 
 <!-- Top Bar / Announcement -->
-<div class="text-sm py-1.5 text-center overflow-hidden topbar-text" style="background-color:<?= $topbarBg ?>;color:<?= $topbarText ?>">
+<div class="vis-topbar text-sm py-1.5 text-center overflow-hidden topbar-text" style="background-color:<?= $topbarBg ?>;color:<?= $topbarText ?>">
     <div class="flex items-center justify-center gap-2 px-4">
         <i class="fas fa-phone-alt text-xs"></i>
         <span><?= htmlspecialchars($announcement) ?>: </span>
@@ -650,7 +690,7 @@ if ($headerBgStyle === 'glass') {
     $headerStyle .= "background-color:{$headerBg};";
 }
 ?>
-<header class="sticky top-0 z-50 <?= $headerBgStyle === 'glass' ? 'border-b border-white/20' : 'shadow-sm' ?> <?= $hideMobileNav ? 'hidden-on-mobile-product' : '' ?>" style="<?= $headerStyle ?>">
+<header class="vis-main-header sticky top-0 z-50 <?= $headerBgStyle === 'glass' ? 'border-b border-white/20' : 'shadow-sm' ?> <?= $hideMobileNav ? 'hidden-on-mobile-product' : '' ?>" style="<?= $headerStyle ?>">
     <style>
     @media(max-width:1023px){ header .main-header-row { height: <?= $headerHeightMobile ?>px; } }
     @media(min-width:1024px){ header .main-header-row { height: <?= $headerHeightDesktop ?>px; } }
@@ -797,7 +837,7 @@ if ($headerBgStyle === 'glass') {
         $navStyle = "background-color:{$navbarBg};";
     }
     ?>
-    <nav class="hidden lg:block <?= $navbarBgStyle === 'glass' ? 'border-b border-white/10' : '' ?>" style="<?= $navStyle ?>">
+    <nav class="vis-cat-nav hidden lg:block <?= $navbarBgStyle === 'glass' ? 'border-b border-white/10' : '' ?>" style="<?= $navStyle ?>">
         <div class="max-w-7xl mx-auto px-4">
             <ul class="flex items-center gap-1 overflow-x-auto scrollbar-hide py-0.5 <?= $alignClass ?>">
                 <?php if ($navShowShop): ?>

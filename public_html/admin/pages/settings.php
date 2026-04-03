@@ -107,6 +107,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'fb_ss_evt_purchase','fb_ss_evt_search','fb_ss_evt_lead','fb_ss_evt_completeregistration','fb_ss_evt_contact',
             'fb_event_logging','fb_advanced_matching',
         ],
+        'header' => ['header_show_search','header_show_login','header_show_wishlist','header_show_whatsapp','header_show_cart',
+                     'nav_show_shop_link','nav_show_categories','mobile_product_sticky_bar','mobile_hide_nav_product','track_glass_animated_bg',
+                     'vis_topbar_desktop','vis_topbar_mobile','vis_main_header_desktop','vis_main_header_mobile',
+                     'vis_cat_nav_desktop','vis_cat_nav_mobile','vis_mobile_bottom_nav_desktop','vis_mobile_bottom_nav_mobile',
+                     'vis_mobile_sticky_bar_desktop','vis_mobile_sticky_bar_mobile'],
         'shipping' => ['auto_detect_location'],
         'print' => ['print_show_barcode'],
         'checkout' => ['checkout_note_enabled','order_now_clear_cart','order_merge_enabled','store_credits_enabled','store_credit_checkout'],
@@ -1160,6 +1165,62 @@ require_once __DIR__ . '/../includes/header.php';
 
 
             <?php elseif ($tab === 'header'): ?>
+            <!-- ══ Section Visibility Controls (Mobile / Desktop) ══ -->
+            <div class="bg-white rounded-xl shadow-sm border overflow-hidden mb-1">
+                <div class="bg-gradient-to-r from-indigo-50 to-purple-50 px-5 py-3 border-b border-indigo-100">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h4 class="font-semibold text-gray-800"><i class="fas fa-eye mr-2 text-indigo-500"></i>Section Visibility</h4>
+                            <p class="text-xs text-gray-500 mt-0.5">Toggle each section on/off separately for mobile and desktop devices</p>
+                        </div>
+                        <div class="flex items-center gap-4 text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                            <span class="w-16 text-center"><i class="fas fa-desktop mr-1"></i>PC</span>
+                            <span class="w-16 text-center"><i class="fas fa-mobile-alt mr-1"></i>Mobile</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="divide-y divide-gray-100">
+                    <?php
+                    $visSections = [
+                        'topbar'            => ['Top Bar / Announcement', 'fa-bullhorn text-yellow-500', 'Announcement banner at very top'],
+                        'main_header'       => ['Main Header', 'fa-window-maximize text-blue-500', 'Logo, search, cart, login icons'],
+                        'cat_nav'           => ['Category Navigation Bar', 'fa-bars text-blue-500', 'Category links below header'],
+                        'mobile_bottom_nav' => ['Mobile Bottom Nav', 'fa-mobile-alt text-purple-500', 'Bottom navigation buttons on mobile'],
+                        'mobile_sticky_bar' => ['Mobile Sticky Buy Bar', 'fa-shopping-bag text-green-500', 'Sticky add-to-cart on product page'],
+                    ];
+                    foreach ($visSections as $secKey => $secInfo):
+                        $deskVal = $s["vis_{$secKey}_desktop"] ?? '1';
+                        $mobVal  = $s["vis_{$secKey}_mobile"]  ?? '1';
+                    ?>
+                    <div class="flex items-center justify-between px-5 py-3 hover:bg-gray-50/50 transition">
+                        <div class="flex items-center gap-3 flex-1 min-w-0">
+                            <div class="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center flex-shrink-0">
+                                <i class="fas <?= $secInfo[1] ?> text-sm"></i>
+                            </div>
+                            <div>
+                                <span class="text-sm font-medium text-gray-700"><?= $secInfo[0] ?></span>
+                                <span class="text-[10px] text-gray-400 block"><?= $secInfo[2] ?></span>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <!-- Desktop Toggle -->
+                            <label class="relative inline-flex items-center cursor-pointer w-16 justify-center" title="Desktop: <?= $deskVal === '1' ? 'Visible' : 'Hidden' ?>">
+                                <input type="hidden" name="vis_<?= $secKey ?>_desktop" value="0">
+                                <input type="checkbox" name="vis_<?= $secKey ?>_desktop" value="1" class="sr-only peer" <?= $deskVal === '1' ? 'checked' : '' ?>>
+                                <div class="w-9 h-5 bg-gray-200 peer-focus:ring-2 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-500"></div>
+                            </label>
+                            <!-- Mobile Toggle -->
+                            <label class="relative inline-flex items-center cursor-pointer w-16 justify-center" title="Mobile: <?= $mobVal === '1' ? 'Visible' : 'Hidden' ?>">
+                                <input type="hidden" name="vis_<?= $secKey ?>_mobile" value="0">
+                                <input type="checkbox" name="vis_<?= $secKey ?>_mobile" value="1" class="sr-only peer" <?= $mobVal === '1' ? 'checked' : '' ?>>
+                                <div class="w-9 h-5 bg-gray-200 peer-focus:ring-2 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-500"></div>
+                            </label>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+
             <div class="bg-white rounded-xl shadow-sm border p-5 space-y-4">
                 <h4 class="font-semibold text-gray-800"><i class="fas fa-bullhorn mr-2 text-yellow-500"></i>Top Bar</h4>
                 <div><label class="block text-sm font-medium text-gray-700 mb-1">Announcement Text</label>

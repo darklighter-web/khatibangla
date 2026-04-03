@@ -1849,7 +1849,7 @@ if ($stickyBarEnabled):
     }
 ?>
 <!-- Mobile Sticky Buy Bar -->
-<div id="mobile-sticky-buy" class="md:hidden fixed bottom-0 left-0 right-0 z-50 px-3 py-2.5 shadow-[0_-4px_20px_rgba(0,0,0,0.1)]"
+<div id="mobile-sticky-buy" class="vis-mobile-sticky-bar md:hidden fixed bottom-0 left-0 right-0 z-50 px-3 py-2.5 shadow-[0_-4px_20px_rgba(0,0,0,0.1)]"
      style="<?= $stickyBgCSS ?>;color:<?= $stickyTextColor ?>;">
     <div class="flex items-center gap-2 w-full max-w-full overflow-hidden">
         <!-- Price -->
