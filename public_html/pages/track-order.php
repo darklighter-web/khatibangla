@@ -11,13 +11,8 @@ $error = '';
 
 if ($_GET['q'] ?? $_POST['order_number'] ?? '') {
     $orderNum = sanitize($_GET['q'] ?? $_POST['order_number']);
-    $phone = sanitize($_GET['p'] ?? $_POST['phone'] ?? '');
 
-    if ($phone) {
-        $order = $db->fetch("SELECT * FROM orders WHERE order_number = ? AND customer_phone = ?", [$orderNum, $phone]);
-    } else {
-        $order = $db->fetch("SELECT * FROM orders WHERE order_number = ?", [$orderNum]);
-    }
+    $order = $db->fetch("SELECT * FROM orders WHERE order_number = ?", [$orderNum]);
 
     if ($order) {
         $items = $db->fetchAll("SELECT oi.*, p.slug, p.store_credit_enabled, p.store_credit_amount,
@@ -26,7 +21,7 @@ if ($_GET['q'] ?? $_POST['order_number'] ?? '') {
         $statusHistory = $db->fetchAll("SELECT * FROM order_status_history WHERE order_id = ? ORDER BY created_at ASC", [$order['id']]);
         $shipment = $db->fetch("SELECT cs.*, cp.name as courier_name FROM courier_shipments cs LEFT JOIN courier_providers cp ON cp.id = cs.courier_id WHERE cs.order_id = ?", [$order['id']]);
     } else {
-        $error = 'অর্ডারটি খুঁজে পাওয়া যায়নি। অর্ডার নম্বর ও ফোন নম্বর চেক করুন।';
+        $error = 'অর্ডারটি খুঁজে পাওয়া যায়নি। অর্ডার নম্বর চেক করুন।';
     }
 }
 
@@ -48,7 +43,6 @@ $statusConfig = [
     'on_hold'    => ['হোল্ড', 'bg-gray-100 text-gray-700 border-gray-300', 'fas fa-pause-circle', '#6b7280'],
 ];
 $currentStatus = $order['order_status'] ?? '';
-// Map legacy 'pending' status to 'processing'
 if ($currentStatus === 'pending') $currentStatus = 'processing';
 $conf = $statusConfig[$currentStatus] ?? ['অজানা', 'bg-gray-100 text-gray-700', 'fas fa-question', '#6b7280'];
 $creditUsed = floatval($order['store_credit_used'] ?? 0);
@@ -61,9 +55,24 @@ foreach ($items as $it) {
         $totalCreditsEarnable += floatval($it['store_credit_amount']) * intval($it['quantity']);
     }
 }
+
+// Brand color for glow effect
+$brandColor = getSetting('primary_color', '#E53E3E');
+// Convert hex to RGB for glow
+$r = hexdec(substr($brandColor, 1, 2));
+$g = hexdec(substr($brandColor, 3, 2));
+$b = hexdec(substr($brandColor, 5, 2));
+// Generate a secondary glow color (complementary shift)
+$r2 = ($r + 128) % 256;
+$g2 = ($g + 64) % 256;
+$b2 = ($b + 128) % 256;
+$brandHex2 = sprintf("#%02x%02x%02x", $r2, $g2, $b2);
+// Darker variant
+$brandDark = sprintf("#%02x%02x%02x", max(0,$r-40), max(0,$g-40), max(0,$b-40));
 ?>
 
 <style>
+/* ── Timeline ── */
 .track-progress{display:flex;align-items:flex-start;position:relative;padding:0 8px}
 .track-step{flex:1;display:flex;flex-direction:column;align-items:center;position:relative;z-index:2}
 .track-step .step-dot{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;border:3px solid #e5e7eb;background:#fff;transition:all .3s}
@@ -76,29 +85,115 @@ foreach ($items as $it) {
 .tl-item::before{content:'';position:absolute;left:7px;top:24px;bottom:0;width:2px;background:#e5e7eb}
 .tl-item:last-child::before{display:none}
 .tl-dot{position:absolute;left:0;top:4px;width:16px;height:16px;border-radius:50%;border:3px solid;display:flex;align-items:center;justify-content:center}
+
+/* ══════════════════════════════════════════
+   Animated Glowing Search Bar — Brand Color
+   ══════════════════════════════════════════ */
+@keyframes glowSpin { 0%{transform:translate(-50%,-50%) rotate(0deg)} 100%{transform:translate(-50%,-50%) rotate(360deg)} }
+@keyframes searchPulse { 0%,100%{opacity:.7;transform:scale(1)} 50%{opacity:1;transform:scale(1.08)} }
+@keyframes orbitDot { 0%{transform:rotate(0deg) translateX(11px)} 100%{transform:rotate(360deg) translateX(11px)} }
+@keyframes glowPulse { 0%,100%{box-shadow:0 0 15px <?=$brandColor?>40, 0 0 30px <?=$brandColor?>20} 50%{box-shadow:0 0 25px <?=$brandColor?>60, 0 0 50px <?=$brandColor?>30} }
+
+.glow-search-wrap{position:relative;display:flex;align-items:center;justify-content:center}
+.glow-search-wrap .glow-border{position:absolute;z-index:0;overflow:hidden;height:100%;width:100%;max-height:62px;border-radius:16px;filter:blur(3px)}
+.glow-search-wrap .glow-border::before{content:'';position:absolute;z-index:-1;width:600px;height:600px;background-repeat:no-repeat;top:50%;left:50%;transform:translate(-50%,-50%) rotate(80deg);
+    background:conic-gradient(rgba(0,0,0,0),<?=$brandColor?>,rgba(0,0,0,0) 10%,rgba(0,0,0,0) 50%,<?=$brandHex2?>,rgba(0,0,0,0) 60%);
+    transition:transform 2s ease}
+.glow-search-wrap:hover .glow-border::before{transform:translate(-50%,-50%) rotate(-100deg)}
+.glow-search-wrap:focus-within .glow-border::before{transform:translate(-50%,-50%) rotate(440deg);transition-duration:4s}
+
+.glow-search-wrap .glow-border-inner{position:absolute;z-index:0;overflow:hidden;height:100%;width:100%;max-height:58px;border-radius:14px;filter:blur(0.5px)}
+.glow-search-wrap .glow-border-inner::before{content:'';position:absolute;z-index:-1;width:600px;height:600px;background-repeat:no-repeat;top:50%;left:50%;transform:translate(-50%,-50%) rotate(70deg);
+    background:conic-gradient(#1c191c,<?=$brandColor?> 5%,#1c191c 14%,#1c191c 50%,<?=$brandHex2?> 60%,#1c191c 64%);
+    filter:brightness(1.3);transition:transform 2s ease}
+.glow-search-wrap:hover .glow-border-inner::before{transform:translate(-50%,-50%) rotate(-110deg)}
+.glow-search-wrap:focus-within .glow-border-inner::before{transform:translate(-50%,-50%) rotate(430deg);transition-duration:4s}
+
+.glow-search-wrap .glow-highlight{position:absolute;z-index:0;overflow:hidden;height:100%;width:100%;max-height:60px;border-radius:15px;filter:blur(2px)}
+.glow-search-wrap .glow-highlight::before{content:'';position:absolute;z-index:-1;width:600px;height:600px;background-repeat:no-repeat;top:50%;left:50%;transform:translate(-50%,-50%) rotate(82deg);
+    background:conic-gradient(rgba(0,0,0,0) 0%,<?=$brandColor?>80,rgba(0,0,0,0) 8%,rgba(0,0,0,0) 50%,<?=$brandHex2?>80,rgba(0,0,0,0) 58%);
+    filter:brightness(1.4);transition:transform 2s ease}
+.glow-search-wrap:hover .glow-highlight::before{transform:translate(-50%,-50%) rotate(-98deg)}
+.glow-search-wrap:focus-within .glow-highlight::before{transform:translate(-50%,-50%) rotate(442deg);transition-duration:4s}
+
+.glow-search-input{position:relative;z-index:1;background:#010201;border:none;width:100%;height:56px;border-radius:14px;color:#fff;padding:0 52px 0 52px;font-size:15px;outline:none;letter-spacing:.3px}
+.glow-search-input::placeholder{color:#888;letter-spacing:.5px}
+.glow-search-input:focus{background:#0a0a0a}
+
+/* Animated search icon */
+.search-icon-animated{position:absolute;left:16px;top:50%;transform:translateY(-50%);z-index:2;width:24px;height:24px}
+.search-icon-animated svg{animation:searchPulse 2s ease-in-out infinite}
+.search-icon-animated .orbit-dot{position:absolute;top:50%;left:50%;width:3px;height:3px;border-radius:50%;background:<?=$brandColor?>;animation:orbitDot 3s linear infinite;opacity:.6}
+.search-icon-animated .orbit-dot:nth-child(2){animation-delay:-1s;background:<?=$brandHex2?>}
+.search-icon-animated .orbit-dot:nth-child(3){animation-delay:-2s;opacity:.4}
+
+/* Submit button inside search */
+.glow-submit-btn{position:absolute;top:7px;right:7px;z-index:2;height:42px;width:42px;border-radius:10px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(135deg,<?=$brandColor?>,<?=$brandDark?>);color:#fff;transition:all .2s;overflow:hidden;animation:glowPulse 3s ease-in-out infinite}
+.glow-submit-btn:hover{transform:scale(1.05);filter:brightness(1.15)}
+.glow-submit-btn:active{transform:scale(0.95)}
+.glow-submit-btn .spin-ring{position:absolute;inset:0;border-radius:10px;overflow:hidden;pointer-events:none}
+.glow-submit-btn .spin-ring::before{content:'';position:absolute;width:200px;height:200px;top:50%;left:50%;
+    background:conic-gradient(transparent,rgba(255,255,255,.3),transparent 30%,transparent 50%,rgba(255,255,255,.2),transparent 80%);
+    animation:glowSpin 3s linear infinite}
+
+.glow-input-mask{pointer-events:none;position:absolute;width:80px;height:20px;background:linear-gradient(to right,transparent,#010201);top:18px;left:60px;z-index:1}
+.glow-search-wrap:focus-within .glow-input-mask{display:none}
 </style>
 
 <div class="max-w-2xl mx-auto py-6 px-4">
 
-    <!-- Search Form -->
-    <div class="bg-white rounded-2xl shadow-sm border p-5 mb-6">
-        <div class="flex items-center gap-3 mb-4">
-            <div class="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
-                <i class="fas fa-search text-blue-500"></i>
-            </div>
-            <div>
-                <h1 class="text-lg font-bold text-gray-800">অর্ডার ট্র্যাক করুন</h1>
-                <p class="text-xs text-gray-400">অর্ডার নম্বর দিয়ে আপনার অর্ডারের অবস্থা দেখুন</p>
-            </div>
+    <!-- Animated Glowing Search Form -->
+    <div class="mb-6">
+        <div class="text-center mb-5">
+            <h1 class="text-xl font-bold text-gray-800 mb-1">অর্ডার ট্র্যাক করুন</h1>
+            <p class="text-xs text-gray-400">আপনার অর্ডার নম্বর দিয়ে অবস্থা দেখুন</p>
         </div>
-        <form method="POST">
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-                <input type="text" name="order_number" value="<?= e($_POST['order_number'] ?? $_GET['q'] ?? '') ?>" required placeholder="অর্ডার নম্বর — ORD-XXXXX" class="border border-gray-200 rounded-xl px-4 py-2.5 w-full text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none">
-                <input type="text" name="phone" value="<?= e($_POST['phone'] ?? $_GET['p'] ?? '') ?>" placeholder="ফোন নম্বর (ঐচ্ছিক)" class="border border-gray-200 rounded-xl px-4 py-2.5 w-full text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none">
+        <form method="POST" class="flex justify-center">
+            <div class="glow-search-wrap w-full max-w-md group">
+                <!-- Outer glow layers -->
+                <div class="glow-border"></div>
+                <div class="glow-highlight"></div>
+                <div class="glow-highlight"></div>
+                <div class="glow-border-inner"></div>
+
+                <!-- Main input area -->
+                <div class="relative w-full" style="z-index:1">
+                    <input name="order_number" type="text" value="<?= e($_POST['order_number'] ?? $_GET['q'] ?? '') ?>" required
+                           placeholder="অর্ডার নম্বর — ORD-XXXXX"
+                           class="glow-search-input" autocomplete="off">
+                    <div class="glow-input-mask"></div>
+
+                    <!-- Animated search icon -->
+                    <div class="search-icon-animated">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="8" stroke="url(#sg1)"/>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65" stroke="url(#sg2)"/>
+                            <defs>
+                                <linearGradient id="sg1" gradientTransform="rotate(50)">
+                                    <stop offset="0%" stop-color="<?=$brandColor?>"/>
+                                    <stop offset="100%" stop-color="<?=$brandHex2?>"/>
+                                </linearGradient>
+                                <linearGradient id="sg2">
+                                    <stop offset="0%" stop-color="<?=$brandHex2?>"/>
+                                    <stop offset="100%" stop-color="#666"/>
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                        <div class="orbit-dot"></div>
+                        <div class="orbit-dot"></div>
+                        <div class="orbit-dot"></div>
+                    </div>
+
+                    <!-- Submit button -->
+                    <button type="submit" class="glow-submit-btn" title="ট্র্যাক করুন">
+                        <div class="spin-ring"></div>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="position:relative;z-index:1">
+                            <polyline points="9 18 15 12 9 6"/>
+                        </svg>
+                    </button>
+                </div>
             </div>
-            <button type="submit" class="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-2.5 rounded-xl font-semibold text-sm hover:shadow-lg hover:shadow-blue-200 transition-all active:scale-[0.98]">
-                <i class="fas fa-search mr-2"></i>ট্র্যাক করুন
-            </button>
         </form>
     </div>
 
@@ -125,135 +220,84 @@ foreach ($items as $it) {
                         <i class="fas fa-box mr-1"></i><?= $totalItems ?> পণ্য
                     </p>
                 </div>
-                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border <?= $conf[1] ?>">
+                <span class="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border <?= $conf[1] ?>">
                     <i class="<?= $conf[2] ?> text-[10px]"></i>
                     <?= $conf[0] ?>
                 </span>
             </div>
         </div>
-
-        <!-- Progress Bar -->
-        <?php if (!in_array($currentStatus, ['cancelled', 'returned'])): ?>
-        <?php $currentIdx = array_search($currentStatus, $statusSteps); if ($currentIdx === false) $currentIdx = 0; ?>
+        <!-- Progress Steps -->
+        <?php if (!in_array($currentStatus, ['cancelled','returned','pending_return','pending_cancel','lost','on_hold'])): ?>
         <div class="px-5 pb-5">
             <div class="track-progress">
-                <div class="track-line">
-                    <div class="track-line-fill" style="width:<?= $currentIdx >= count($statusSteps)-1 ? 100 : round(($currentIdx / (count($statusSteps)-1)) * 100) ?>%"></div>
-                </div>
-                <?php foreach ($statusSteps as $i => $step):
-                    $stepClass = $i < $currentIdx ? 'done' : ($i === $currentIdx ? 'active' : '');
+                <div class="track-line"><div class="track-line-fill" style="width:<?php
+                    $stepIdx = array_search($currentStatus, $statusSteps);
+                    if ($stepIdx === false) $stepIdx = 0;
+                    echo ($stepIdx / (count($statusSteps) - 1)) * 100;
+                ?>%"></div></div>
+                <?php foreach ($statusSteps as $si => $step):
+                    $sConf = $statusConfig[$step];
+                    $isDone = $stepIdx > $si;
+                    $isActive = $stepIdx == $si;
+                    $cls = $isDone ? 'done' : ($isActive ? 'active' : '');
                 ?>
-                <div class="track-step <?= $stepClass ?>">
-                    <div class="step-dot">
-                        <?php if ($i < $currentIdx): ?>
-                            <i class="fas fa-check text-xs"></i>
-                        <?php elseif ($i === $currentIdx): ?>
-                            <i class="<?= $statusConfig[$step][2] ?? 'fas fa-circle' ?> text-xs"></i>
-                        <?php else: ?>
-                            <?= $i + 1 ?>
-                        <?php endif; ?>
-                    </div>
-                    <span class="text-[10px] mt-1.5 text-center leading-tight <?= $i <= $currentIdx ? 'text-gray-700 font-medium' : 'text-gray-400' ?>"><?= $statusConfig[$step][0] ?></span>
+                <div class="track-step <?= $cls ?>">
+                    <div class="step-dot"><i class="<?= $sConf[2] ?> text-xs"></i></div>
+                    <span class="text-[10px] mt-1.5 text-center font-medium <?= ($isDone || $isActive) ? 'text-gray-700' : 'text-gray-400' ?>"><?= $sConf[0] ?></span>
                 </div>
                 <?php endforeach; ?>
             </div>
         </div>
-        <?php else: ?>
-        <div class="mx-5 mb-5 rounded-xl p-3 <?= $currentStatus === 'cancelled' ? 'bg-red-50 border border-red-200' : 'bg-orange-50 border border-orange-200' ?>">
-            <div class="flex items-center gap-2">
-                <i class="<?= $conf[2] ?> <?= $currentStatus === 'cancelled' ? 'text-red-500' : 'text-orange-500' ?>"></i>
-                <span class="text-sm font-medium <?= $currentStatus === 'cancelled' ? 'text-red-700' : 'text-orange-700' ?>">
-                    এই অর্ডারটি <?= $conf[0] ?> করা হয়েছে
-                </span>
+        <?php endif; ?>
+
+        <!-- Courier Info -->
+        <?php if ($shipment && !empty($shipment['tracking_id'])): ?>
+        <div class="border-t mx-5"></div>
+        <div class="p-4 flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center"><i class="fas fa-truck text-purple-500 text-sm"></i></div>
+                <div>
+                    <p class="text-xs font-semibold text-gray-700"><?= e($shipment['courier_name'] ?? 'Courier') ?></p>
+                    <p class="text-[11px] text-gray-400">Tracking: <?= e($shipment['tracking_id']) ?></p>
+                </div>
             </div>
+            <?php if (!empty($shipment['tracking_url'])): ?>
+            <a href="<?= e($shipment['tracking_url']) ?>" target="_blank" class="text-xs font-medium text-purple-600 hover:underline">ট্র্যাক করুন →</a>
+            <?php endif; ?>
         </div>
         <?php endif; ?>
     </div>
 
-    <!-- Courier Info -->
-    <?php if ($shipment): ?>
-    <div class="bg-white rounded-2xl shadow-sm border p-5 mb-4">
-        <div class="flex items-center gap-3 mb-3">
-            <div class="w-9 h-9 rounded-lg bg-purple-50 flex items-center justify-center"><i class="fas fa-shipping-fast text-purple-500 text-sm"></i></div>
-            <h3 class="font-semibold text-sm text-gray-800">কুরিয়ার তথ্য</h3>
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-            <div class="bg-gray-50 rounded-xl p-3">
-                <span class="text-[10px] text-gray-400 uppercase tracking-wider block mb-0.5">কুরিয়ার</span>
-                <span class="text-sm font-semibold text-gray-700"><?= e($shipment['courier_name'] ?? 'N/A') ?></span>
-            </div>
-            <div class="bg-gray-50 rounded-xl p-3">
-                <span class="text-[10px] text-gray-400 uppercase tracking-wider block mb-0.5">স্ট্যাটাস</span>
-                <span class="text-sm font-semibold text-gray-700"><?= ucfirst(str_replace('_', ' ', $shipment['status'] ?? 'pending')) ?></span>
-            </div>
-            <?php if (!empty($shipment['tracking_number'])): ?>
-            <div class="bg-gray-50 rounded-xl p-3 col-span-2">
-                <span class="text-[10px] text-gray-400 uppercase tracking-wider block mb-0.5">ট্র্যাকিং নম্বর</span>
-                <div class="flex items-center gap-2">
-                    <span class="text-sm font-mono font-semibold text-gray-700"><?= e($shipment['tracking_number']) ?></span>
-                    <button onclick="navigator.clipboard.writeText('<?= e($shipment['tracking_number']) ?>')" class="text-gray-400 hover:text-gray-600 text-xs"><i class="fas fa-copy"></i></button>
-                </div>
-            </div>
-            <?php endif; ?>
-        </div>
-    </div>
-    <?php endif; ?>
-
-    <!-- Delivery Info -->
+    <!-- Customer Info -->
     <div class="bg-white rounded-2xl shadow-sm border p-5 mb-4">
         <div class="flex items-center gap-3 mb-3">
             <div class="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center"><i class="fas fa-user text-blue-500 text-sm"></i></div>
-            <h3 class="font-semibold text-sm text-gray-800">ডেলিভারি তথ্য</h3>
+            <h3 class="font-semibold text-sm text-gray-800">গ্রাহক তথ্য</h3>
         </div>
-        <div class="space-y-2.5 text-sm">
-            <div class="flex items-start gap-3">
-                <i class="fas fa-user-circle text-gray-300 mt-0.5 w-4 text-center"></i>
-                <div><span class="text-gray-400 text-xs block">নাম</span><span class="text-gray-700 font-medium"><?= e($order['customer_name']) ?></span></div>
-            </div>
-            <div class="flex items-start gap-3">
-                <i class="fas fa-phone-alt text-gray-300 mt-0.5 w-4 text-center"></i>
-                <div><span class="text-gray-400 text-xs block">ফোন</span><a href="tel:<?= e($order['customer_phone']) ?>" class="text-blue-600 font-medium"><?= e($order['customer_phone']) ?></a></div>
-            </div>
-            <div class="flex items-start gap-3">
-                <i class="fas fa-map-marker-alt text-gray-300 mt-0.5 w-4 text-center"></i>
-                <div>
-                    <span class="text-gray-400 text-xs block">ঠিকানা</span>
-                    <span class="text-gray-700"><?= e($order['customer_address']) ?><?php if (!empty($order['customer_city'])): ?>, <?= e($order['customer_city']) ?><?php endif; ?></span>
-                </div>
-            </div>
-            <div class="flex items-start gap-3">
-                <i class="fas fa-money-bill-wave text-gray-300 mt-0.5 w-4 text-center"></i>
-                <div>
-                    <span class="text-gray-400 text-xs block">পেমেন্ট</span>
-                    <span class="text-gray-700 font-medium"><?php
-                        $pmLabels = ['cod'=>'ক্যাশ অন ডেলিভারি','bkash'=>'বিকাশ','nagad'=>'নগদ','bank'=>'ব্যাংক ট্রান্সফার','online'=>'অনলাইন'];
-                        echo $pmLabels[$order['payment_method'] ?? 'cod'] ?? ucfirst($order['payment_method'] ?? 'cod');
-                    ?></span>
-                </div>
-            </div>
-            <?php if (!empty($order['notes'])): ?>
-            <div class="flex items-start gap-3">
-                <i class="fas fa-sticky-note text-gray-300 mt-0.5 w-4 text-center"></i>
-                <div><span class="text-gray-400 text-xs block">নোট</span><span class="text-gray-600 italic"><?= e($order['notes']) ?></span></div>
-            </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+            <div><span class="text-gray-400 text-xs">নাম:</span><p class="font-medium text-gray-700"><?= e($order['customer_name']) ?></p></div>
+            <div><span class="text-gray-400 text-xs">ফোন:</span><p class="font-medium text-gray-700"><?= e($order['customer_phone']) ?></p></div>
+            <div class="sm:col-span-2"><span class="text-gray-400 text-xs">ঠিকানা:</span><p class="font-medium text-gray-700"><?= e($order['shipping_address'] ?? $order['customer_address'] ?? 'N/A') ?></p></div>
+            <?php if (!empty($order['shipping_district'])): ?>
+            <div><span class="text-gray-400 text-xs">জেলা:</span><p class="font-medium text-gray-700"><?= e($order['shipping_district']) ?></p></div>
             <?php endif; ?>
         </div>
     </div>
 
-    <!-- Order Items + Pricing -->
+    <!-- Order Items -->
     <div class="bg-white rounded-2xl shadow-sm border overflow-hidden mb-4">
         <div class="p-5 pb-3">
-            <div class="flex items-center gap-3 mb-4">
+            <div class="flex items-center gap-3 mb-3">
                 <div class="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center"><i class="fas fa-shopping-bag text-green-500 text-sm"></i></div>
-                <h3 class="font-semibold text-sm text-gray-800">পণ্যসমূহ <span class="text-gray-400 font-normal">(<?= count($items) ?>)</span></h3>
+                <h3 class="font-semibold text-sm text-gray-800">অর্ডার আইটেম</h3>
             </div>
             <div class="space-y-3">
                 <?php foreach ($items as $item): ?>
-                <div class="flex items-center gap-3 p-2.5 rounded-xl bg-gray-50">
-                    <?php if ($item['image']): ?>
-                    <img src="<?= imgSrc('products', $item['image']) ?>" class="w-14 h-14 object-cover rounded-lg border flex-shrink-0" alt="">
+                <div class="flex items-start gap-3">
+                    <?php if (!empty($item['image'])): ?>
+                    <img src="<?= uploadUrl($item['image']) ?>" class="w-14 h-14 rounded-lg object-cover border flex-shrink-0" alt="">
                     <?php else: ?>
-                    <div class="w-14 h-14 bg-gray-200 rounded-lg flex items-center justify-center text-gray-400 flex-shrink-0"><i class="fas fa-image"></i></div>
+                    <div class="w-14 h-14 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0"><i class="fas fa-box text-gray-300 text-lg"></i></div>
                     <?php endif; ?>
                     <div class="flex-1 min-w-0">
                         <p class="font-medium text-sm text-gray-800 leading-tight" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden"><?= e($item['product_name']) ?></p>
