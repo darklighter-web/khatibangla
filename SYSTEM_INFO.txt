@@ -1316,3 +1316,51 @@ FILES:
   • Frontend:    includes/header.php (CSS + class on topbar, header, cat nav)
   • Footer:      includes/footer.php (class on mobile bottom nav)
   • Product:     pages/product.php (class on mobile sticky buy bar)
+
+
+================================================================================
+              CLEAN PRODUCT CARD TEMPLATE (FULLY EDITABLE)
+================================================================================
+Updated: 2026-04-04
+
+LOCATION: Admin → Shop Design → Archive Page → Card Style → "Clean"
+FILE: includes/product-card.php (multi-template: standard | minimal | detailed | clean)
+
+DESIGN (matches the screenshot reference):
+  • White card with subtle 1px border (toggle on/off)
+  • Product image with object-fit:contain on white bg (no crop)
+  • Green "Save X%" discount badge (position/color editable)
+  • Green "Offered Items" badge on featured products (label editable)
+  • Product name (1-3 line clamp configurable)
+  • Price: brand-colored current + gray strikethrough old price
+  • Outlined "Add To Cart" button with cart icon
+
+EDITABLE SETTINGS (13 total, stored in site_settings):
+  Setting Key                  | Default         | Description
+  ─────────────────────────────┼─────────────────┼──────────────
+  ar_clean_btn_style           | outlined        | outlined / filled / ghost
+  ar_clean_btn_label           | Add To Cart     | Button text
+  ar_clean_btn_icon            | fa-cart-arrow-down | FontAwesome icon class
+  ar_clean_badge_pos           | top_right       | top_right/top_left/bottom_right/bottom_left
+  ar_clean_badge_color         | #22c55e         | Badge background color
+  ar_clean_badge_text_color    | #ffffff         | Badge text color
+  ar_clean_img_fit             | contain         | contain / cover
+  ar_clean_img_bg              | #ffffff         | Image area background
+  ar_clean_card_radius         | 8               | Border radius in px
+  ar_clean_name_lines          | 1               | Product name line clamp
+  ar_clean_card_border         | 1               | Show card border (on/off)
+  ar_clean_old_price           | 1               | Show strikethrough price (on/off)
+  ar_clean_show_offered        | 1               | Show "Offered" badge (on/off)
+  ar_clean_offered_label       | Offered Items   | Text for offered badge
+
+CSS CLASSES (clean template):
+  .pcc-card, .pcc-img-wrap, .pcc-badge, .pcc-offered,
+  .pcc-info, .pcc-name, .pcc-price, .pcc-price-now, .pcc-price-was,
+  .pcc-actions, .pcc-btn, .pcc-btn-outlined, .pcc-btn-filled, .pcc-btn-ghost
+
+"Offered Items" badge shows for products where is_featured = 1.
+Badge auto-positions: if discount badge is top-right, offered goes top-left.
+
+FILES CHANGED:
+  includes/product-card.php (new clean template + shared variant logic)
+  admin/pages/shop-design.php (clean card option + 13 editable settings panel)
