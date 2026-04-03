@@ -26,7 +26,7 @@ if (!empty($_POST['data'])) {
 }
 $eventId = $_POST['event_id'] ?? fbEventId();
 
-$allowed = ['InitiateCheckout', 'Contact', 'Lead', 'AddPaymentInfo', 'Search', 'ViewContent', 'AddToCart'];
+$allowed = ['InitiateCheckout', 'Contact', 'Lead', 'AddPaymentInfo', 'Search', 'ViewContent', 'AddToCart', 'Purchase', 'CompleteRegistration'];
 if (!in_array($event, $allowed)) {
     echo json_encode(['success' => false, 'error' => 'Event not allowed: ' . $event]);
     exit;
@@ -93,6 +93,34 @@ switch ($event) {
             'value'        => floatval($data['value'] ?? 0),
             'currency'     => 'BDT',
             'num_items'    => intval($data['num_items'] ?? 1),
+        ];
+        break;
+
+    case 'Purchase':
+        $customData = [
+            'content_ids'  => $data['content_ids'] ?? [],
+            'content_type' => 'product',
+            'value'        => floatval($data['value'] ?? 0),
+            'currency'     => 'BDT',
+            'num_items'    => intval($data['num_items'] ?? 0),
+            'order_id'     => $data['order_id'] ?? '',
+        ];
+        $userData = [
+            'email' => $data['email'] ?? '',
+            'phone' => $data['phone'] ?? '',
+            'name'  => $data['name'] ?? '',
+        ];
+        break;
+
+    case 'CompleteRegistration':
+        $customData = [
+            'content_name' => $data['content_name'] ?? 'Customer Registration',
+            'status'       => $data['status'] ?? 'completed',
+        ];
+        $userData = [
+            'email' => $data['email'] ?? '',
+            'phone' => $data['phone'] ?? '',
+            'name'  => $data['name'] ?? '',
         ];
         break;
 }

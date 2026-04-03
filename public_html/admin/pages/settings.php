@@ -108,7 +108,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'fb_event_logging','fb_advanced_matching',
         ],
         'header' => ['header_show_search','header_show_login','header_show_wishlist','header_show_whatsapp','header_show_cart',
-                     'nav_show_shop_link','nav_show_categories','mobile_product_sticky_bar','mobile_hide_nav_product','track_glass_animated_bg',
+                     'header_show_track_order','header_show_hotline',
+                     'nav_show_shop_link','nav_show_categories','mobile_product_sticky_bar','mobile_hide_nav_product','track_glass_animated_bg','track_dark_mode_default',
                      'vis_topbar_desktop','vis_topbar_mobile','vis_main_header_desktop','vis_main_header_mobile',
                      'vis_cat_nav_desktop','vis_cat_nav_mobile','vis_mobile_bottom_nav_desktop','vis_mobile_bottom_nav_mobile',
                      'vis_mobile_sticky_bar_desktop','vis_mobile_sticky_bar_mobile'],
@@ -1268,6 +1269,8 @@ require_once __DIR__ . '/../includes/header.php';
                         <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="header_show_wishlist" value="1" <?= ($s['header_show_wishlist'] ?? '1') === '1' ? 'checked' : '' ?> class="rounded text-blue-600"><span>Wishlist</span></label>
                         <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="header_show_whatsapp" value="1" <?= ($s['header_show_whatsapp'] ?? '1') === '1' ? 'checked' : '' ?> class="rounded text-blue-600"><span>WhatsApp</span></label>
                         <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="header_show_cart" value="1" <?= ($s['header_show_cart'] ?? '1') === '1' ? 'checked' : '' ?> class="rounded text-blue-600"><span>Cart Icon</span></label>
+                        <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="header_show_track_order" value="1" <?= ($s['header_show_track_order'] ?? '1') === '1' ? 'checked' : '' ?> class="rounded text-blue-600"><span>Track Order</span></label>
+                        <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="header_show_hotline" value="1" <?= ($s['header_show_hotline'] ?? '1') === '1' ? 'checked' : '' ?> class="rounded text-blue-600"><span>Hotline Number</span></label>
                     </div>
                 </div>
             </div>
@@ -1623,7 +1626,13 @@ require_once __DIR__ . '/../includes/header.php';
                             <option value="glass" <?= ($s['mobile_sticky_bg_style'] ?? 'solid') === 'glass' ? 'selected' : '' ?>>Glass UI (Frosted)</option>
                         </select>
                     </div>
-                    <div id="stickyBgColorWrap">
+                    <div id="stickyGlassOptions" class="grid grid-cols-2 gap-3 <?= ($s['mobile_sticky_bg_style'] ?? 'solid') !== 'glass' ? 'hidden' : '' ?>">
+                        <div><label class="block text-xs font-medium text-gray-600 mb-1">Glass Blur (px)</label>
+                            <input type="number" name="mobile_sticky_glass_blur" value="<?= e($s['mobile_sticky_glass_blur'] ?? '16') ?>" class="w-full px-3 py-2 border rounded-lg text-sm" min="0" max="50"></div>
+                        <div><label class="block text-xs font-medium text-gray-600 mb-1">Glass Opacity (%)</label>
+                            <input type="number" name="mobile_sticky_glass_opacity" value="<?= e($s['mobile_sticky_glass_opacity'] ?? '75') ?>" class="w-full px-3 py-2 border rounded-lg text-sm" min="10" max="100"></div>
+                    </div>
+                    <div id="stickyBgColorWrap" class="<?= ($s['mobile_sticky_bg_style'] ?? 'solid') === 'glass' ? 'hidden' : '' ?>"">
                         <label class="block text-sm font-medium text-gray-700 mb-1">Sticky Bar Background Color</label>
                         <input type="color" name="mobile_sticky_bg_color" value="<?= e($s['mobile_sticky_bg_color'] ?? '#ffffff') ?>" class="w-12 h-10 rounded border cursor-pointer">
                     </div>
@@ -1727,6 +1736,10 @@ require_once __DIR__ . '/../includes/header.php';
                         <input type="checkbox" name="track_glass_animated_bg" value="1" <?= ($s['track_glass_animated_bg'] ?? '1') === '1' ? 'checked' : '' ?> class="rounded text-blue-600">
                         <span>Animated gradient background blobs</span>
                     </label>
+                    <label class="flex items-center gap-2 text-sm">
+                        <input type="checkbox" name="track_dark_mode_default" value="1" <?= ($s['track_dark_mode_default'] ?? '0') === '1' ? 'checked' : '' ?> class="rounded text-gray-600">
+                        <span>Default to dark mode (users can still toggle)</span>
+                    </label>
                 </div>
 
                 <script>
@@ -1753,7 +1766,7 @@ require_once __DIR__ . '/../includes/header.php';
             <script>
             function toggleHeaderStyle(v){ document.getElementById('header-glass-options').classList.toggle('hidden', v!=='glass'); }
             function toggleNavStyle(v){ document.getElementById('nav-glass-options').classList.toggle('hidden', v!=='glass'); }
-            function toggleStickyStyle(v){ document.getElementById('stickyBgColorWrap').classList.toggle('hidden', v==='glass'); }
+            function toggleStickyStyle(v){ document.getElementById('stickyBgColorWrap').classList.toggle('hidden', v==='glass'); document.getElementById('stickyGlassOptions').classList.toggle('hidden', v!=='glass'); }
             </script>
 
             <?php elseif ($tab === 'footer'): ?>

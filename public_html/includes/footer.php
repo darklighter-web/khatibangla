@@ -2672,5 +2672,22 @@ if(_cub){new MutationObserver(function(){var n=parseInt(_cub.textContent)||0;var
 </script>
 <?php endif; ?>
 
+<?php
+// ── TikTok server-side helper (mirrors FB _fbTrackServer pattern) ──
+$__ttPixel = getSetting('tiktok_pixel_id', '');
+if ($__ttPixel): ?>
+<script>
+window._ttTrack = function(event, data) {
+    if(typeof ttq === 'object' && typeof ttq.track === 'function') ttq.track(event, data || {});
+};
+</script>
+<?php endif; ?>
+
+<?php
+// ── Custom Footer Tracking Code (injected from Admin > Settings > Ads) ──
+$__customFooterCode = getSetting('custom_footer_code', '');
+if ($__customFooterCode) echo $__customFooterCode . "\n";
+?>
+
 </body>
 </html>

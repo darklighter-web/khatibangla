@@ -109,6 +109,8 @@ $hShowLogin = getSetting('header_show_login', '1') === '1';
 $hShowWishlist = getSetting('header_show_wishlist', '1') === '1';
 $hShowWhatsapp = getSetting('header_show_whatsapp', '1') === '1';
 $hShowCart = getSetting('header_show_cart', '1') === '1';
+$hShowTrackOrder = getSetting('header_show_track_order', '1') === '1';
+$hShowHotline = getSetting('header_show_hotline', '1') === '1';
 
 // Mobile product page settings
 $mobileProductStickyBar = getSetting('mobile_product_sticky_bar', '0') === '1';
@@ -258,6 +260,11 @@ $_autoDesc = seoAutoDescription($seo);
             /* Mobile Nav */
             --mobile-nav-bg: <?= $mobileNavBg ?>;
             --mobile-nav-active: <?= $mobileNavActive ?>;
+            /* Glass / Frosted */
+            --header-glass-blur: <?= $headerGlassBlur ?>px;
+            --header-glass-opacity: <?= $headerGlassOpacity / 100 ?>;
+            --navbar-glass-blur: <?= $navbarGlassBlur ?>px;
+            --navbar-glass-opacity: <?= $navbarGlassOpacity / 100 ?>;
             /* Font Sizes */
             --fs-body: <?= $fs['fs_body'] ?>px;
             --fs-announcement: <?= $fs['fs_announcement'] ?>px;
@@ -345,6 +352,18 @@ $_autoDesc = seoAutoDescription($seo);
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .product-card:hover .product-overlay { opacity: 1; }
         .product-card:hover img { transform: scale(1.05); }
+        
+        /* Glass / Frosted utility */
+        .glass-effect {
+            backdrop-filter: blur(var(--header-glass-blur, 12px));
+            -webkit-backdrop-filter: blur(var(--header-glass-blur, 12px));
+        }
+        .glass-surface {
+            background: rgba(255,255,255,var(--header-glass-opacity, 0.85));
+            backdrop-filter: blur(var(--header-glass-blur, 12px));
+            -webkit-backdrop-filter: blur(var(--header-glass-blur, 12px));
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+        }
         
         /* Announcement marquee */
         @keyframes marquee { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
@@ -538,6 +557,27 @@ $_autoDesc = seoAutoDescription($seo);
     endif; ?>
 
 
+    <?php
+    // ── Google Tag Manager ──
+    $__gtmId = getSetting('gtm_id', '');
+    if ($__gtmId): ?>
+    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','<?= e($__gtmId) ?>');</script>
+    <?php endif; ?>
+
+    <?php
+    // ── TikTok Pixel ──
+    $__ttPixel = getSetting('tiktok_pixel_id', '');
+    if ($__ttPixel): ?>
+    <script>!function(w,d,t){w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie"];ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e};ttq.load=function(e,n){var i="https://analytics.tiktok.com/i18n/pixel/events.js";ttq._i=ttq._i||{};ttq._i[e]=[];ttq._i[e]._u=i;ttq._t=ttq._t||{};ttq._t[e]=+new Date;ttq._o=ttq._o||{};ttq._o[e]=n||{};var o=document.createElement("script");o.type="text/javascript";o.async=!0;o.src=i+"?sdkid="+e+"&lib="+t;var a=document.getElementsByTagName("script")[0];a.parentNode.insertBefore(o,a)};
+    ttq.load('<?= e($__ttPixel) ?>');ttq.page();}(window,document,'ttq');</script>
+    <?php endif; ?>
+
+    <?php
+    // ── Custom Header Tracking Code (injected from Admin > Settings > Ads) ──
+    $__customHeadCode = getSetting('custom_header_code', '');
+    if ($__customHeadCode) echo $__customHeadCode . "\n";
+    ?>
+
     <?= renderClerkHead() ?>
 
     <?php
@@ -589,6 +629,12 @@ $_autoDesc = seoAutoDescription($seo);
     <?php endif; ?>
 </head>
 <body class="bg-gray-50 text-gray-800 antialiased">
+<?php
+// GTM noscript — must be immediately after <body>
+$__gtmId = getSetting('gtm_id', '');
+if ($__gtmId): ?>
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=<?= e($__gtmId) ?>" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<?php endif; ?>
 
 <?php if($perf_loader): ?>
 <!-- Page loader — hidden until slow navigation detected -->
@@ -673,8 +719,10 @@ $_autoDesc = seoAutoDescription($seo);
         <i class="fas fa-phone-alt text-xs"></i>
         <span><?= htmlspecialchars($announcement) ?>: </span>
         <a href="tel:<?= $sitePhone ?>" class="font-semibold hover:underline"><?= $sitePhone ?></a>
+        <?php if ($hShowHotline && $siteHotline): ?>
         <span class="mx-1">|</span>
         <a href="tel:<?= $siteHotline ?>" class="font-semibold hover:underline">হট লাইন: <?= $siteHotline ?></a>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -700,19 +748,21 @@ if ($headerBgStyle === 'glass') {
     </style>
     <div class="max-w-7xl mx-auto px-4">
         <div class="flex items-center justify-between main-header-row">
-            <!-- Mobile Menu Toggle -->
-            <button onclick="toggleMobileMenu()" class="lg:hidden p-2 rounded-lg hover:bg-gray-100">
-                <i class="fas fa-bars text-xl"></i>
-            </button>
-            
-            <!-- Logo -->
-            <a href="<?= url() ?>" class="flex-shrink-0">
-                <?php if ($siteLogo): ?>
-                <img src="<?= uploadUrl($siteLogo) ?>" alt="<?= $siteName ?>" class="h-10 lg:h-14 object-contain">
-                <?php else: ?>
-                <span class="text-2xl font-bold" style="color:var(--primary)"><?= $siteName ?></span>
-                <?php endif; ?>
-            </a>
+            <!-- Left: Mobile Menu Toggle + Logo -->
+            <div class="flex items-center gap-2 flex-shrink-0">
+                <button onclick="toggleMobileMenu()" class="lg:hidden flex items-center justify-center w-10 h-10 rounded-lg hover:bg-gray-100 transition -ml-1" aria-label="মেনু খুলুন">
+                    <i class="fas fa-bars text-xl"></i>
+                </button>
+                
+                <!-- Logo -->
+                <a href="<?= url() ?>" class="flex-shrink-0">
+                    <?php if ($siteLogo): ?>
+                    <img src="<?= uploadUrl($siteLogo) ?>" alt="<?= $siteName ?>" class="h-10 lg:h-14 object-contain">
+                    <?php else: ?>
+                    <span class="text-2xl font-bold" style="color:var(--primary)"><?= $siteName ?></span>
+                    <?php endif; ?>
+                </a>
+            </div>
             
             <!-- Search Bar (Desktop) -->
             <?php if ($hShowSearch): ?>
@@ -739,12 +789,14 @@ if ($headerBgStyle === 'glass') {
                 <?php endif; ?>
                 
                 <!-- Order Tracking -->
+                <?php if ($hShowTrackOrder): ?>
                 <a href="<?= url('track-order') ?>" class="hidden sm:flex items-center gap-1 p-1.5 rounded-lg hover:bg-gray-100 transition group" title="অর্ডার ট্র্যাক করুন">
                     <video autoplay loop muted playsinline class="w-7 h-7 rounded object-cover pointer-events-none">
                         <source src="https://cdn-icons-mp4.flaticon.com/512/15309/15309735.mp4" type="video/mp4">
                     </video>
                     <span class="text-sm font-medium hidden md:inline group-hover:text-gray-900">ট্র্যাক অর্ডার</span>
                 </a>
+                <?php endif; ?>
                 
                 <!-- Account -->
                 <?php if ($hShowLogin): ?>

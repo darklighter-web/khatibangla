@@ -13,9 +13,16 @@ if ($_GET['q'] ?? $_POST['order_number'] ?? '') {
     $orderNum = sanitize($_GET['q'] ?? $_POST['order_number']);
     $order = $db->fetch("SELECT * FROM orders WHERE order_number = ?", [$orderNum]);
     if ($order) {
-        $items = $db->fetchAll("SELECT oi.*, p.slug, p.store_credit_enabled, p.store_credit_amount,
+        $items = $db->fetchAll("SELECT oi.*, p.slug, p.featured_image, p.store_credit_enabled, p.store_credit_amount,
             (SELECT pi.image_path FROM product_images pi WHERE pi.product_id = oi.product_id AND pi.is_primary = 1 LIMIT 1) as image 
             FROM order_items oi LEFT JOIN products p ON p.id = oi.product_id WHERE oi.order_id = ?", [$order['id']]);
+        // Fallback: use featured_image when product_images has no primary
+        foreach ($items as &$_it) {
+            if (empty($_it['image']) && !empty($_it['featured_image'])) {
+                $_it['image'] = $_it['featured_image'];
+            }
+        }
+        unset($_it);
         $statusHistory = $db->fetchAll("SELECT * FROM order_status_history WHERE order_id = ? ORDER BY created_at ASC", [$order['id']]);
         $shipment = $db->fetch("SELECT cs.*, cp.name as courier_name FROM courier_shipments cs LEFT JOIN courier_providers cp ON cp.id = cs.courier_id WHERE cs.order_id = ?", [$order['id']]);
     } else {
@@ -73,6 +80,25 @@ foreach ($items as $it) {
 ?>
 
 <style>
+/* ── Dark / Light Theme Variables ── */
+.track-wrapper { --track-bg: #f9fafb; --track-card-bg: #ffffff; --track-card-border: #e5e7eb; --track-text: #1f2937; --track-text-secondary: #6b7280; --track-text-muted: #9ca3af; --track-shadow: rgba(0,0,0,0.05); transition: all 0.3s ease; }
+.track-wrapper.dark-theme { --track-bg: #0f172a; --track-card-bg: #1e293b; --track-card-border: #334155; --track-text: #f1f5f9; --track-text-secondary: #94a3b8; --track-text-muted: #64748b; --track-shadow: rgba(0,0,0,0.3); }
+.track-wrapper.dark-theme { background-color: var(--track-bg); }
+.track-wrapper.dark-theme .bg-white { background-color: var(--track-card-bg) !important; }
+.track-wrapper.dark-theme .border { border-color: var(--track-card-border) !important; }
+.track-wrapper.dark-theme .text-gray-800, .track-wrapper.dark-theme .text-gray-700 { color: var(--track-text) !important; }
+.track-wrapper.dark-theme .text-gray-500, .track-wrapper.dark-theme .text-gray-600 { color: var(--track-text-secondary) !important; }
+.track-wrapper.dark-theme .text-gray-400, .track-wrapper.dark-theme .text-gray-300 { color: var(--track-text-muted) !important; }
+.track-wrapper.dark-theme .bg-gray-50 { background-color: #1e293b !important; }
+.track-wrapper.dark-theme .bg-gray-100 { background-color: #334155 !important; }
+.track-wrapper.dark-theme .shadow-sm { box-shadow: 0 1px 3px var(--track-shadow) !important; }
+.track-wrapper.dark-theme .border-t, .track-wrapper.dark-theme .border-b, .track-wrapper.dark-theme .border-dashed { border-color: var(--track-card-border) !important; }
+.track-wrapper.dark-theme .tl-item::before { background: #475569 !important; }
+.track-wrapper.dark-theme .track-step .step-dot { border-color: #475569; background: #1e293b; }
+.track-wrapper.dark-theme .track-line { background: #475569 !important; }
+.track-theme-toggle { position:fixed; bottom:80px; right:16px; z-index:40; width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; border:2px solid #e5e7eb; background:#fff; box-shadow:0 2px 12px rgba(0,0,0,0.1); transition:all .3s; }
+.track-wrapper.dark-theme .track-theme-toggle { background:#1e293b; border-color:#475569; color:#f1f5f9; }
+
 /* ── Timeline (shared) ── */
 .track-progress{display:flex;align-items:flex-start;position:relative;padding:0 8px}
 .track-step{flex:1;display:flex;flex-direction:column;align-items:center;position:relative;z-index:2}
@@ -166,7 +192,13 @@ foreach ($items as $it) {
 <?php endif; ?>
 </style>
 
+<div class="track-wrapper" id="trackWrapper">
 <div class="max-w-2xl mx-auto py-6 px-4">
+
+    <!-- Theme Toggle Button -->
+    <button class="track-theme-toggle" id="trackThemeToggle" onclick="toggleTrackTheme()" title="ডার্ক/লাইট মোড">
+        <i class="fas fa-moon text-lg" id="trackThemeIcon"></i>
+    </button>
 
     <!-- ═══════ SEARCH FORM ═══════ -->
     <div class="mb-6">
@@ -334,10 +366,18 @@ foreach ($items as $it) {
                 <h3 class="font-semibold text-sm text-gray-800">অর্ডার আইটেম</h3>
             </div>
             <div class="space-y-3">
-                <?php foreach ($items as $item): ?>
+                <?php foreach ($items as $item): 
+                    $itemImageUrl = !empty($item['image']) ? uploadUrl($item['image']) : '';
+                    $itemLink = !empty($item['slug']) ? url($item['slug']) : '#';
+                ?>
                 <div class="flex items-start gap-3">
-                    <?php if (!empty($item['image'])): ?><img src="<?= uploadUrl($item['image']) ?>" class="w-14 h-14 rounded-lg object-cover border flex-shrink-0" alt="">
-                    <?php else: ?><div class="w-14 h-14 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0"><i class="fas fa-box text-gray-300 text-lg"></i></div><?php endif; ?>
+                    <a href="<?= $itemLink ?>" class="flex-shrink-0">
+                        <?php if ($itemImageUrl): ?>
+                        <img src="<?= $itemImageUrl ?>" class="w-14 h-14 rounded-lg object-cover border" alt="<?= e($item['product_name']) ?>" loading="lazy" onerror="this.onerror=null;this.parentElement.innerHTML='<div class=\'w-14 h-14 rounded-lg bg-gray-100 flex items-center justify-center\'><i class=\'fas fa-box text-gray-300 text-lg\'></i></div>';">
+                        <?php else: ?>
+                        <div class="w-14 h-14 rounded-lg bg-gray-100 flex items-center justify-center"><i class="fas fa-box text-gray-300 text-lg"></i></div>
+                        <?php endif; ?>
+                    </a>
                     <div class="flex-1 min-w-0">
                         <p class="font-medium text-sm text-gray-800 leading-tight" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden"><?= e($item['product_name']) ?></p>
                         <?php if (!empty($item['variant_name'])): ?><p class="text-[11px] text-gray-400 mt-0.5"><?= e($item['variant_name']) ?></p><?php endif; ?>
@@ -422,5 +462,26 @@ foreach ($items as $it) {
 
     <?php endif; ?>
 </div>
+</div><!-- /track-wrapper -->
+
+<script>
+function toggleTrackTheme() {
+    const w = document.getElementById('trackWrapper');
+    const icon = document.getElementById('trackThemeIcon');
+    const isDark = w.classList.toggle('dark-theme');
+    icon.className = isDark ? 'fas fa-sun text-lg text-yellow-400' : 'fas fa-moon text-lg';
+    localStorage.setItem('track_theme', isDark ? 'dark' : 'light');
+}
+// Restore saved theme
+(function(){
+    var saved = localStorage.getItem('track_theme');
+    if (saved === 'dark') {
+        var w = document.getElementById('trackWrapper');
+        var icon = document.getElementById('trackThemeIcon');
+        if (w) { w.classList.add('dark-theme'); }
+        if (icon) { icon.className = 'fas fa-sun text-lg text-yellow-400'; }
+    }
+})();
+</script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

@@ -167,7 +167,20 @@ $seo = [
     ],
 ];
 
+// Auto-create hide_header column if missing
+try { $db->query("ALTER TABLE products ADD COLUMN IF NOT EXISTS `hide_header` TINYINT(1) NOT NULL DEFAULT 0 AFTER `is_active`"); } catch (\Throwable $e) {}
+
+$__hideProductHeader = !empty($product['hide_header']);
+
 include ROOT_PATH . 'includes/header.php';
+
+// If hide_header is set, inject CSS to hide the full header/topbar/nav on this product page
+if ($__hideProductHeader): ?>
+<style>
+.vis-topbar, .vis-main-header, .vis-cat-nav, .vis-mobile-bottom-nav { display: none !important; }
+body { padding-top: 0 !important; }
+</style>
+<?php endif; ?>
 
 // ── FB ViewContent tracking ──
 $__vcEventId = null;
@@ -1839,11 +1852,14 @@ if ($stickyBarEnabled):
     $stickyBgStyle = getSetting('mobile_sticky_bg_style', 'solid');
     $stickyBgColor = getSetting('mobile_sticky_bg_color', '#ffffff');
     $stickyTextColor = getSetting('mobile_sticky_text_color', '#1f2937');
+    $stickyGlassBlur = intval(getSetting('mobile_sticky_glass_blur', '16'));
+    $stickyGlassOpacity = intval(getSetting('mobile_sticky_glass_opacity', '75'));
     
     // Build sticky bar styles
     if ($stickyBgStyle === 'glass') {
         list($sr,$sg,$sb) = sscanf($stickyBgColor, "#%02x%02x%02x");
-        $stickyBgCSS = "background:rgba({$sr},{$sg},{$sb},0.75);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid rgba(255,255,255,0.2);";
+        $stickyOpDecimal = $stickyGlassOpacity / 100;
+        $stickyBgCSS = "background:rgba({$sr},{$sg},{$sb},{$stickyOpDecimal});backdrop-filter:blur({$stickyGlassBlur}px);-webkit-backdrop-filter:blur({$stickyGlassBlur}px);border-top:1px solid rgba(255,255,255,0.2);";
     } else {
         $stickyBgCSS = "background-color:{$stickyBgColor};border-top:1px solid #e5e7eb;";
     }

@@ -1,7 +1,7 @@
 ================================================================================
 KHATIBANGLA.COM - SYSTEM INFORMATION & DEVELOPER REFERENCE
 ================================================================================
-Last Updated: 2026-04-01
+Last Updated: 2026-04-04
 Maintained By: Claude AI Assistant (Anthropic)
 Repository: https://github.com/darklighter-web/khatibangla.git
 ================================================================================
@@ -1364,3 +1364,181 @@ Badge auto-positions: if discount badge is top-right, offered goes top-left.
 FILES CHANGED:
   includes/product-card.php (new clean template + shared variant logic)
   admin/pages/shop-design.php (clean card option + 13 editable settings panel)
+
+================================================================================
+                    UPDATE 2026-04-04 — 7 FEATURE BATCH
+================================================================================
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  FEATURE 1: PIXEL & SERVER-SIDE TRACKING ENHANCEMENT                       ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+WHAT: Full-stack tracking injection for GTM, TikTok Pixel, and custom scripts.
+
+WHERE:
+  includes/header.php       — GTM <script> + TikTok pixel init + custom_header_code injection
+                              GTM noscript <iframe> immediately after <body> tag
+  includes/footer.php       — TikTok _ttTrack() helper + custom_footer_code injection
+  api/fb-event.php          — Server-side CAPI relay now supports 9 event types:
+                              PageView, ViewContent, AddToCart, InitiateCheckout,
+                              Purchase, Search, Lead, CompleteRegistration, Contact
+
+ADMIN SETTINGS (Settings > Ads & Tracking):
+  gtm_id                    — Google Tag Manager container ID (GTM-XXXXXXX)
+  tiktok_pixel_id           — TikTok Pixel ID
+  custom_header_code        — Raw HTML/JS injected into <head>
+  custom_footer_code        — Raw HTML/JS injected before </body>
+
+JS HELPERS AVAILABLE GLOBALLY:
+  _fbTrack(event, data, eventId)       — FB Pixel + dataLayer push
+  _fbTrackServer(event, data, eventId) — Server-side CAPI relay
+  _ttTrack(event, data)                — TikTok Pixel tracking
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  FEATURE 2: ORDER TRACKING DARK/LIGHT THEME                               ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+WHAT: Dark/light theme toggle on the public order tracking page.
+
+WHERE:
+  pages/track-order.php     — CSS variables for dark theme + toggle button + JS
+                              Wrapped in .track-wrapper div with .dark-theme class toggle
+  admin/pages/settings.php  — track_dark_mode_default checkbox in tracking UI section
+
+HOW IT WORKS:
+  - Floating toggle button (moon/sun icon) at bottom-right of tracking page
+  - Theme preference saved in localStorage('track_theme')
+  - Dark theme applies via CSS class .dark-theme on .track-wrapper
+  - Overrides: bg-white → #1e293b, text-gray → light slate, borders → #334155
+  - Works with all 3 tracking UI styles (classic, glow, glass)
+
+ADMIN SETTINGS:
+  track_dark_mode_default   — Checkbox: default to dark mode (users can still toggle)
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  FEATURE 3: MISSING PRODUCT IMAGES FIX                                     ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+WHAT: Ensures product images always appear in search results and order tracking.
+
+WHERE:
+  pages/track-order.php     — SQL query now also fetches p.featured_image
+                              PHP loop falls back to featured_image when product_images empty
+                              Items now linked to product page with <a> wrapper
+                              Image has onerror fallback to icon placeholder
+  api/search.php            — Already returns image via getProductImage() (no change needed)
+  api/product-search.php    — Already returns image via getProductImage() (no change needed)
+  includes/header.php       — renderSearchResults() already renders p.image (no change needed)
+
+IMAGE FALLBACK CHAIN:
+  product_images.image_path (is_primary=1) → products.featured_image → placeholder icon
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  FEATURE 4: HEADER TOGGLE ALIGNMENT FIX                                    ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+WHAT: Fixed mobile hamburger menu toggle alignment in the header.
+
+WHERE:
+  includes/header.php       — Restructured header row to group toggle+logo in a flex container
+                              Left group: hamburger + logo (flex items-center gap-2)
+                              Center: search bar (desktop only)
+                              Right: action icons
+
+CHANGES:
+  - Mobile toggle now uses w-10 h-10 fixed dimensions for consistent tap target
+  - flex items-center justify-center on button for perfect centering
+  - -ml-1 negative margin to align with edge
+  - aria-label added for accessibility
+  - Logo and toggle grouped in same flex container to prevent spacing issues
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  FEATURE 5: HEADER TOGGLE LOGIC (BACKEND CONTROL)                          ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+WHAT: Admin settings now control visibility of Track Order button and Hotline number.
+
+WHERE:
+  includes/header.php       — New PHP variables $hShowTrackOrder and $hShowHotline
+                              Track Order link wrapped in <?php if ($hShowTrackOrder) ?>
+                              Hotline in topbar wrapped in <?php if ($hShowHotline) ?>
+  admin/pages/settings.php  — Two new checkboxes in Header Elements grid:
+                              header_show_track_order (default: on)
+                              header_show_hotline (default: on)
+
+ALL HEADER TOGGLES (Settings > Header & Nav > Header Elements):
+  header_show_search        — Search bar
+  header_show_login         — Login/Account icon
+  header_show_wishlist      — Wishlist heart icon
+  header_show_whatsapp      — WhatsApp link
+  header_show_cart          — Shopping cart icon
+  header_show_track_order   — Track Order button (NEW)
+  header_show_hotline       — Hotline number in topbar (NEW)
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  FEATURE 6: SINGLE PRODUCT HEADER VISIBILITY                               ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+WHAT: Per-product flag to hide the entire header on the product page (landing page style).
+
+WHERE:
+  pages/product.php         — Reads product.hide_header flag
+                              Auto-creates column via ALTER TABLE IF NOT EXISTS
+                              Injects CSS to hide .vis-topbar, .vis-main-header,
+                              .vis-cat-nav, .vis-mobile-bottom-nav when flag is set
+  admin/pages/product-form.php — "Hide Header (LP style)" checkbox in Publish section
+                                  Saves as hide_header in product data array
+
+DATABASE MIGRATION:
+  migration_product_hide_header_2026-04-04.sql
+  ALTER TABLE products ADD COLUMN hide_header TINYINT(1) NOT NULL DEFAULT 0 AFTER is_active
+
+USE CASE: Landing page style product pages where you want full-screen focus on the product
+without navigation distractions. Ideal for ad-driven traffic.
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  FEATURE 7: STICKY BAR & FROSTED GLASS ENHANCEMENTS                       ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+WHAT: Configurable glass blur & opacity for the mobile sticky buy bar, plus global
+      glass utility CSS classes.
+
+WHERE:
+  pages/product.php         — Sticky bar glass mode now uses configurable blur/opacity
+                              Reads mobile_sticky_glass_blur and mobile_sticky_glass_opacity
+  includes/header.php       — New CSS variables in :root:
+                              --header-glass-blur, --header-glass-opacity
+                              --navbar-glass-blur, --navbar-glass-opacity
+                              New utility classes: .glass-effect, .glass-surface
+  admin/pages/settings.php  — New glass controls in Mobile Product Page Design:
+                              Glass Blur (px) slider (0-50)
+                              Glass Opacity (%) slider (10-100)
+                              Visibility toggles for glass options panel
+
+ADMIN SETTINGS (Settings > Header & Nav > Mobile Product Page Design):
+  mobile_sticky_glass_blur    — Blur radius in px (default: 16)
+  mobile_sticky_glass_opacity — Background opacity % (default: 75)
+
+CSS VARIABLES AVAILABLE:
+  --header-glass-blur         — For header glass effect
+  --header-glass-opacity      — For header glass transparency
+  --navbar-glass-blur         — For category nav glass effect
+  --navbar-glass-opacity      — For category nav glass transparency
+
+UTILITY CLASSES:
+  .glass-effect               — Applies backdrop-filter blur only
+  .glass-surface              — Full glass: semi-transparent bg + blur + border
+
+================================================================================
+                           FILES CHANGED (2026-04-04)
+================================================================================
+
+  includes/header.php              — Features 1,4,5,7 (tracking, toggle, glass)
+  includes/footer.php              — Feature 1 (TikTok helper, custom footer code)
+  pages/track-order.php            — Features 2,3 (dark/light theme, image fix)
+  pages/product.php                — Features 6,7 (hide header, glass config)
+  api/fb-event.php                 — Feature 1 (Purchase + CompleteRegistration events)
+  admin/pages/settings.php         — Features 2,5,7 (new toggles + glass controls)
+  admin/pages/product-form.php     — Feature 6 (hide_header checkbox + save)
+  migration_product_hide_header_2026-04-04.sql — Feature 6 (DB migration)
+

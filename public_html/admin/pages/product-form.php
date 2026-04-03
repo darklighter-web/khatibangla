@@ -102,6 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['action'])) {
         'is_featured' => isset($_POST['is_featured']) ? 1 : 0,
         'is_on_sale' => isset($_POST['is_on_sale']) ? 1 : 0,
         'is_active' => isset($_POST['is_active']) ? 1 : 0,
+        'hide_header' => isset($_POST['hide_header']) ? 1 : 0,
         'meta_title' => sanitize($_POST['meta_title'] ?? ''),
         'meta_description' => sanitize($_POST['meta_description'] ?? ''),
         'require_customer_upload' => isset($_POST['require_customer_upload']) ? 1 : 0,
@@ -1039,6 +1040,7 @@ if ($product) {
             <label class="flex items-center gap-2"><input type="checkbox" name="is_active" value="1" <?= ($product['is_active'] ?? 1) ? 'checked' : '' ?> class="rounded text-blue-600"><span class="text-sm">Active</span></label>
             <label class="flex items-center gap-2"><input type="checkbox" name="is_featured" value="1" <?= ($product['is_featured'] ?? 0) ? 'checked' : '' ?> class="rounded text-purple-600"><span class="text-sm">Featured</span></label>
             <label class="flex items-center gap-2"><input type="checkbox" name="is_on_sale" value="1" <?= ($product['is_on_sale'] ?? 0) ? 'checked' : '' ?> class="rounded text-green-600"><span class="text-sm">On Sale</span></label>
+            <label class="flex items-center gap-2"><input type="checkbox" name="hide_header" value="1" <?= ($product['hide_header'] ?? 0) ? 'checked' : '' ?> class="rounded text-gray-600"><span class="text-sm">Hide Header <span class="text-xs text-gray-400">(LP style)</span></span></label>
             <button type="submit" class="w-full bg-blue-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700">✓ <?= $product ? 'Update' : 'Create' ?> Product</button>
         </div>
 
