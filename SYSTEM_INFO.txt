@@ -1542,3 +1542,94 @@ UTILITY CLASSES:
   admin/pages/product-form.php     — Feature 6 (hide_header checkbox + save)
   migration_product_hide_header_2026-04-04.sql — Feature 6 (DB migration)
 
+================================================================================
+                 FEATURE DETAILS (2026-04-04 UPDATE)
+================================================================================
+
+── FEATURE 1: Pixel & Server-Side Tracking ──────────────────────────────────
+Location: includes/header.php (head), includes/footer.php (body end), api/fb-event.php
+What:
+  • GTM container tag injected in <head> from admin setting: gtm_id
+  • GTM noscript iframe injected after <body> in footer.php
+  • TikTok Pixel loaded in <head> from admin setting: tiktok_pixel_id
+  • TikTok _ttTrack() JS helper added to footer for client-side tracking
+  • Custom header code textarea → injected in <head> (custom_header_code setting)
+  • Custom footer code textarea → injected before </body> (custom_footer_code setting)
+  • fb-event.php now supports Purchase and CompleteRegistration server-side events
+Admin Path: Admin > Settings > Ads & Tracking > Other Analytics & Custom Code
+
+── FEATURE 2: Order Tracking Dark/Light Theme ───────────────────────────────
+Location: pages/track-order.php
+What:
+  • CSS variables for dark mode: --track-bg, --track-card-bg, --track-text, etc.
+  • .dark-theme class toggles all card, text, border, shadow colors
+  • Floating moon/sun toggle button (bottom-right, fixed position)
+  • Theme persisted in localStorage (key: track_theme)
+  • Admin setting: track_dark_mode_default (checkbox in Admin > Settings > Header > Tracking UI)
+  • Works with all 3 UI styles: classic, glow, glass
+
+── FEATURE 3: Missing Product Images ────────────────────────────────────────
+Location: pages/track-order.php (query), api/search.php, api/product-search.php
+What:
+  • Track order items query now JOINs products.featured_image as fallback
+  • If product_images has no primary image, featured_image is used
+  • Images in tracking view are now clickable links to the product page
+  • Better onerror fallback on <img> tags (shows box icon placeholder)
+  • Search APIs already return image via getProductImage() — verified working
+
+── FEATURE 4: Header Toggle Alignment ──────────────────────────────────────
+Location: includes/header.php
+What:
+  • Mobile menu toggle + logo wrapped in a flex container: <div class="flex items-center gap-2 flex-shrink-0">
+  • Toggle button uses explicit w-10 h-10 + flex centering instead of p-2
+  • Added -ml-1 offset for visual edge alignment
+  • aria-label added for accessibility
+
+── FEATURE 5: Header Toggle Logic ──────────────────────────────────────────
+Location: includes/header.php, admin/pages/settings.php
+What:
+  • New settings: header_show_track_order, header_show_hotline
+  • Track Order button in header wrapped in <?php if ($hShowTrackOrder): ?>
+  • Hotline in topbar wrapped in <?php if ($hShowHotline && $siteHotline): ?>
+  • Admin UI: 7 checkboxes now in Header Elements grid (was 5)
+  • All toggle settings auto-saved via checkbox map in settings save handler
+Admin Path: Admin > Settings > Header > Header Elements
+
+── FEATURE 6: Single Product Visibility ────────────────────────────────────
+Location: pages/product.php, admin/pages/product-form.php
+What:
+  • New DB column: products.hide_header (TINYINT, default 0)
+  • Auto-migration runs on product-form.php load (safe idempotent ALTER)
+  • Product form: "Hide Header (LP style)" checkbox in Publish section
+  • product.php: if hide_header=1, renders minimal <head> only (no nav, no header)
+  • Minimal mode still loads: Tailwind, Font Awesome, fonts, FB Pixel, GTM, custom head code
+  • Useful for landing-page-style product pages
+Admin Path: Admin > Products > Edit Product > Publish section
+
+── FEATURE 7: Sticky Bar & Frosted Glass ───────────────────────────────────
+Location: pages/product.php, includes/header.php, admin/pages/settings.php
+What:
+  • Global CSS variables: --header-glass-blur, --header-glass-opacity, --navbar-glass-blur, --navbar-glass-opacity
+  • Sticky bar reads mobile_sticky_glass_blur + mobile_sticky_glass_opacity from settings
+  • backdrop-filter: blur() + rgba background applied dynamically
+  • Admin controls: Glass Blur (px) slider + Glass Opacity (%) slider
+  • toggleStickyStyle() JS function shows/hides glass options panel
+Admin Path: Admin > Settings > Header > Mobile Product Page Design > Glass UI
+
+================================================================================
+                    SETTINGS REFERENCE (NEW KEYS)
+================================================================================
+
+Key                          | Type     | Default | Feature | Location
+-----------------------------|----------|---------|---------|-------------------
+gtm_id                       | text     | ''      | F1      | Ads tab
+tiktok_pixel_id              | text     | ''      | F1      | Ads tab
+custom_header_code           | textarea | ''      | F1      | Ads tab
+custom_footer_code           | textarea | ''      | F1      | Ads tab
+track_dark_mode_default      | checkbox | 0       | F2      | Header tab
+header_show_track_order      | checkbox | 1       | F5      | Header tab
+header_show_hotline          | checkbox | 1       | F5      | Header tab
+hide_header (products col)   | tinyint  | 0       | F6      | Product form
+mobile_sticky_glass_blur     | number   | 16      | F7      | Header tab
+mobile_sticky_glass_opacity  | number   | 75      | F7      | Header tab
+

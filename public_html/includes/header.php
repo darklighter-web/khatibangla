@@ -260,6 +260,11 @@ $_autoDesc = seoAutoDescription($seo);
             /* Mobile Nav */
             --mobile-nav-bg: <?= $mobileNavBg ?>;
             --mobile-nav-active: <?= $mobileNavActive ?>;
+            /* Glass / Frosted Effect */
+            --header-glass-blur: <?= $headerGlassBlur ?>px;
+            --header-glass-opacity: <?= $headerGlassOpacity / 100 ?>;
+            --navbar-glass-blur: <?= $navbarGlassBlur ?>px;
+            --navbar-glass-opacity: <?= $navbarGlassOpacity / 100 ?>;
             /* Glass / Frosted */
             --header-glass-blur: <?= $headerGlassBlur ?>px;
             --header-glass-opacity: <?= $headerGlassOpacity / 100 ?>;

@@ -175,12 +175,9 @@ $__hideProductHeader = !empty($product['hide_header']);
 include ROOT_PATH . 'includes/header.php';
 
 // If hide_header is set, inject CSS to hide the full header/topbar/nav on this product page
-if ($__hideProductHeader): ?>
-<style>
-.vis-topbar, .vis-main-header, .vis-cat-nav, .vis-mobile-bottom-nav { display: none !important; }
-body { padding-top: 0 !important; }
-</style>
-<?php endif; ?>
+if ($__hideProductHeader) {
+    echo '<style>.vis-topbar,.vis-main-header,.vis-cat-nav,.vis-mobile-bottom-nav{display:none!important}body{padding-top:0!important}</style>';
+}
 
 // ── FB ViewContent tracking ──
 $__vcEventId = null;

@@ -17,6 +17,10 @@ try { $db->query("SELECT 1 FROM product_variant_combinations LIMIT 0"); } catch 
 try { $db->query("SELECT variation_mode FROM products LIMIT 0"); } catch (\Throwable $e) {
     try { $db->query("ALTER TABLE products ADD COLUMN variation_mode ENUM('legacy','combination') NOT NULL DEFAULT 'legacy' AFTER product_type"); } catch (\Throwable $e2) {}
 }
+// Auto-migration: hide_header flag for single product visibility
+try { $db->query("SELECT hide_header FROM products LIMIT 0"); } catch (\Throwable $e) {
+    try { $db->query("ALTER TABLE products ADD COLUMN hide_header TINYINT(1) NOT NULL DEFAULT 0 AFTER is_active"); } catch (\Throwable $e2) {}
+}
 
 // ── AJAX: delete image ──
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete_image') {
@@ -102,6 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['action'])) {
         'is_featured' => isset($_POST['is_featured']) ? 1 : 0,
         'is_on_sale' => isset($_POST['is_on_sale']) ? 1 : 0,
         'is_active' => isset($_POST['is_active']) ? 1 : 0,
+        'hide_header' => isset($_POST['hide_header']) ? 1 : 0,
         'hide_header' => isset($_POST['hide_header']) ? 1 : 0,
         'meta_title' => sanitize($_POST['meta_title'] ?? ''),
         'meta_description' => sanitize($_POST['meta_description'] ?? ''),
