@@ -1216,3 +1216,65 @@ THREE UI STYLES (switchable from admin settings):
 
 All styles use brand color from primary_color setting.
 Phone number field removed — only order number needed.
+
+
+================================================================================
+                  ORDER MANAGEMENT LOGIC UPDATES
+================================================================================
+Updated: 2026-04-03
+
+── 1. SUPER ADMIN BYPASS ──
+
+Super Admins (role_name = 'super_admin') now bypass ALL order state-change
+restrictions. Detection via isSuperAdmin() in admin/includes/auth.php.
+
+WHAT'S BYPASSED:
+  • Edit immutability — Super Admin can edit orders in confirmed/shipped/delivered
+    etc. states. Normal users see read-only mode for confirmed+ orders.
+    File: order-view.php (save_order action, line ~67)
+  • Status revert guard — Super Admin can revert confirmed→processing, 
+    shipped→pending, etc. Normal users are blocked from reverting post-confirm
+    orders to pre-confirm statuses.
+    Files: order-view.php (update_status action), order-management.php (bulk_status)
+  • Frontend dropdown — Super Admin sees ALL 15 statuses in the status dropdown
+    regardless of current status. Normal users see filtered transitions.
+    File: order-view.php (statusSelect dropdown)
+  • Read-only mode — Super Admin sees the full editable form, not the read-only
+    locked version shown to other roles for confirmed+ orders.
+    File: order-view.php ($_isShippedLocked flag)
+  • Row menu actions — Super Admin sees Edit/Confirm/Ship/Deliver/Cancel buttons
+    in the row context menu (⋮) regardless of order status.
+    File: order-management.php (toggleRowMenu function)
+  • A red "Super Admin" badge appears next to "Order Actions" in order-view.php
+    to indicate elevated permissions are in effect.
+
+── 2. RETURN-TO-SOURCE NAVIGATION ──
+
+When closing an order view, users return to the specific sub-panel they came
+from (e.g., Processing, Shipped, Confirmed) instead of the default All Orders.
+
+MECHANISM:
+  • A `return_status` query parameter is passed through all order navigation paths
+  • order-view.php reads this param (or extracts from HTTP_REFERER as fallback)
+    and builds $_returnQs = "status=<value>&" for all redirect URLs
+
+WHERE RETURN_STATUS IS INJECTED:
+  • Order row template links: invoice number link + Open button
+    File: order-row-tpl.php (both pre-conf direct link and post-conf modal link)
+  • Modal iframe: openOrderModal() reads status from current URL params
+    File: order-management.php (openOrderModal function)
+  • Row context menu: Open link includes return_status
+    File: order-management.php (toggleRowMenu function)
+
+WHERE RETURN_STATUS IS CONSUMED (redirects):
+  • After save_order / confirm_order → order-management.php?status=X
+  • After update_status → order-management.php?status=X&highlight=ID
+  • After mark_fake → order-management.php?status=X&highlight=ID
+  • After add_note (non-AJAX fallback) → order-management.php?status=X
+  • After clear_panel_notes → order-management.php?status=X
+  • "Back to List" link in order actions panel → order-management.php?status=X
+  • "Back to Orders" link on lock screen → order-management.php?status=X
+  • Modal close: OM.refresh() already preserves current tab (AJAX state)
+
+FILES CHANGED:
+  order-view.php, order-management.php, order-row-tpl.php
