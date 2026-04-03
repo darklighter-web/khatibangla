@@ -1573,6 +1573,122 @@ require_once __DIR__ . '/../includes/header.php';
                 </div>
             </div>
 
+            <!-- Order Tracking Page UI Style -->
+            <div class="bg-white rounded-xl shadow-sm border p-5 space-y-4">
+                <div>
+                    <h4 class="font-semibold text-gray-800"><i class="fas fa-route mr-2 text-indigo-500"></i>Order Tracking Page UI</h4>
+                    <p class="text-xs text-gray-500 mt-1">Choose the search bar style for the public order tracking page</p>
+                </div>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3" id="trackUiPicker">
+                    <?php $trackUi = $s['track_order_ui'] ?? 'glow'; ?>
+                    
+                    <!-- Classic -->
+                    <label class="relative cursor-pointer group">
+                        <input type="radio" name="track_order_ui" value="classic" <?= $trackUi === 'classic' ? 'checked' : '' ?> class="sr-only peer" onchange="updateTrackPreview(this.value)">
+                        <div class="border-2 rounded-xl p-4 transition-all peer-checked:border-blue-500 peer-checked:bg-blue-50/50 hover:border-gray-300 peer-checked:shadow-md">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-sm font-semibold text-gray-700">Classic</span>
+                                <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center peer-checked:border-blue-500 transition border-gray-300">
+                                    <div class="w-2.5 h-2.5 rounded-full bg-blue-500 scale-0 peer-checked:scale-100 transition"></div>
+                                </div>
+                            </div>
+                            <div class="bg-white rounded-lg border p-2.5 space-y-1.5">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-5 h-5 rounded bg-blue-50 flex items-center justify-center"><i class="fas fa-search text-blue-400 text-[8px]"></i></div>
+                                    <div class="h-2 bg-gray-100 rounded flex-1"></div>
+                                </div>
+                                <div class="h-7 bg-gradient-to-r from-blue-500 to-blue-400 rounded text-white flex items-center justify-center text-[8px] font-bold">ট্র্যাক করুন</div>
+                            </div>
+                            <p class="text-[10px] text-gray-400 mt-2 text-center">Clean, simple white card</p>
+                        </div>
+                    </label>
+
+                    <!-- Glow -->
+                    <label class="relative cursor-pointer group">
+                        <input type="radio" name="track_order_ui" value="glow" <?= $trackUi === 'glow' ? 'checked' : '' ?> class="sr-only peer" onchange="updateTrackPreview(this.value)">
+                        <div class="border-2 rounded-xl p-4 transition-all peer-checked:border-blue-500 peer-checked:bg-blue-50/50 hover:border-gray-300 peer-checked:shadow-md">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-sm font-semibold text-gray-700">Neon Glow</span>
+                                <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center peer-checked:border-blue-500 transition border-gray-300">
+                                    <div class="w-2.5 h-2.5 rounded-full bg-blue-500 scale-0 peer-checked:scale-100 transition"></div>
+                                </div>
+                            </div>
+                            <div class="bg-gray-900 rounded-lg p-2.5 space-y-1.5 relative overflow-hidden">
+                                <div class="absolute inset-0 rounded-lg" style="box-shadow: inset 0 0 15px <?= e($s['primary_color'] ?? '#E53E3E') ?>40; border: 1px solid <?= e($s['primary_color'] ?? '#E53E3E') ?>50"></div>
+                                <div class="relative flex items-center gap-2">
+                                    <div class="w-5 h-5 rounded flex items-center justify-center"><i class="fas fa-search text-[8px]" style="color:<?= e($s['primary_color'] ?? '#E53E3E') ?>"></i></div>
+                                    <div class="h-2 bg-gray-700 rounded flex-1"></div>
+                                    <div class="w-5 h-5 rounded" style="background:<?= e($s['primary_color'] ?? '#E53E3E') ?>"></div>
+                                </div>
+                            </div>
+                            <p class="text-[10px] text-gray-400 mt-2 text-center">Dark + animated brand glow</p>
+                        </div>
+                    </label>
+
+                    <!-- Frosted Glass -->
+                    <label class="relative cursor-pointer group">
+                        <input type="radio" name="track_order_ui" value="glass" <?= $trackUi === 'glass' ? 'checked' : '' ?> class="sr-only peer" onchange="updateTrackPreview(this.value)">
+                        <div class="border-2 rounded-xl p-4 transition-all peer-checked:border-blue-500 peer-checked:bg-blue-50/50 hover:border-gray-300 peer-checked:shadow-md">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-sm font-semibold text-gray-700">Frosted Glass</span>
+                                <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center peer-checked:border-blue-500 transition border-gray-300">
+                                    <div class="w-2.5 h-2.5 rounded-full bg-blue-500 scale-0 peer-checked:scale-100 transition"></div>
+                                </div>
+                            </div>
+                            <div class="rounded-lg p-2.5 space-y-1.5 relative overflow-hidden" style="background:linear-gradient(135deg,<?= e($s['primary_color'] ?? '#E53E3E') ?>15,<?= e($s['primary_color'] ?? '#E53E3E') ?>08)">
+                                <div class="absolute inset-0 rounded-lg backdrop-blur-sm" style="border:1px solid <?= e($s['primary_color'] ?? '#E53E3E') ?>25"></div>
+                                <div class="relative flex items-center gap-2">
+                                    <div class="w-5 h-5 rounded flex items-center justify-center"><i class="fas fa-search text-[8px]" style="color:<?= e($s['primary_color'] ?? '#E53E3E') ?>"></i></div>
+                                    <div class="h-2 rounded flex-1" style="background:<?= e($s['primary_color'] ?? '#E53E3E') ?>15"></div>
+                                    <div class="w-5 h-5 rounded" style="background:<?= e($s['primary_color'] ?? '#E53E3E') ?>40"></div>
+                                </div>
+                            </div>
+                            <p class="text-[10px] text-gray-400 mt-2 text-center">Translucent blur + brand tint</p>
+                        </div>
+                    </label>
+                </div>
+
+                <!-- Frosted Glass Options -->
+                <div id="glassTrackOptions" class="space-y-3 p-4 bg-gray-50 rounded-xl <?= $trackUi === 'glass' ? '' : 'hidden' ?>">
+                    <p class="text-xs font-semibold text-gray-600"><i class="fas fa-sliders-h mr-1"></i>Glass Settings</p>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div><label class="block text-xs font-medium text-gray-600 mb-1">Background Blur (px)</label>
+                            <input type="number" name="track_glass_blur" value="<?= e($s['track_glass_blur'] ?? '20') ?>" class="w-full px-3 py-2 border rounded-lg text-sm" min="0" max="50"></div>
+                        <div><label class="block text-xs font-medium text-gray-600 mb-1">Opacity (%)</label>
+                            <input type="number" name="track_glass_opacity" value="<?= e($s['track_glass_opacity'] ?? '70') ?>" class="w-full px-3 py-2 border rounded-lg text-sm" min="10" max="100"></div>
+                        <div><label class="block text-xs font-medium text-gray-600 mb-1">Border Opacity (%)</label>
+                            <input type="number" name="track_glass_border" value="<?= e($s['track_glass_border'] ?? '30') ?>" class="w-full px-3 py-2 border rounded-lg text-sm" min="0" max="100"></div>
+                        <div><label class="block text-xs font-medium text-gray-600 mb-1">Tint Strength (%)</label>
+                            <input type="number" name="track_glass_tint" value="<?= e($s['track_glass_tint'] ?? '10') ?>" class="w-full px-3 py-2 border rounded-lg text-sm" min="0" max="50"></div>
+                    </div>
+                    <label class="flex items-center gap-2 text-sm">
+                        <input type="checkbox" name="track_glass_animated_bg" value="1" <?= ($s['track_glass_animated_bg'] ?? '1') === '1' ? 'checked' : '' ?> class="rounded text-blue-600">
+                        <span>Animated gradient background blobs</span>
+                    </label>
+                </div>
+
+                <script>
+                function updateTrackPreview(val) {
+                    document.getElementById('glassTrackOptions').classList.toggle('hidden', val !== 'glass');
+                }
+                // Fix radio button visual state
+                document.querySelectorAll('#trackUiPicker input[type=radio]').forEach(r => {
+                    r.addEventListener('change', function() {
+                        document.querySelectorAll('#trackUiPicker label > div').forEach(d => {
+                            d.classList.remove('border-blue-500','bg-blue-50/50','shadow-md');
+                            d.classList.add('border-gray-200');
+                        });
+                        if (this.checked) {
+                            const card = this.closest('label').querySelector(':scope > div');
+                            card.classList.add('border-blue-500','bg-blue-50/50','shadow-md');
+                            card.classList.remove('border-gray-200');
+                        }
+                    });
+                });
+                </script>
+            </div>
+
             <script>
             function toggleHeaderStyle(v){ document.getElementById('header-glass-options').classList.toggle('hidden', v!=='glass'); }
             function toggleNavStyle(v){ document.getElementById('nav-glass-options').classList.toggle('hidden', v!=='glass'); }

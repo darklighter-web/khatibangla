@@ -11,9 +11,7 @@ $error = '';
 
 if ($_GET['q'] ?? $_POST['order_number'] ?? '') {
     $orderNum = sanitize($_GET['q'] ?? $_POST['order_number']);
-
     $order = $db->fetch("SELECT * FROM orders WHERE order_number = ?", [$orderNum]);
-
     if ($order) {
         $items = $db->fetchAll("SELECT oi.*, p.slug, p.store_credit_enabled, p.store_credit_amount,
             (SELECT pi.image_path FROM product_images pi WHERE pi.product_id = oi.product_id AND pi.is_primary = 1 LIMIT 1) as image 
@@ -26,6 +24,23 @@ if ($_GET['q'] ?? $_POST['order_number'] ?? '') {
 }
 
 require_once __DIR__ . '/../includes/header.php';
+
+// ── Track UI Style ──
+$trackUi = getSetting('track_order_ui', 'glow');
+$brandColor = getSetting('primary_color', '#E53E3E');
+$r = hexdec(substr($brandColor, 1, 2));
+$g = hexdec(substr($brandColor, 3, 2));
+$b = hexdec(substr($brandColor, 5, 2));
+$r2 = ($r + 128) % 256; $g2 = ($g + 64) % 256; $b2 = ($b + 128) % 256;
+$brandHex2 = sprintf("#%02x%02x%02x", $r2, $g2, $b2);
+$brandDark = sprintf("#%02x%02x%02x", max(0,$r-40), max(0,$g-40), max(0,$b-40));
+$brandRgb = "$r,$g,$b";
+// Glass settings
+$glassBlur = intval(getSetting('track_glass_blur', '20'));
+$glassOpacity = intval(getSetting('track_glass_opacity', '70'));
+$glassBorder = intval(getSetting('track_glass_border', '30'));
+$glassTint = intval(getSetting('track_glass_tint', '10'));
+$glassAnimBg = getSetting('track_glass_animated_bg', '1') === '1';
 
 $statusSteps = ['processing', 'confirmed', 'shipped', 'delivered'];
 $statusConfig = [
@@ -55,24 +70,10 @@ foreach ($items as $it) {
         $totalCreditsEarnable += floatval($it['store_credit_amount']) * intval($it['quantity']);
     }
 }
-
-// Brand color for glow effect
-$brandColor = getSetting('primary_color', '#E53E3E');
-// Convert hex to RGB for glow
-$r = hexdec(substr($brandColor, 1, 2));
-$g = hexdec(substr($brandColor, 3, 2));
-$b = hexdec(substr($brandColor, 5, 2));
-// Generate a secondary glow color (complementary shift)
-$r2 = ($r + 128) % 256;
-$g2 = ($g + 64) % 256;
-$b2 = ($b + 128) % 256;
-$brandHex2 = sprintf("#%02x%02x%02x", $r2, $g2, $b2);
-// Darker variant
-$brandDark = sprintf("#%02x%02x%02x", max(0,$r-40), max(0,$g-40), max(0,$b-40));
 ?>
 
 <style>
-/* ── Timeline ── */
+/* ── Timeline (shared) ── */
 .track-progress{display:flex;align-items:flex-start;position:relative;padding:0 8px}
 .track-step{flex:1;display:flex;flex-direction:column;align-items:center;position:relative;z-index:2}
 .track-step .step-dot{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;border:3px solid #e5e7eb;background:#fff;transition:all .3s}
@@ -86,115 +87,169 @@ $brandDark = sprintf("#%02x%02x%02x", max(0,$r-40), max(0,$g-40), max(0,$b-40));
 .tl-item:last-child::before{display:none}
 .tl-dot{position:absolute;left:0;top:4px;width:16px;height:16px;border-radius:50%;border:3px solid;display:flex;align-items:center;justify-content:center}
 
-/* ══════════════════════════════════════════
-   Animated Glowing Search Bar — Brand Color
-   ══════════════════════════════════════════ */
-@keyframes glowSpin { 0%{transform:translate(-50%,-50%) rotate(0deg)} 100%{transform:translate(-50%,-50%) rotate(360deg)} }
-@keyframes searchPulse { 0%,100%{opacity:.7;transform:scale(1)} 50%{opacity:1;transform:scale(1.08)} }
-@keyframes orbitDot { 0%{transform:rotate(0deg) translateX(11px)} 100%{transform:rotate(360deg) translateX(11px)} }
-@keyframes glowPulse { 0%,100%{box-shadow:0 0 15px <?=$brandColor?>40, 0 0 30px <?=$brandColor?>20} 50%{box-shadow:0 0 25px <?=$brandColor?>60, 0 0 50px <?=$brandColor?>30} }
+<?php if ($trackUi === 'glow'): ?>
+/* ══════════════════════════
+   GLOW STYLE — Neon Search
+   ══════════════════════════ */
+@keyframes glowSpin{0%{transform:translate(-50%,-50%) rotate(0deg)}100%{transform:translate(-50%,-50%) rotate(360deg)}}
+@keyframes searchPulse{0%,100%{opacity:.7;transform:scale(1)}50%{opacity:1;transform:scale(1.08)}}
+@keyframes orbitDot{0%{transform:rotate(0deg) translateX(11px)}100%{transform:rotate(360deg) translateX(11px)}}
+@keyframes glowPulse{0%,100%{box-shadow:0 0 15px <?=$brandColor?>40,0 0 30px <?=$brandColor?>20}50%{box-shadow:0 0 25px <?=$brandColor?>60,0 0 50px <?=$brandColor?>30}}
 
 .glow-search-wrap{position:relative;display:flex;align-items:center;justify-content:center}
-.glow-search-wrap .glow-border{position:absolute;z-index:0;overflow:hidden;height:100%;width:100%;max-height:62px;border-radius:16px;filter:blur(3px)}
-.glow-search-wrap .glow-border::before{content:'';position:absolute;z-index:-1;width:600px;height:600px;background-repeat:no-repeat;top:50%;left:50%;transform:translate(-50%,-50%) rotate(80deg);
-    background:conic-gradient(rgba(0,0,0,0),<?=$brandColor?>,rgba(0,0,0,0) 10%,rgba(0,0,0,0) 50%,<?=$brandHex2?>,rgba(0,0,0,0) 60%);
-    transition:transform 2s ease}
-.glow-search-wrap:hover .glow-border::before{transform:translate(-50%,-50%) rotate(-100deg)}
-.glow-search-wrap:focus-within .glow-border::before{transform:translate(-50%,-50%) rotate(440deg);transition-duration:4s}
+.glow-search-wrap .glow-layer{position:absolute;z-index:0;overflow:hidden;height:100%;width:100%;border-radius:16px;filter:blur(3px)}
+.glow-search-wrap .glow-layer::before{content:'';position:absolute;z-index:-1;width:600px;height:600px;top:50%;left:50%;transform:translate(-50%,-50%) rotate(80deg);background:conic-gradient(transparent,<?=$brandColor?>,transparent 10%,transparent 50%,<?=$brandHex2?>,transparent 60%);transition:transform 2s ease}
+.glow-search-wrap:hover .glow-layer::before{transform:translate(-50%,-50%) rotate(-100deg)}
+.glow-search-wrap:focus-within .glow-layer::before{transform:translate(-50%,-50%) rotate(440deg);transition-duration:4s}
+.glow-search-wrap .glow-inner{position:absolute;z-index:0;overflow:hidden;height:calc(100% - 4px);width:calc(100% - 4px);border-radius:14px;filter:blur(.5px)}
+.glow-search-wrap .glow-inner::before{content:'';position:absolute;z-index:-1;width:600px;height:600px;top:50%;left:50%;transform:translate(-50%,-50%) rotate(70deg);background:conic-gradient(#1c191c,<?=$brandColor?> 5%,#1c191c 14%,#1c191c 50%,<?=$brandHex2?> 60%,#1c191c 64%);filter:brightness(1.3);transition:transform 2s ease}
+.glow-search-wrap:hover .glow-inner::before{transform:translate(-50%,-50%) rotate(-110deg)}
+.glow-search-wrap:focus-within .glow-inner::before{transform:translate(-50%,-50%) rotate(430deg);transition-duration:4s}
+.glow-search-wrap .glow-accent{position:absolute;z-index:0;overflow:hidden;height:calc(100% - 2px);width:calc(100% - 2px);border-radius:15px;filter:blur(2px)}
+.glow-search-wrap .glow-accent::before{content:'';position:absolute;z-index:-1;width:600px;height:600px;top:50%;left:50%;transform:translate(-50%,-50%) rotate(82deg);background:conic-gradient(transparent 0%,<?=$brandColor?>80,transparent 8%,transparent 50%,<?=$brandHex2?>80,transparent 58%);filter:brightness(1.4);transition:transform 2s ease}
+.glow-search-wrap:hover .glow-accent::before{transform:translate(-50%,-50%) rotate(-98deg)}
+.glow-search-wrap:focus-within .glow-accent::before{transform:translate(-50%,-50%) rotate(442deg);transition-duration:4s}
+.glow-input{position:relative;z-index:1;background:#010201;border:none;width:100%;height:56px;border-radius:14px;color:#fff;padding:0 52px;font-size:15px;outline:none;letter-spacing:.3px}
+.glow-input::placeholder{color:#888;letter-spacing:.5px}
+.glow-input:focus{background:#0a0a0a}
+.glow-mask{pointer-events:none;position:absolute;width:80px;height:20px;background:linear-gradient(to right,transparent,#010201);top:18px;left:60px;z-index:1}
+.glow-search-wrap:focus-within .glow-mask{display:none}
+.search-anim svg{animation:searchPulse 2s ease-in-out infinite}
+.orbit-dot{position:absolute;top:50%;left:50%;width:3px;height:3px;border-radius:50%;background:<?=$brandColor?>;animation:orbitDot 3s linear infinite;opacity:.6}
+.orbit-dot:nth-child(2){animation-delay:-1s;background:<?=$brandHex2?>}
+.orbit-dot:nth-child(3){animation-delay:-2s;opacity:.4}
+.glow-submit{position:absolute;top:7px;right:7px;z-index:2;height:42px;width:42px;border-radius:10px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,<?=$brandColor?>,<?=$brandDark?>);color:#fff;transition:all .2s;overflow:hidden;animation:glowPulse 3s ease-in-out infinite}
+.glow-submit:hover{transform:scale(1.05);filter:brightness(1.15)}
+.glow-submit:active{transform:scale(.95)}
+.glow-submit .spin-ring{position:absolute;inset:0;border-radius:10px;overflow:hidden;pointer-events:none}
+.glow-submit .spin-ring::before{content:'';position:absolute;width:200px;height:200px;top:50%;left:50%;background:conic-gradient(transparent,rgba(255,255,255,.3),transparent 30%,transparent 50%,rgba(255,255,255,.2),transparent 80%);animation:glowSpin 3s linear infinite}
 
-.glow-search-wrap .glow-border-inner{position:absolute;z-index:0;overflow:hidden;height:100%;width:100%;max-height:58px;border-radius:14px;filter:blur(0.5px)}
-.glow-search-wrap .glow-border-inner::before{content:'';position:absolute;z-index:-1;width:600px;height:600px;background-repeat:no-repeat;top:50%;left:50%;transform:translate(-50%,-50%) rotate(70deg);
-    background:conic-gradient(#1c191c,<?=$brandColor?> 5%,#1c191c 14%,#1c191c 50%,<?=$brandHex2?> 60%,#1c191c 64%);
-    filter:brightness(1.3);transition:transform 2s ease}
-.glow-search-wrap:hover .glow-border-inner::before{transform:translate(-50%,-50%) rotate(-110deg)}
-.glow-search-wrap:focus-within .glow-border-inner::before{transform:translate(-50%,-50%) rotate(430deg);transition-duration:4s}
+<?php elseif ($trackUi === 'glass'): ?>
+/* ══════════════════════════
+   FROSTED GLASS STYLE
+   ══════════════════════════ */
+@keyframes blobFloat1{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(30px,-20px) scale(1.1)}66%{transform:translate(-20px,15px) scale(.9)}}
+@keyframes blobFloat2{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(-25px,20px) scale(1.15)}66%{transform:translate(15px,-25px) scale(.85)}}
+@keyframes blobFloat3{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(20px,10px) scale(1.1)}}
+@keyframes glassSearchPulse{0%,100%{transform:scale(1);opacity:.8}50%{transform:scale(1.06);opacity:1}}
+@keyframes glassRingPulse{0%{box-shadow:0 0 0 0 rgba(<?=$brandRgb?>,.3)}70%{box-shadow:0 0 0 8px rgba(<?=$brandRgb?>,0)}100%{box-shadow:0 0 0 0 rgba(<?=$brandRgb?>,0)}}
+@keyframes glassBorderShimmer{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
 
-.glow-search-wrap .glow-highlight{position:absolute;z-index:0;overflow:hidden;height:100%;width:100%;max-height:60px;border-radius:15px;filter:blur(2px)}
-.glow-search-wrap .glow-highlight::before{content:'';position:absolute;z-index:-1;width:600px;height:600px;background-repeat:no-repeat;top:50%;left:50%;transform:translate(-50%,-50%) rotate(82deg);
-    background:conic-gradient(rgba(0,0,0,0) 0%,<?=$brandColor?>80,rgba(0,0,0,0) 8%,rgba(0,0,0,0) 50%,<?=$brandHex2?>80,rgba(0,0,0,0) 58%);
-    filter:brightness(1.4);transition:transform 2s ease}
-.glow-search-wrap:hover .glow-highlight::before{transform:translate(-50%,-50%) rotate(-98deg)}
-.glow-search-wrap:focus-within .glow-highlight::before{transform:translate(-50%,-50%) rotate(442deg);transition-duration:4s}
+.glass-search-area{position:relative;overflow:hidden;border-radius:24px;padding:32px 20px}
+<?php if ($glassAnimBg): ?>
+.glass-blob{position:absolute;border-radius:50%;filter:blur(60px);opacity:.5;pointer-events:none}
+.glass-blob-1{width:160px;height:160px;background:<?=$brandColor?>;top:-40px;left:-20px;animation:blobFloat1 8s ease-in-out infinite}
+.glass-blob-2{width:120px;height:120px;background:<?=$brandHex2?>;bottom:-30px;right:-10px;animation:blobFloat2 10s ease-in-out infinite}
+.glass-blob-3{width:100px;height:100px;background:<?=$brandColor?>80;top:50%;left:50%;transform:translate(-50%,-50%);animation:blobFloat3 7s ease-in-out infinite}
+<?php endif; ?>
+.glass-card{position:relative;z-index:1;backdrop-filter:blur(<?=$glassBlur?>px);-webkit-backdrop-filter:blur(<?=$glassBlur?>px);
+    background:rgba(255,255,255,<?=($glassOpacity/100)?>);
+    border:1px solid rgba(<?=$brandRgb?>,<?=($glassBorder/100)?>);
+    border-radius:18px;padding:24px;box-shadow:0 8px 32px rgba(0,0,0,.06)}
+.glass-input-wrap{position:relative;border-radius:14px;overflow:hidden;
+    background:rgba(255,255,255,.6);border:1.5px solid rgba(<?=$brandRgb?>,.2);transition:all .3s}
+.glass-input-wrap:focus-within{border-color:rgba(<?=$brandRgb?>,.5);box-shadow:0 0 0 3px rgba(<?=$brandRgb?>,.1);background:rgba(255,255,255,.8)}
+.glass-input{width:100%;height:52px;background:transparent;border:none;padding:0 50px 0 48px;font-size:15px;color:#1a1a2e;outline:none}
+.glass-input::placeholder{color:rgba(<?=$brandRgb?>,.4)}
+.glass-search-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);z-index:2}
+.glass-search-icon svg{animation:glassSearchPulse 2.5s ease-in-out infinite}
+.glass-submit{position:absolute;top:5px;right:5px;z-index:2;height:42px;width:42px;border-radius:11px;border:none;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(135deg,<?=$brandColor?>,<?=$brandDark?>);
+    color:#fff;transition:all .2s;animation:glassRingPulse 2s infinite}
+.glass-submit:hover{transform:scale(1.05);filter:brightness(1.1)}
+.glass-submit:active{transform:scale(.95)}
+.glass-shimmer-border{position:absolute;inset:-1px;border-radius:19px;padding:1px;z-index:0;
+    background:linear-gradient(90deg,transparent,rgba(<?=$brandRgb?>,.3),transparent,rgba(<?=$brandRgb?>,.15),transparent);
+    background-size:200% 200%;animation:glassBorderShimmer 4s ease infinite;-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
 
-.glow-search-input{position:relative;z-index:1;background:#010201;border:none;width:100%;height:56px;border-radius:14px;color:#fff;padding:0 52px 0 52px;font-size:15px;outline:none;letter-spacing:.3px}
-.glow-search-input::placeholder{color:#888;letter-spacing:.5px}
-.glow-search-input:focus{background:#0a0a0a}
-
-/* Animated search icon */
-.search-icon-animated{position:absolute;left:16px;top:50%;transform:translateY(-50%);z-index:2;width:24px;height:24px}
-.search-icon-animated svg{animation:searchPulse 2s ease-in-out infinite}
-.search-icon-animated .orbit-dot{position:absolute;top:50%;left:50%;width:3px;height:3px;border-radius:50%;background:<?=$brandColor?>;animation:orbitDot 3s linear infinite;opacity:.6}
-.search-icon-animated .orbit-dot:nth-child(2){animation-delay:-1s;background:<?=$brandHex2?>}
-.search-icon-animated .orbit-dot:nth-child(3){animation-delay:-2s;opacity:.4}
-
-/* Submit button inside search */
-.glow-submit-btn{position:absolute;top:7px;right:7px;z-index:2;height:42px;width:42px;border-radius:10px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;
-    background:linear-gradient(135deg,<?=$brandColor?>,<?=$brandDark?>);color:#fff;transition:all .2s;overflow:hidden;animation:glowPulse 3s ease-in-out infinite}
-.glow-submit-btn:hover{transform:scale(1.05);filter:brightness(1.15)}
-.glow-submit-btn:active{transform:scale(0.95)}
-.glow-submit-btn .spin-ring{position:absolute;inset:0;border-radius:10px;overflow:hidden;pointer-events:none}
-.glow-submit-btn .spin-ring::before{content:'';position:absolute;width:200px;height:200px;top:50%;left:50%;
-    background:conic-gradient(transparent,rgba(255,255,255,.3),transparent 30%,transparent 50%,rgba(255,255,255,.2),transparent 80%);
-    animation:glowSpin 3s linear infinite}
-
-.glow-input-mask{pointer-events:none;position:absolute;width:80px;height:20px;background:linear-gradient(to right,transparent,#010201);top:18px;left:60px;z-index:1}
-.glow-search-wrap:focus-within .glow-input-mask{display:none}
+<?php endif; ?>
 </style>
 
 <div class="max-w-2xl mx-auto py-6 px-4">
 
-    <!-- Animated Glowing Search Form -->
+    <!-- ═══════ SEARCH FORM ═══════ -->
     <div class="mb-6">
         <div class="text-center mb-5">
             <h1 class="text-xl font-bold text-gray-800 mb-1">অর্ডার ট্র্যাক করুন</h1>
             <p class="text-xs text-gray-400">আপনার অর্ডার নম্বর দিয়ে অবস্থা দেখুন</p>
         </div>
-        <form method="POST" class="flex justify-center">
-            <div class="glow-search-wrap w-full max-w-md group">
-                <!-- Outer glow layers -->
-                <div class="glow-border"></div>
-                <div class="glow-highlight"></div>
-                <div class="glow-highlight"></div>
-                <div class="glow-border-inner"></div>
 
-                <!-- Main input area -->
-                <div class="relative w-full" style="z-index:1">
+        <?php if ($trackUi === 'classic'): ?>
+        <!-- ── CLASSIC STYLE ── -->
+        <div class="bg-white rounded-2xl shadow-sm border p-5">
+            <form method="POST">
+                <div class="relative">
+                    <div class="absolute left-4 top-1/2 -translate-y-1/2">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="<?=$brandColor?>" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    </div>
                     <input name="order_number" type="text" value="<?= e($_POST['order_number'] ?? $_GET['q'] ?? '') ?>" required
                            placeholder="অর্ডার নম্বর — ORD-XXXXX"
-                           class="glow-search-input" autocomplete="off">
-                    <div class="glow-input-mask"></div>
+                           class="w-full border border-gray-200 rounded-xl pl-12 pr-4 py-3 text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none">
+                </div>
+                <button type="submit" class="w-full mt-3 py-2.5 rounded-xl font-semibold text-sm text-white hover:shadow-lg transition-all active:scale-[0.98]"
+                        style="background:linear-gradient(135deg,<?=$brandColor?>,<?=$brandDark?>)">
+                    <i class="fas fa-search mr-2"></i>ট্র্যাক করুন
+                </button>
+            </form>
+        </div>
 
-                    <!-- Animated search icon -->
-                    <div class="search-icon-animated">
+        <?php elseif ($trackUi === 'glow'): ?>
+        <!-- ── NEON GLOW STYLE ── -->
+        <form method="POST" class="flex justify-center">
+            <div class="glow-search-wrap w-full max-w-md group">
+                <div class="glow-layer"></div>
+                <div class="glow-accent"></div>
+                <div class="glow-accent"></div>
+                <div class="glow-inner"></div>
+                <div class="relative w-full" style="z-index:1">
+                    <input name="order_number" type="text" value="<?= e($_POST['order_number'] ?? $_GET['q'] ?? '') ?>" required
+                           placeholder="অর্ডার নম্বর — ORD-XXXXX" class="glow-input" autocomplete="off">
+                    <div class="glow-mask"></div>
+                    <div class="search-anim absolute left-4 top-1/2 -translate-y-1/2 z-2 w-6 h-6">
                         <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="11" cy="11" r="8" stroke="url(#sg1)"/>
-                            <line x1="21" y1="21" x2="16.65" y2="16.65" stroke="url(#sg2)"/>
-                            <defs>
-                                <linearGradient id="sg1" gradientTransform="rotate(50)">
-                                    <stop offset="0%" stop-color="<?=$brandColor?>"/>
-                                    <stop offset="100%" stop-color="<?=$brandHex2?>"/>
-                                </linearGradient>
-                                <linearGradient id="sg2">
-                                    <stop offset="0%" stop-color="<?=$brandHex2?>"/>
-                                    <stop offset="100%" stop-color="#666"/>
-                                </linearGradient>
-                            </defs>
+                            <circle cx="11" cy="11" r="8" stroke="url(#sg1)"/><line x1="21" y1="21" x2="16.65" y2="16.65" stroke="url(#sg2)"/>
+                            <defs><linearGradient id="sg1" gradientTransform="rotate(50)"><stop offset="0%" stop-color="<?=$brandColor?>"/><stop offset="100%" stop-color="<?=$brandHex2?>"/></linearGradient>
+                            <linearGradient id="sg2"><stop offset="0%" stop-color="<?=$brandHex2?>"/><stop offset="100%" stop-color="#666"/></linearGradient></defs>
                         </svg>
-                        <div class="orbit-dot"></div>
-                        <div class="orbit-dot"></div>
-                        <div class="orbit-dot"></div>
+                        <div class="orbit-dot"></div><div class="orbit-dot"></div><div class="orbit-dot"></div>
                     </div>
-
-                    <!-- Submit button -->
-                    <button type="submit" class="glow-submit-btn" title="ট্র্যাক করুন">
+                    <button type="submit" class="glow-submit" title="ট্র্যাক করুন">
                         <div class="spin-ring"></div>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="position:relative;z-index:1">
-                            <polyline points="9 18 15 12 9 6"/>
-                        </svg>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="position:relative;z-index:1"><polyline points="9 18 15 12 9 6"/></svg>
                     </button>
                 </div>
             </div>
         </form>
+
+        <?php elseif ($trackUi === 'glass'): ?>
+        <!-- ── FROSTED GLASS STYLE ── -->
+        <div class="glass-search-area">
+            <?php if ($glassAnimBg): ?>
+            <div class="glass-blob glass-blob-1"></div>
+            <div class="glass-blob glass-blob-2"></div>
+            <div class="glass-blob glass-blob-3"></div>
+            <?php endif; ?>
+            <div class="glass-card">
+                <div class="glass-shimmer-border"></div>
+                <form method="POST">
+                    <div class="glass-input-wrap">
+                        <div class="glass-search-icon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="11" cy="11" r="8" stroke="<?=$brandColor?>"/>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65" stroke="<?=$brandColor?>90"/>
+                            </svg>
+                        </div>
+                        <input name="order_number" type="text" value="<?= e($_POST['order_number'] ?? $_GET['q'] ?? '') ?>" required
+                               placeholder="অর্ডার নম্বর — ORD-XXXXX" class="glass-input" autocomplete="off">
+                        <button type="submit" class="glass-submit" title="ট্র্যাক করুন">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <?php endif; ?>
     </div>
 
     <?php if ($error): ?>
@@ -221,12 +276,10 @@ $brandDark = sprintf("#%02x%02x%02x", max(0,$r-40), max(0,$g-40), max(0,$b-40));
                     </p>
                 </div>
                 <span class="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border <?= $conf[1] ?>">
-                    <i class="<?= $conf[2] ?> text-[10px]"></i>
-                    <?= $conf[0] ?>
+                    <i class="<?= $conf[2] ?> text-[10px]"></i><?= $conf[0] ?>
                 </span>
             </div>
         </div>
-        <!-- Progress Steps -->
         <?php if (!in_array($currentStatus, ['cancelled','returned','pending_return','pending_cancel','lost','on_hold'])): ?>
         <div class="px-5 pb-5">
             <div class="track-progress">
@@ -236,12 +289,9 @@ $brandDark = sprintf("#%02x%02x%02x", max(0,$r-40), max(0,$g-40), max(0,$b-40));
                     echo ($stepIdx / (count($statusSteps) - 1)) * 100;
                 ?>%"></div></div>
                 <?php foreach ($statusSteps as $si => $step):
-                    $sConf = $statusConfig[$step];
-                    $isDone = $stepIdx > $si;
-                    $isActive = $stepIdx == $si;
-                    $cls = $isDone ? 'done' : ($isActive ? 'active' : '');
+                    $sConf = $statusConfig[$step]; $isDone = $stepIdx > $si; $isActive = $stepIdx == $si;
                 ?>
-                <div class="track-step <?= $cls ?>">
+                <div class="track-step <?= $isDone ? 'done' : ($isActive ? 'active' : '') ?>">
                     <div class="step-dot"><i class="<?= $sConf[2] ?> text-xs"></i></div>
                     <span class="text-[10px] mt-1.5 text-center font-medium <?= ($isDone || $isActive) ? 'text-gray-700' : 'text-gray-400' ?>"><?= $sConf[0] ?></span>
                 </div>
@@ -249,21 +299,15 @@ $brandDark = sprintf("#%02x%02x%02x", max(0,$r-40), max(0,$g-40), max(0,$b-40));
             </div>
         </div>
         <?php endif; ?>
-
-        <!-- Courier Info -->
         <?php if ($shipment && !empty($shipment['tracking_id'])): ?>
         <div class="border-t mx-5"></div>
         <div class="p-4 flex items-center justify-between">
             <div class="flex items-center gap-2.5">
                 <div class="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center"><i class="fas fa-truck text-purple-500 text-sm"></i></div>
-                <div>
-                    <p class="text-xs font-semibold text-gray-700"><?= e($shipment['courier_name'] ?? 'Courier') ?></p>
-                    <p class="text-[11px] text-gray-400">Tracking: <?= e($shipment['tracking_id']) ?></p>
-                </div>
+                <div><p class="text-xs font-semibold text-gray-700"><?= e($shipment['courier_name'] ?? 'Courier') ?></p>
+                <p class="text-[11px] text-gray-400">Tracking: <?= e($shipment['tracking_id']) ?></p></div>
             </div>
-            <?php if (!empty($shipment['tracking_url'])): ?>
-            <a href="<?= e($shipment['tracking_url']) ?>" target="_blank" class="text-xs font-medium text-purple-600 hover:underline">ট্র্যাক করুন →</a>
-            <?php endif; ?>
+            <?php if (!empty($shipment['tracking_url'])): ?><a href="<?= e($shipment['tracking_url']) ?>" target="_blank" class="text-xs font-medium text-purple-600 hover:underline">ট্র্যাক করুন →</a><?php endif; ?>
         </div>
         <?php endif; ?>
     </div>
@@ -278,9 +322,7 @@ $brandDark = sprintf("#%02x%02x%02x", max(0,$r-40), max(0,$g-40), max(0,$b-40));
             <div><span class="text-gray-400 text-xs">নাম:</span><p class="font-medium text-gray-700"><?= e($order['customer_name']) ?></p></div>
             <div><span class="text-gray-400 text-xs">ফোন:</span><p class="font-medium text-gray-700"><?= e($order['customer_phone']) ?></p></div>
             <div class="sm:col-span-2"><span class="text-gray-400 text-xs">ঠিকানা:</span><p class="font-medium text-gray-700"><?= e($order['shipping_address'] ?? $order['customer_address'] ?? 'N/A') ?></p></div>
-            <?php if (!empty($order['shipping_district'])): ?>
-            <div><span class="text-gray-400 text-xs">জেলা:</span><p class="font-medium text-gray-700"><?= e($order['shipping_district']) ?></p></div>
-            <?php endif; ?>
+            <?php if (!empty($order['shipping_district'])): ?><div><span class="text-gray-400 text-xs">জেলা:</span><p class="font-medium text-gray-700"><?= e($order['shipping_district']) ?></p></div><?php endif; ?>
         </div>
     </div>
 
@@ -294,16 +336,11 @@ $brandDark = sprintf("#%02x%02x%02x", max(0,$r-40), max(0,$g-40), max(0,$b-40));
             <div class="space-y-3">
                 <?php foreach ($items as $item): ?>
                 <div class="flex items-start gap-3">
-                    <?php if (!empty($item['image'])): ?>
-                    <img src="<?= uploadUrl($item['image']) ?>" class="w-14 h-14 rounded-lg object-cover border flex-shrink-0" alt="">
-                    <?php else: ?>
-                    <div class="w-14 h-14 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0"><i class="fas fa-box text-gray-300 text-lg"></i></div>
-                    <?php endif; ?>
+                    <?php if (!empty($item['image'])): ?><img src="<?= uploadUrl($item['image']) ?>" class="w-14 h-14 rounded-lg object-cover border flex-shrink-0" alt="">
+                    <?php else: ?><div class="w-14 h-14 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0"><i class="fas fa-box text-gray-300 text-lg"></i></div><?php endif; ?>
                     <div class="flex-1 min-w-0">
                         <p class="font-medium text-sm text-gray-800 leading-tight" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden"><?= e($item['product_name']) ?></p>
-                        <?php if (!empty($item['variant_name'])): ?>
-                        <p class="text-[11px] text-gray-400 mt-0.5"><?= e($item['variant_name']) ?></p>
-                        <?php endif; ?>
+                        <?php if (!empty($item['variant_name'])): ?><p class="text-[11px] text-gray-400 mt-0.5"><?= e($item['variant_name']) ?></p><?php endif; ?>
                         <div class="flex items-center gap-2 mt-1">
                             <span class="text-xs text-gray-500"><?= formatPrice($item['price']) ?> × <?= intval($item['quantity']) ?></span>
                             <?php if (!empty($item['store_credit_enabled']) && floatval($item['store_credit_amount'] ?? 0) > 0 && !in_array($currentStatus, ['delivered','cancelled','returned'])): ?>
@@ -316,60 +353,28 @@ $brandDark = sprintf("#%02x%02x%02x", max(0,$r-40), max(0,$g-40), max(0,$b-40));
                 <?php endforeach; ?>
             </div>
         </div>
-
-        <!-- Price Breakdown -->
         <div class="border-t mx-5"></div>
         <div class="p-5 space-y-2 text-sm">
-            <div class="flex justify-between text-gray-500">
-                <span>সাবটোটাল</span>
-                <span class="font-medium text-gray-700"><?= formatPrice($order['subtotal']) ?></span>
-            </div>
-            <?php if ($discountAmt > 0): ?>
-            <div class="flex justify-between text-green-600">
-                <span><i class="fas fa-tag mr-1 text-xs"></i>ডিসকাউন্ট <?= !empty($order['coupon_code']) ? '(' . e($order['coupon_code']) . ')' : '' ?></span>
-                <span class="font-medium">-<?= formatPrice($discountAmt) ?></span>
-            </div>
-            <?php endif; ?>
-            <?php if ($creditUsed > 0): ?>
-            <div class="flex justify-between items-center">
-                <span class="flex items-center gap-1.5 text-yellow-700">
-                    <span class="w-5 h-5 rounded-full bg-yellow-100 flex items-center justify-center flex-shrink-0"><i class="fas fa-coins text-[9px] text-yellow-600"></i></span>
-                    স্টোর ক্রেডিট ব্যবহৃত
-                </span>
-                <span class="font-semibold text-yellow-700">-<?= formatPrice($creditUsed) ?></span>
-            </div>
-            <?php endif; ?>
-            <div class="flex justify-between text-gray-500">
-                <span><i class="fas fa-truck mr-1 text-xs"></i>ডেলিভারি চার্জ</span>
-                <span class="font-medium text-gray-700"><?= floatval($order['shipping_cost']) > 0 ? formatPrice($order['shipping_cost']) : '<span class="text-green-600 font-semibold">ফ্রি</span>' ?></span>
-            </div>
-            <div class="flex justify-between items-center font-bold text-base pt-2 border-t border-dashed">
-                <span class="text-gray-800">মোট পরিশোধযোগ্য</span>
-                <span style="color:var(--primary,#2563eb)"><?= formatPrice($order['total']) ?></span>
-            </div>
+            <div class="flex justify-between text-gray-500"><span>সাবটোটাল</span><span class="font-medium text-gray-700"><?= formatPrice($order['subtotal']) ?></span></div>
+            <?php if ($discountAmt > 0): ?><div class="flex justify-between text-green-600"><span><i class="fas fa-tag mr-1 text-xs"></i>ডিসকাউন্ট <?= !empty($order['coupon_code']) ? '(' . e($order['coupon_code']) . ')' : '' ?></span><span class="font-medium">-<?= formatPrice($discountAmt) ?></span></div><?php endif; ?>
+            <?php if ($creditUsed > 0): ?><div class="flex justify-between items-center"><span class="flex items-center gap-1.5 text-yellow-700"><span class="w-5 h-5 rounded-full bg-yellow-100 flex items-center justify-center flex-shrink-0"><i class="fas fa-coins text-[9px] text-yellow-600"></i></span>স্টোর ক্রেডিট ব্যবহৃত</span><span class="font-semibold text-yellow-700">-<?= formatPrice($creditUsed) ?></span></div><?php endif; ?>
+            <div class="flex justify-between text-gray-500"><span><i class="fas fa-truck mr-1 text-xs"></i>ডেলিভারি চার্জ</span><span class="font-medium text-gray-700"><?= floatval($order['shipping_cost']) > 0 ? formatPrice($order['shipping_cost']) : '<span class="text-green-600 font-semibold">ফ্রি</span>' ?></span></div>
+            <div class="flex justify-between items-center font-bold text-base pt-2 border-t border-dashed"><span class="text-gray-800">মোট পরিশোধযোগ্য</span><span style="color:var(--primary,#2563eb)"><?= formatPrice($order['total']) ?></span></div>
             <?php $totalSaved = $discountAmt + $creditUsed; if ($totalSaved > 0): ?>
-            <div class="flex justify-between items-center bg-green-50 rounded-xl px-3 py-2 -mx-1 mt-1">
-                <span class="text-green-700 text-xs font-semibold"><i class="fas fa-piggy-bank mr-1"></i>আপনি সেভ করেছেন</span>
-                <span class="text-green-700 font-bold"><?= formatPrice($totalSaved) ?></span>
-            </div>
+            <div class="flex justify-between items-center bg-green-50 rounded-xl px-3 py-2 -mx-1 mt-1"><span class="text-green-700 text-xs font-semibold"><i class="fas fa-piggy-bank mr-1"></i>আপনি সেভ করেছেন</span><span class="text-green-700 font-bold"><?= formatPrice($totalSaved) ?></span></div>
             <?php endif; ?>
         </div>
     </div>
 
-    <!-- Credit Earning Notice -->
     <?php if ($totalCreditsEarnable > 0 && !in_array($currentStatus, ['delivered','cancelled','returned'])): ?>
     <div class="bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 rounded-2xl p-4 mb-4">
         <div class="flex items-center gap-3">
             <div class="w-10 h-10 rounded-xl bg-yellow-100 flex items-center justify-center flex-shrink-0"><i class="fas fa-gift text-yellow-600"></i></div>
-            <div>
-                <p class="text-sm font-semibold text-yellow-800">ডেলিভারির পর পাবেন <?= number_format($totalCreditsEarnable, 0) ?> ক্রেডিট পয়েন্ট!</p>
-                <p class="text-xs text-yellow-600 mt-0.5">পরবর্তী অর্ডারে ব্যবহার করতে পারবেন</p>
-            </div>
+            <div><p class="text-sm font-semibold text-yellow-800">ডেলিভারির পর পাবেন <?= number_format($totalCreditsEarnable, 0) ?> ক্রেডিট পয়েন্ট!</p><p class="text-xs text-yellow-600 mt-0.5">পরবর্তী অর্ডারে ব্যবহার করতে পারবেন</p></div>
         </div>
     </div>
     <?php endif; ?>
 
-    <!-- Timeline -->
     <?php if (!empty($statusHistory)): ?>
     <div class="bg-white rounded-2xl shadow-sm border p-5 mb-4">
         <div class="flex items-center gap-3 mb-4">
@@ -399,7 +404,6 @@ $brandDark = sprintf("#%02x%02x%02x", max(0,$r-40), max(0,$g-40), max(0,$b-40));
     </div>
     <?php endif; ?>
 
-    <!-- Help -->
     <div class="bg-gray-50 rounded-2xl border border-gray-200 p-5">
         <div class="text-center">
             <p class="text-sm text-gray-500 mb-2">অর্ডার সংক্রান্ত কোনো সমস্যা?</p>
@@ -411,9 +415,7 @@ $brandDark = sprintf("#%02x%02x%02x", max(0,$r-40), max(0,$g-40), max(0,$b-40));
                 <?php $whatsapp = getSetting('whatsapp_number', ''); if ($whatsapp): ?>
                 <a href="https://wa.me/<?= e($whatsapp) ?>?text=<?= urlencode('আমার অর্ডার #' . ($order['order_number'] ?? '') . ' নিয়ে জানতে চাই') ?>" target="_blank" class="inline-flex items-center gap-1.5 text-sm font-medium text-green-600 hover:text-green-700"><i class="fab fa-whatsapp"></i>WhatsApp</a>
                 <?php endif; ?>
-                <?php if (!$supportPhone && !$whatsapp): ?>
-                <span class="text-sm text-gray-400">আমাদের সাথে যোগাযোগ করুন</span>
-                <?php endif; ?>
+                <?php if (!$supportPhone && !$whatsapp): ?><span class="text-sm text-gray-400">আমাদের সাথে যোগাযোগ করুন</span><?php endif; ?>
             </div>
         </div>
     </div>

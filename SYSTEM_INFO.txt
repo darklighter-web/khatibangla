@@ -1187,3 +1187,32 @@ FILES CHANGED:
   - admin/includes/header.php  — Complete shadcn redesign (CSS vars, theme map, layout)
   - admin/includes/footer.php  — KBDatePicker, toast, page guide restyled with shadcn tokens
   - SYSTEM_INFO.txt            — This documentation
+
+
+================================================================================
+                    ORDER TRACKING PAGE UI SYSTEM
+================================================================================
+Updated: 2026-04-03
+
+LOCATION: pages/track-order.php
+SETTING: track_order_ui (values: classic | glow | glass)
+ADMIN: Settings → Header & Nav → "Order Tracking Page UI" section
+
+THREE UI STYLES (switchable from admin settings):
+
+1. CLASSIC — Clean white card with brand-colored search icon and gradient button.
+   Simple, professional, works with any theme/color.
+
+2. NEON GLOW — Dark (#010201) input with animated conic-gradient glow border.
+   Orbiting dot particles on search icon, spinning ring on submit button.
+   All glow colors auto-derived from primary_color setting.
+   Hover: glow rotates CCW. Focus: full 360° spin over 4s.
+
+3. FROSTED GLASS — Translucent blur card with animated background blobs.
+   Configurable: blur, opacity, border opacity, tint strength.
+   Shimmer border animation, pulsing search icon, ring-pulse submit.
+   Settings: track_glass_blur, track_glass_opacity, track_glass_border,
+             track_glass_tint, track_glass_animated_bg
+
+All styles use brand color from primary_color setting.
+Phone number field removed — only order number needed.
