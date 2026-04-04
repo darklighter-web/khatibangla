@@ -4,12 +4,23 @@
  * POST /api/fb-test.php
  * Admin-only
  */
+
+// 1. Properly load the core session file first
+require_once __DIR__ . '/../includes/session.php'; 
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/fb-capi.php';
+
 header('Content-Type: application/json');
 
-session_start();
-if (empty($_SESSION['admin_id'])) {
+// Ensure session is started
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// 2. Safely get the Admin ID (fallback to $_SESSION if function doesn't exist)
+$adminId = function_exists('getAdminId') ? getAdminId() : ($_SESSION['admin_id'] ?? null);
+
+if (empty($adminId)) {
     echo json_encode(['success' => false, 'error' => 'Unauthorized — admin login required']);
     exit;
 }
