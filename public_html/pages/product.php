@@ -167,14 +167,10 @@ $seo = [
     ],
 ];
 
-// Single product header visibility (hide_header flag from admin)
-// Safe check: if column doesn't exist yet, key is simply missing → defaults to false
-$__hideProductHeader = !empty($product['hide_header'] ?? 0);
-
 include ROOT_PATH . 'includes/header.php';
 
-// If hide_header is set, inject CSS to hide the full header/topbar/nav on this product page
-if ($__hideProductHeader) {
+// Per-product header visibility (admin can check "Hide Header" per product)
+if (!empty($product['hide_header'] ?? 0)) {
     echo '<style>.vis-topbar,.vis-main-header,.vis-cat-nav,.vis-mobile-bottom-nav{display:none!important}body{padding-top:0!important}</style>';
 }
 
@@ -475,8 +471,8 @@ if ($isCombinationMode) {
                                    data-option-type="<?= $isVariation ? 'variation' : 'addon' ?>"
                                    data-price-adj="<?= $v['price_adjustment'] ?>"
                                    data-abs-price="<?= $v['absolute_price'] ?? 0 ?>"
-                                   data-var-regular="<?= floatval($v['var_regular_price'] ?? 0) > 0 ? $v['var_regular_price'] : 0 ?>"
-                                   data-var-sale="<?= floatval($v['var_sale_price'] ?? 0) > 0 ? $v['var_sale_price'] : 0 ?>"
+                                   data-var-regular="<?= $v['var_regular_price'] ?? $v['absolute_price'] ?? 0 ?>"
+                                   data-var-sale="<?= $v['var_sale_price'] ?? 0 ?>"
                                    data-stock="<?= $v['stock_quantity'] ?>"
                                    data-value="<?= htmlspecialchars($v['variant_value']) ?>"
                                    data-group-id="<?= $groupId ?>"
@@ -1307,24 +1303,13 @@ function onVariantChange(explicit) {
     if (hasVariation) {
         if (IS_COMBO_MODE && _currentCombo) {
             // Combo mode: use the combination's regular_price
-            if (_currentCombo.regular_price > 0 && _currentCombo.regular_price > finalPrice) {
-                compareReg = _currentCombo.regular_price;
-            }
+            if (_currentCombo.regular_price > 0) compareReg = _currentCombo.regular_price;
         } else {
             // Legacy mode: check selected variation radio data
             checked.forEach(r => {
                 if (r.dataset.optionType === 'variation') {
                     const varReg = parseFloat(r.dataset.varRegular) || 0;
-                    const varSale = parseFloat(r.dataset.varSale) || 0;
-                    const absPrice = parseFloat(r.dataset.absPrice) || 0;
-                    // var_regular_price is set and is higher than the sell price → real discount
-                    if (varReg > 0 && varReg > absPrice) {
-                        compareReg = varReg;
-                    } else if (varReg > 0 && varSale > 0 && varReg > varSale) {
-                        // var_regular_price > var_sale_price
-                        compareReg = varReg;
-                    }
-                    // If no per-variant regular price, fall back to product-level REGULAR_PRICE
+                    if (varReg > 0) compareReg = varReg;
                 }
             });
         }
