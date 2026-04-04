@@ -738,13 +738,10 @@ if ($headerBgStyle === 'glass') {
     $headerStyle .= "background-color:{$headerBg};";
 }
 ?>
-<header class="vis-main-header sticky top-0 z-50 <?= $headerBgStyle === 'glass' ? 'border-b border-white/20' : 'shadow-sm' ?> <?= $hideMobileNav ? 'hidden-on-mobile-product' : '' ?>" style="<?= $headerStyle ?>">
+<header class="vis-main-header sticky top-0 z-50 <?= $headerBgStyle === 'glass' ? 'border-b border-white/20' : 'shadow-sm' ?>" style="<?= $headerStyle ?>">
     <style>
     @media(max-width:1023px){ header .main-header-row { height: <?= $headerHeightMobile ?>px; } }
     @media(min-width:1024px){ header .main-header-row { height: <?= $headerHeightDesktop ?>px; } }
-    <?php if ($hideMobileNav): ?>
-    @media(max-width:767px){ .hidden-on-mobile-product { display:none !important; } }
-    <?php endif; ?>
     </style>
     <div class="max-w-7xl mx-auto px-4">
         <div class="flex items-center justify-between main-header-row">

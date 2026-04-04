@@ -195,7 +195,8 @@ $globalShowHeader = getSetting('single_product_show_header', '1') === '1';
 $perProductHide = !empty($product['hide_header'] ?? 0);
 
 if (!$globalShowHeader || $perProductHide) {
-    echo '<style>.vis-topbar,.vis-main-header,.vis-cat-nav,.vis-mobile-bottom-nav{display:none!important}body{padding-top:0!important}</style>';
+    // Hide topbar, category nav, bottom nav — but keep main header (logo bar) visible
+    echo '<style>.vis-topbar,.vis-cat-nav,.vis-mobile-bottom-nav{display:none!important}</style>';
 }
 
 // ── FB ViewContent tracking ──

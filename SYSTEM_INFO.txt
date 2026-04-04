@@ -1651,3 +1651,13 @@ Admin Path: Admin > Settings > Header tab > Section Visibility
 
 New Setting Keys:
   single_product_show_header  | checkbox | 1 (default) | Header tab
+
+── FEATURE 8b: Main Header Always Visible on Single Product Pages ──────────
+Location: includes/header.php, pages/product.php
+Date: 2026-04-04
+What:
+  • Main header bar (logo, search, cart, login) now always shows on single product pages
+  • Removed hidden-on-mobile-product class from main header element
+  • The single_product_show_header toggle now only hides topbar/cat-nav/bottom-nav (NOT the logo header)
+  • Per-product hide_header also preserves the main header bar
+  • Mobile users will always see the logo header on product pages
