@@ -1633,3 +1633,21 @@ hide_header (products col)   | tinyint  | 0       | F6      | Product form
 mobile_sticky_glass_blur     | number   | 16      | F7      | Header tab
 mobile_sticky_glass_opacity  | number   | 75      | F7      | Header tab
 
+
+── FEATURE 8: Sticky Buy Bar Color Match & Product Header Toggle ───────────
+Location: pages/product.php, admin/pages/settings.php
+Date: 2026-04-04
+What:
+  • Sticky buy-now button now uses cod-order-btn class + var(--btn-primary) + var(--btn-primary-text)
+    to match the exact same color/animation as product archive card buy buttons
+  • Added global "Single Product Page Header" toggle in admin Settings > Header > Section Visibility
+    - Setting key: single_product_show_header (default: 1 = visible)
+    - When OFF, hides topbar/header/cat-nav/bottom-nav on ALL product pages
+    - Per-product hide_header checkbox still works as override
+  • Improved toggle button UI in Section Visibility settings:
+    - Toggles upgraded from w-9/h-5 to w-11/h-6 with shadow for better usability
+    - Proper centering under PC/MOBILE column headers
+Admin Path: Admin > Settings > Header tab > Section Visibility
+
+New Setting Keys:
+  single_product_show_header  | checkbox | 1 (default) | Header tab

@@ -112,7 +112,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      'nav_show_shop_link','nav_show_categories','mobile_product_sticky_bar','mobile_hide_nav_product','track_glass_animated_bg','track_dark_mode_default',
                      'vis_topbar_desktop','vis_topbar_mobile','vis_main_header_desktop','vis_main_header_mobile',
                      'vis_cat_nav_desktop','vis_cat_nav_mobile','vis_mobile_bottom_nav_desktop','vis_mobile_bottom_nav_mobile',
-                     'vis_mobile_sticky_bar_desktop','vis_mobile_sticky_bar_mobile'],
+                     'vis_mobile_sticky_bar_desktop','vis_mobile_sticky_bar_mobile',
+                     'single_product_show_header'],
         'shipping' => ['auto_detect_location'],
         'print' => ['print_show_barcode'],
         'checkout' => ['checkout_note_enabled','order_now_clear_cart','order_merge_enabled','store_credits_enabled','store_credit_checkout'],
@@ -1208,17 +1209,36 @@ require_once __DIR__ . '/../includes/header.php';
                             <label class="relative inline-flex items-center cursor-pointer w-16 justify-center" title="Desktop: <?= $deskVal === '1' ? 'Visible' : 'Hidden' ?>">
                                 <input type="hidden" name="vis_<?= $secKey ?>_desktop" value="0">
                                 <input type="checkbox" name="vis_<?= $secKey ?>_desktop" value="1" class="sr-only peer" <?= $deskVal === '1' ? 'checked' : '' ?>>
-                                <div class="w-9 h-5 bg-gray-200 peer-focus:ring-2 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-500"></div>
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:ring-2 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[3px] after:left-[3px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-500 after:shadow-sm"></div>
                             </label>
                             <!-- Mobile Toggle -->
                             <label class="relative inline-flex items-center cursor-pointer w-16 justify-center" title="Mobile: <?= $mobVal === '1' ? 'Visible' : 'Hidden' ?>">
                                 <input type="hidden" name="vis_<?= $secKey ?>_mobile" value="0">
                                 <input type="checkbox" name="vis_<?= $secKey ?>_mobile" value="1" class="sr-only peer" <?= $mobVal === '1' ? 'checked' : '' ?>>
-                                <div class="w-9 h-5 bg-gray-200 peer-focus:ring-2 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-500"></div>
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:ring-2 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[3px] after:left-[3px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-500 after:shadow-sm"></div>
                             </label>
                         </div>
                     </div>
                     <?php endforeach; ?>
+                </div>
+                <!-- Single Product Page Header Toggle -->
+                <div class="border-t border-indigo-100 px-5 py-3 bg-gradient-to-r from-blue-50/50 to-indigo-50/50">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3 flex-1 min-w-0">
+                            <div class="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                                <i class="fas fa-store text-sm text-blue-600"></i>
+                            </div>
+                            <div>
+                                <span class="text-sm font-medium text-gray-700">Single Product Page Header</span>
+                                <span class="text-[10px] text-gray-400 block">Show main site header on individual product pages (global)</span>
+                            </div>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="hidden" name="single_product_show_header" value="0">
+                            <input type="checkbox" name="single_product_show_header" value="1" class="sr-only peer" <?= ($s['single_product_show_header'] ?? '1') === '1' ? 'checked' : '' ?>>
+                            <div class="w-11 h-6 bg-gray-200 peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[3px] after:left-[3px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500 after:shadow-sm"></div>
+                        </label>
+                    </div>
                 </div>
             </div>
 

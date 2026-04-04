@@ -189,8 +189,12 @@ $seo = [
 
 include ROOT_PATH . 'includes/header.php';
 
+// Global single product header visibility (admin settings toggle)
+$globalShowHeader = getSetting('single_product_show_header', '1') === '1';
 // Per-product header visibility (admin can check "Hide Header" per product)
-if (!empty($product['hide_header'] ?? 0)) {
+$perProductHide = !empty($product['hide_header'] ?? 0);
+
+if (!$globalShowHeader || $perProductHide) {
     echo '<style>.vis-topbar,.vis-main-header,.vis-cat-nav,.vis-mobile-bottom-nav{display:none!important}body{padding-top:0!important}</style>';
 }
 
@@ -1925,10 +1929,10 @@ if ($stickyBarEnabled):
             <button onclick="changeStickyQty(1)" class="w-8 h-9 flex items-center justify-center hover:bg-black/5 transition text-sm font-bold">+</button>
         </div>
         
-        <!-- Order Button -->
+        <!-- Order Button (matches archive card buy-now style) -->
         <button onclick="productOrder()" id="sticky-order-btn"
-                class="flex-1 min-w-0 py-2.5 rounded-xl text-white font-bold transition active:scale-[0.97] flex items-center justify-center gap-1.5"
-                style="background:var(--btn-primary);font-size:clamp(12px, 3.5vw, 14px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+                class="cod-order-btn flex-1 min-w-0 py-2.5 rounded-xl text-white font-bold transition active:scale-[0.97] flex items-center justify-center gap-1.5 order-btn-text"
+                style="background:var(--btn-primary);color:var(--btn-primary-text, #fff);font-size:clamp(12px, 3.5vw, 14px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
                 <?= $product['stock_status'] === 'out_of_stock' ? 'disabled' : '' ?>>
             <i class="fas fa-shopping-bag text-xs flex-shrink-0"></i>
             <span class="truncate"><?= getSetting('btn_order_cod_label', 'অর্ডার করুন') ?></span>
