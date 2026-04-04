@@ -1632,7 +1632,7 @@ require_once __DIR__ . '/../includes/header.php';
                         <div><label class="block text-xs font-medium text-gray-600 mb-1">Glass Opacity (%)</label>
                             <input type="number" name="mobile_sticky_glass_opacity" value="<?= e($s['mobile_sticky_glass_opacity'] ?? '75') ?>" class="w-full px-3 py-2 border rounded-lg text-sm" min="10" max="100"></div>
                     </div>
-                    <div id="stickyBgColorWrap" class="<?= ($s['mobile_sticky_bg_style'] ?? 'solid') === 'glass' ? 'hidden' : '' ?>"">
+                    <div id="stickyBgColorWrap" class="<?= ($s['mobile_sticky_bg_style'] ?? 'solid') === 'glass' ? 'hidden' : '' ?>">
                         <label class="block text-sm font-medium text-gray-700 mb-1">Sticky Bar Background Color</label>
                         <input type="color" name="mobile_sticky_bg_color" value="<?= e($s['mobile_sticky_bg_color'] ?? '#ffffff') ?>" class="w-12 h-10 rounded border cursor-pointer">
                     </div>

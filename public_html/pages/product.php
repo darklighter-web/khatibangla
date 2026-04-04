@@ -167,10 +167,9 @@ $seo = [
     ],
 ];
 
-// Auto-create hide_header column if missing
-try { $db->query("ALTER TABLE products ADD COLUMN IF NOT EXISTS `hide_header` TINYINT(1) NOT NULL DEFAULT 0 AFTER `is_active`"); } catch (\Throwable $e) {}
-
-$__hideProductHeader = !empty($product['hide_header']);
+// Single product header visibility (hide_header flag from admin)
+// Safe check: if column doesn't exist yet, key is simply missing → defaults to false
+$__hideProductHeader = !empty($product['hide_header'] ?? 0);
 
 include ROOT_PATH . 'includes/header.php';
 

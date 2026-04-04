@@ -260,11 +260,6 @@ $_autoDesc = seoAutoDescription($seo);
             /* Mobile Nav */
             --mobile-nav-bg: <?= $mobileNavBg ?>;
             --mobile-nav-active: <?= $mobileNavActive ?>;
-            /* Glass / Frosted Effect */
-            --header-glass-blur: <?= $headerGlassBlur ?>px;
-            --header-glass-opacity: <?= $headerGlassOpacity / 100 ?>;
-            --navbar-glass-blur: <?= $navbarGlassBlur ?>px;
-            --navbar-glass-opacity: <?= $navbarGlassOpacity / 100 ?>;
             /* Glass / Frosted */
             --header-glass-blur: <?= $headerGlassBlur ?>px;
             --header-glass-opacity: <?= $headerGlassOpacity / 100 ?>;
@@ -753,21 +748,19 @@ if ($headerBgStyle === 'glass') {
     </style>
     <div class="max-w-7xl mx-auto px-4">
         <div class="flex items-center justify-between main-header-row">
-            <!-- Left: Mobile Menu Toggle + Logo -->
-            <div class="flex items-center gap-2 flex-shrink-0">
-                <button onclick="toggleMobileMenu()" class="lg:hidden flex items-center justify-center w-10 h-10 rounded-lg hover:bg-gray-100 transition -ml-1" aria-label="মেনু খুলুন">
-                    <i class="fas fa-bars text-xl"></i>
-                </button>
-                
-                <!-- Logo -->
-                <a href="<?= url() ?>" class="flex-shrink-0">
-                    <?php if ($siteLogo): ?>
-                    <img src="<?= uploadUrl($siteLogo) ?>" alt="<?= $siteName ?>" class="h-10 lg:h-14 object-contain">
-                    <?php else: ?>
-                    <span class="text-2xl font-bold" style="color:var(--primary)"><?= $siteName ?></span>
-                    <?php endif; ?>
-                </a>
-            </div>
+            <!-- Mobile Menu Toggle -->
+            <button onclick="toggleMobileMenu()" class="lg:hidden flex items-center justify-center w-10 h-10 rounded-lg hover:bg-gray-100 transition flex-shrink-0" aria-label="মেনু খুলুন">
+                <i class="fas fa-bars text-xl"></i>
+            </button>
+            
+            <!-- Logo -->
+            <a href="<?= url() ?>" class="flex-shrink-0">
+                <?php if ($siteLogo): ?>
+                <img src="<?= uploadUrl($siteLogo) ?>" alt="<?= $siteName ?>" class="h-10 lg:h-14 object-contain">
+                <?php else: ?>
+                <span class="text-2xl font-bold" style="color:var(--primary)"><?= $siteName ?></span>
+                <?php endif; ?>
+            </a>
             
             <!-- Search Bar (Desktop) -->
             <?php if ($hShowSearch): ?>
@@ -1014,16 +1007,20 @@ if ($headerBgStyle === 'glass') {
                 <span class="ml-auto text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded-full"><?= $__mRevCount ?></span>
             </a>
             <?php endif; } ?>
+            <?php if ($hShowTrackOrder): ?>
             <a href="<?= url('track-order') ?>" class="flex items-center gap-3 py-2 text-gray-600">
                 <i class="fas fa-truck w-5 text-center"></i> অর্ডার ট্র্যাক
             </a>
+            <?php endif; ?>
             <?php else: ?>
             <a href="<?= url('login') ?>" class="flex items-center gap-3 py-2 text-blue-600 font-medium">
                 <i class="fas fa-sign-in-alt w-5 text-center"></i> লগইন / রেজিস্ট্রেশন
             </a>
+            <?php if ($hShowTrackOrder): ?>
             <a href="<?= url('track-order') ?>" class="flex items-center gap-3 py-2 text-gray-600">
                 <i class="fas fa-truck w-5 text-center"></i> অর্ডার ট্র্যাক
             </a>
+            <?php endif; ?>
             <?php endif; ?>
             <a href="tel:<?= $sitePhone ?>" class="flex items-center gap-3 py-2 text-gray-600">
                 <i class="fas fa-phone-alt w-5 text-center"></i> <?= $sitePhone ?>
