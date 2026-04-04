@@ -7,6 +7,7 @@
  * Returns event_id for client-side deduplication.
  */
 require_once __DIR__ . '/../includes/functions.php';
+if (session_status() === PHP_SESSION_NONE) session_start();
 if (!file_exists(__DIR__ . '/../includes/fb-capi.php')) {
     echo json_encode(['success' => false, 'error' => 'CAPI not installed']);
     exit;

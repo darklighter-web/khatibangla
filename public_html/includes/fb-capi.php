@@ -169,17 +169,20 @@ function fbCapiSend(string $eventName, array $customData = [], array $userDataEx
         $body['test_event_code'] = trim($testCode);
     }
 
-    $url = "https://graph.facebook.com/v21.0/{$pixelId}/events?access_token={$accessToken}";
+    $url = "https://graph.facebook.com/v22.0/{$pixelId}/events";
 
     $ch = curl_init();
     curl_setopt_array($ch, [
         CURLOPT_URL            => $url,
         CURLOPT_POST           => true,
         CURLOPT_POSTFIELDS     => json_encode($body),
-        CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+        CURLOPT_HTTPHEADER     => [
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . $accessToken,
+        ],
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 5,
-        CURLOPT_CONNECTTIMEOUT => 3,
+        CURLOPT_TIMEOUT        => 10,
+        CURLOPT_CONNECTTIMEOUT => 5,
         CURLOPT_SSL_VERIFYPEER => true,
     ]);
 
@@ -198,7 +201,14 @@ function fbCapiSend(string $eventName, array $customData = [], array $userDataEx
             . " | eid={$eventId}"
             . " | HTTP {$httpCode}"
             . ($curlErr ? " | cURL:{$curlErr}" : '')
-            . ($httpCode !== 200 ? " | Resp:" . mb_substr($response ?? '', 0, 300) : '')
+            . ($httpCode !== 200 ? " | Resp:" . mb_substr($response ?? '', 0, 500) : '')
+            . " | PixelID:" . substr($pixelId, 0, 4) . '****'
+            . " | TokenLen:" . strlen($accessToken)
+            . " | fbp:" . ($event['user_data']['fbp'] ?? 'none')
+            . " | fbc:" . ($event['user_data']['fbc'] ?? 'none')
+            . "\n";
+        @file_put_contents($logDir . '/fb-capi.log', $line, FILE_APPEND | LOCK_EX);
+    }
             . "\n";
         @file_put_contents($logDir . '/fb-capi.log', $line, FILE_APPEND | LOCK_EX);
     }

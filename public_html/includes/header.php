@@ -16,9 +16,10 @@ if ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || ($_SERVER['SER
 }
 
 // ── Persist _fbc cookie from fbclid URL parameter (must be before output) ──
-if (!empty($_GET['fbclid']) && empty($_COOKIE['_fbc'])) {
+if (!empty($_GET['fbclid'])) {
     $__fbc = 'fb.1.' . (time() * 1000) . '.' . $_GET['fbclid'];
-    setcookie('_fbc', $__fbc, time() + 7776000, '/', '', true, false); // 90 days
+    $__isSecure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || ($_SERVER['SERVER_PORT'] ?? 80) == 443;
+    setcookie('_fbc', $__fbc, time() + 7776000, '/', '', $__isSecure, false); // 90 days
     $_COOKIE['_fbc'] = $__fbc;
 }
 

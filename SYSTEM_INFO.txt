@@ -1681,3 +1681,36 @@ New Setting Keys:
   sticky_btn_font_max    | number   | 14  | Header tab > Sticky Button Text
   sticky_btn_padding     | number   | 2   | Header tab > Sticky Button Text
   sticky_btn_text_wrap   | checkbox | 1   | Header tab > Sticky Button Text
+
+── FEATURE 9: Facebook Pixel & CAPI Complete Fix ──────────────────────────
+Location: includes/fb-capi.php, includes/header.php, api/fb-test.php, api/fb-event.php, admin/pages/settings.php
+Date: 2026-04-04
+What:
+  • Upgraded Graph API from v21.0 → v22.0
+  • Access token moved from URL query param to Authorization: Bearer header (Meta recommended)
+  • Fixed _fbc cookie: removed hardcoded Secure=true, now auto-detects HTTPS
+  • Fixed _fbc cookie: always updates on new fbclid (not just when missing)
+  • Added session_start() to fb-event.php for proper session data access
+  • Improved CAPI logging: includes token length, fbp/fbc status, more response detail
+  • Enhanced fb-test.php diagnostics:
+    - Pre-flight token format validation (length, EAA prefix check)
+    - Auto-strips whitespace from token and fixes in DB
+    - Token debug via Graph API debug_token endpoint
+    - Reports token type, validity, expiration
+    - Shows warnings for common issues
+  • Admin test result UI now shows detailed diagnostics (warnings, token info, API version)
+
+Event Flow Verification:
+  PageView:        ✅ Client (fbq) + Server (CAPI) with dedup event_id — header.php
+  ViewContent:     ✅ Client (fbq) + Server (CAPI) with dedup event_id — pages/product.php
+  AddToCart:        ✅ Server (CAPI) in api/cart.php, client returns fb_event_id
+  InitiateCheckout: ✅ Client (_fbTrack) + Server relay (_fbTrackServer) — includes/footer.php
+  Purchase:        ✅ Server (CAPI) in includes/functions.php createOrder(), client dedup via fb_event_id
+  Search:          ✅ Client relay via _fbTrackServer — pages/search.php
+  Contact:         ✅ Client relay via _fbTrackServer
+
+Troubleshooting:
+  - "Unauthorized" error → Regenerate Access Token from Events Manager
+  - Token must start with "EAA" and be 100+ chars
+  - Enable logging in admin: Settings > Ads > CAPI Event Logs
+  - Check /logs/fb-capi.log for detailed error info

@@ -2211,20 +2211,33 @@ require_once __DIR__ . '/../includes/header.php';
                 const btn = document.getElementById('fbTestBtn');
                 const res = document.getElementById('fbTestResult');
                 btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Testing...';
-                res.classList.remove('hidden','bg-green-100','bg-red-100','text-green-700','text-red-700');
+                res.classList.remove('hidden','bg-green-100','bg-red-100','bg-yellow-100','text-green-700','text-red-700','text-yellow-700');
                 try {
                     const r = await fetch('<?= SITE_URL ?>/api/fb-test.php', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'action=test'});
                     const d = await r.json();
+                    let html = '';
                     if(d.success){
-                        res.className = 'text-xs flex-1 p-2 rounded-lg bg-green-100 text-green-700';
-                        res.innerHTML = '✅ <strong>সফল!</strong> Events received: '+d.events_received+'<br>Event ID: <code>'+d.event_id+'</code>'+(d.test_code?'<br>Test Code: '+d.test_code:'');
+                        res.className = 'text-xs flex-1 p-3 rounded-lg bg-green-100 text-green-700';
+                        html = '✅ <strong>সফল!</strong> Events received: '+d.events_received;
+                        html += '<br>API: '+d.api_version+' | Token: '+d.token_prefix+' ('+d.token_length+' chars)';
+                        if(d.test_code) html += '<br>Test Code: '+d.test_code;
                     } else {
-                        res.className = 'text-xs flex-1 p-2 rounded-lg bg-red-100 text-red-700';
-                        res.innerHTML = '❌ <strong>ব্যর্থ:</strong> '+(d.error||'Unknown error')+'<br>HTTP: '+(d.http_code||'—');
+                        res.className = 'text-xs flex-1 p-3 rounded-lg bg-red-100 text-red-700';
+                        html = '❌ <strong>ব্যর্থ:</strong> '+(d.error||'Unknown error');
+                        html += '<br>HTTP: '+(d.http_code||'—')+' | API: '+(d.api_version||'—');
+                        html += '<br>Token: '+(d.token_prefix||'?')+ ' ('+( d.token_length||0)+' chars)';
                     }
+                    if(d.warnings && d.warnings.length){
+                        html += '<br><span class="text-yellow-700 font-semibold">⚠️ সতর্কতা:</span>';
+                        d.warnings.forEach(w => html += '<br>• '+w);
+                    }
+                    if(d.token_info){
+                        html += '<br><span class="text-gray-500">Token: type='+d.token_info.type+', valid='+(d.token_info.is_valid?'✅':'❌')+', expires='+d.token_info.expires+'</span>';
+                    }
+                    res.innerHTML = html;
                     res.classList.remove('hidden');
                 } catch(e){
-                    res.className = 'text-xs flex-1 p-2 rounded-lg bg-red-100 text-red-700';
+                    res.className = 'text-xs flex-1 p-3 rounded-lg bg-red-100 text-red-700';
                     res.innerHTML = '❌ Network error: '+e.message;
                     res.classList.remove('hidden');
                 }
