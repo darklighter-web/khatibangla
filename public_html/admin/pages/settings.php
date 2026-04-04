@@ -113,7 +113,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      'vis_topbar_desktop','vis_topbar_mobile','vis_main_header_desktop','vis_main_header_mobile',
                      'vis_cat_nav_desktop','vis_cat_nav_mobile','vis_mobile_bottom_nav_desktop','vis_mobile_bottom_nav_mobile',
                      'vis_mobile_sticky_bar_desktop','vis_mobile_sticky_bar_mobile',
-                     'single_product_show_header'],
+                     'single_product_show_header',
+                     'sticky_btn_font_min','sticky_btn_font_max','sticky_btn_text_wrap','sticky_btn_padding'],
         'shipping' => ['auto_detect_location'],
         'print' => ['print_show_barcode'],
         'checkout' => ['checkout_note_enabled','order_now_clear_cart','order_merge_enabled','store_credits_enabled','store_credit_checkout'],
@@ -1659,6 +1660,34 @@ require_once __DIR__ . '/../includes/header.php';
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Sticky Bar Text Color</label>
                         <input type="color" name="mobile_sticky_text_color" value="<?= e($s['mobile_sticky_text_color'] ?? '#1f2937') ?>" class="w-12 h-10 rounded border cursor-pointer">
+                    </div>
+                    <!-- Sticky Button Text Tweaks -->
+                    <div class="border-t pt-3 mt-2">
+                        <p class="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide"><i class="fas fa-text-height mr-1"></i>Sticky Button Text</p>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Font Size Min (px)</label>
+                                <input type="number" name="sticky_btn_font_min" value="<?= e($s['sticky_btn_font_min'] ?? '11') ?>" class="w-full px-3 py-2 border rounded-lg text-sm" min="8" max="20">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Font Size Max (px)</label>
+                                <input type="number" name="sticky_btn_font_max" value="<?= e($s['sticky_btn_font_max'] ?? '14') ?>" class="w-full px-3 py-2 border rounded-lg text-sm" min="10" max="24">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3 mt-2">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Button Inner Padding (px)</label>
+                                <input type="number" name="sticky_btn_padding" value="<?= e($s['sticky_btn_padding'] ?? '2') ?>" class="w-full px-3 py-2 border rounded-lg text-sm" min="0" max="16">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Text Wrap</label>
+                                <label class="flex items-center gap-2 mt-1.5">
+                                    <input type="hidden" name="sticky_btn_text_wrap" value="0">
+                                    <input type="checkbox" name="sticky_btn_text_wrap" value="1" <?= ($s['sticky_btn_text_wrap'] ?? '1') === '1' ? 'checked' : '' ?> class="rounded text-green-600">
+                                    <span class="text-xs text-gray-500">Allow 2nd line</span>
+                                </label>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

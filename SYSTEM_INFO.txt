@@ -1661,3 +1661,23 @@ What:
   • The single_product_show_header toggle now only hides topbar/cat-nav/bottom-nav (NOT the logo header)
   • Per-product hide_header also preserves the main header bar
   • Mobile users will always see the logo header on product pages
+
+── FEATURE 8c: Sticky Button Text Tweaks & Mobile Breadcrumb Shrink ────────
+Location: pages/product.php, admin/pages/settings.php
+Date: 2026-04-04
+What:
+  • Mobile breadcrumb shrunk: text-xs on mobile, gap-1, truncated category/product names
+  • Sticky buy button text now shrinks via clamp(min, 3.5vw, max) with admin-configurable min/max
+  • When text can't fit on one line, it wraps to 2nd line with text-align:center
+  • Button has configurable inner padding (default 2px)
+  • Admin tweaking options under Settings > Header > Mobile Product Page Design > Sticky Button Text:
+    - Font Size Min (px) — default 11
+    - Font Size Max (px) — default 14
+    - Button Inner Padding (px) — default 2
+    - Text Wrap checkbox — default ON (allows 2nd line)
+
+New Setting Keys:
+  sticky_btn_font_min    | number   | 11  | Header tab > Sticky Button Text
+  sticky_btn_font_max    | number   | 14  | Header tab > Sticky Button Text
+  sticky_btn_padding     | number   | 2   | Header tab > Sticky Button Text
+  sticky_btn_text_wrap   | checkbox | 1   | Header tab > Sticky Button Text

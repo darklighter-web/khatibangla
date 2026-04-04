@@ -296,14 +296,14 @@ if ($isCombinationMode) {
 
 <main class="max-w-7xl mx-auto px-4 py-4 sm:py-8">
     <!-- Breadcrumbs -->
-    <nav class="text-sm text-gray-500 mb-4 flex items-center gap-2 flex-wrap">
-        <a href="<?= url() ?>" class="hover:text-red-600 transition"><i class="fas fa-home"></i> Home</a>
-        <i class="fas fa-chevron-right text-xs text-gray-300"></i>
+    <nav class="text-sm text-gray-500 mb-4 flex items-center gap-2 flex-wrap max-md:text-xs max-md:gap-1 max-md:mb-2">
+        <a href="<?= url() ?>" class="hover:text-red-600 transition flex-shrink-0"><i class="fas fa-home"></i> Home</a>
+        <i class="fas fa-chevron-right text-xs text-gray-300 max-md:text-[9px]"></i>
         <?php if ($product['category_name']): ?>
-        <a href="<?= url('category/' . $product['category_slug']) ?>" class="hover:text-red-600 transition"><?= htmlspecialchars($product['category_name']) ?></a>
-        <i class="fas fa-chevron-right text-xs text-gray-300"></i>
+        <a href="<?= url('category/' . $product['category_slug']) ?>" class="hover:text-red-600 transition truncate max-w-[120px] md:max-w-none"><?= htmlspecialchars($product['category_name']) ?></a>
+        <i class="fas fa-chevron-right text-xs text-gray-300 max-md:text-[9px]"></i>
         <?php endif; ?>
-        <span class="text-gray-700 truncate max-w-xs"><?= htmlspecialchars($product['name']) ?></span>
+        <span class="text-gray-700 truncate max-w-[140px] md:max-w-xs"><?= htmlspecialchars($product['name']) ?></span>
     </nav>
     
     <!-- Product Detail Grid -->
@@ -1894,6 +1894,10 @@ if ($stickyBarEnabled):
     $stickyBgColor = getSetting('mobile_sticky_bg_color', '#ffffff');
     $stickyTextColor = getSetting('mobile_sticky_text_color', '#1f2937');
     $stickyGlassBlur = intval(getSetting('mobile_sticky_glass_blur', '16'));
+    $stickyBtnFontMin = intval(getSetting('sticky_btn_font_min', '11'));
+    $stickyBtnFontMax = intval(getSetting('sticky_btn_font_max', '14'));
+    $stickyBtnWrap = getSetting('sticky_btn_text_wrap', '1') === '1';
+    $stickyBtnPadding = intval(getSetting('sticky_btn_padding', '2'));
     $stickyGlassOpacity = intval(getSetting('mobile_sticky_glass_opacity', '75'));
     
     // Build sticky bar styles
@@ -1932,11 +1936,11 @@ if ($stickyBarEnabled):
         
         <!-- Order Button (matches archive card buy-now style) -->
         <button onclick="productOrder()" id="sticky-order-btn"
-                class="cod-order-btn flex-1 min-w-0 py-2.5 rounded-xl text-white font-bold transition active:scale-[0.97] flex items-center justify-center gap-1.5 order-btn-text"
-                style="background:var(--btn-primary);color:var(--btn-primary-text, #fff);font-size:clamp(12px, 3.5vw, 14px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+                class="cod-order-btn flex-1 min-w-0 rounded-xl text-white font-bold transition active:scale-[0.97] flex items-center justify-center gap-1.5 order-btn-text"
+                style="background:var(--btn-primary);color:var(--btn-primary-text, #fff);font-size:clamp(<?= $stickyBtnFontMin ?>px, 3.5vw, <?= $stickyBtnFontMax ?>px);<?= $stickyBtnWrap ? 'white-space:normal;text-align:center;' : 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' ?>padding:<?= $stickyBtnPadding ?>px;line-height:1.3;"
                 <?= $product['stock_status'] === 'out_of_stock' ? 'disabled' : '' ?>>
             <i class="fas fa-shopping-bag text-xs flex-shrink-0"></i>
-            <span class="truncate"><?= getSetting('btn_order_cod_label', 'অর্ডার করুন') ?></span>
+            <span class="<?= $stickyBtnWrap ? '' : 'truncate' ?>"><?= getSetting('btn_order_cod_label', 'অর্ডার করুন') ?></span>
         </button>
     </div>
 </div>
