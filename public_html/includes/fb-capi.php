@@ -2,11 +2,9 @@
 /**
  * Facebook Conversions API (Server-Side Tracking) Engine
  * ═══════════════════════════════════════════════════════
- * 
- * Events: PageView, ViewContent, AddToCart, InitiateCheckout, 
- *         Purchase, Search, Lead, CompleteRegistration, Contact
- * 
- * Features:
+ * * Events: PageView, ViewContent, AddToCart, InitiateCheckout, 
+ * Purchase, Search, Lead, CompleteRegistration, Contact
+ * * Features:
  * - Event deduplication with event_id (matches browser pixel)
  * - SHA-256 hashed PII (email, phone, name, city, country)
  * - fbp/fbc cookie forwarding
@@ -206,9 +204,6 @@ function fbCapiSend(string $eventName, array $customData = [], array $userDataEx
             . " | TokenLen:" . strlen($accessToken)
             . " | fbp:" . ($event['user_data']['fbp'] ?? 'none')
             . " | fbc:" . ($event['user_data']['fbc'] ?? 'none')
-            . "\n";
-        @file_put_contents($logDir . '/fb-capi.log', $line, FILE_APPEND | LOCK_EX);
-    }
             . "\n";
         @file_put_contents($logDir . '/fb-capi.log', $line, FILE_APPEND | LOCK_EX);
     }
