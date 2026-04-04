@@ -52,22 +52,49 @@ try {
         } catch (\Throwable $e) {}
         $legacyHas = $db->fetch("SELECT COUNT(*) as cnt FROM product_variants WHERE product_id = ? AND is_active = 1", [$product['id']])['cnt'] > 0;
         $legacyRange = $db->fetch("SELECT MIN(absolute_price) as pmin, MAX(absolute_price) as pmax, MAX(COALESCE(var_regular_price, absolute_price)) as reg_max FROM product_variants WHERE product_id = ? AND is_active = 1 AND option_type = 'variation' AND absolute_price > 0", [$product['id']]);
+        
+        // Per-variant discount calculation
+        $_perVarDiscounts = [];
         if ($_comboData && $_comboData['cnt'] > 0 && $_comboData['pmin'] > 0) {
             $_variantCache[$product['id']] = ['has' => true, 'range' => $_comboData];
+            // Combo mode: fetch each combo's individual discount
+            try {
+                $_combos = $db->fetchAll("SELECT regular_price, sale_price FROM product_variant_combinations WHERE product_id = ? AND is_active = 1 AND regular_price > 0", [$product['id']]);
+                foreach ($_combos as $_c) {
+                    $_cSell = ($_c['sale_price'] > 0 && $_c['sale_price'] < $_c['regular_price']) ? floatval($_c['sale_price']) : floatval($_c['regular_price']);
+                    $_cReg = floatval($_c['regular_price']);
+                    if ($_cReg > $_cSell && $_cSell > 0) {
+                        $_perVarDiscounts[] = round(($_cReg - $_cSell) / $_cReg * 100);
+                    }
+                }
+            } catch (\Throwable $e) {}
         } else {
             $_variantCache[$product['id']] = ['has' => $legacyHas, 'range' => $legacyRange];
+            // Legacy mode: fetch each variant's individual discount
+            if ($legacyHas) {
+                try {
+                    $_legVars = $db->fetchAll("SELECT absolute_price, var_regular_price FROM product_variants WHERE product_id = ? AND is_active = 1 AND option_type = 'variation' AND absolute_price > 0", [$product['id']]);
+                    foreach ($_legVars as $_lv) {
+                        $_lvSell = floatval($_lv['absolute_price']);
+                        $_lvReg = floatval($_lv['var_regular_price'] ?? 0);
+                        if ($_lvReg <= 0) $_lvReg = $_lvSell;
+                        if ($_lvReg > $_lvSell && $_lvSell > 0) {
+                            $_perVarDiscounts[] = round(($_lvReg - $_lvSell) / $_lvReg * 100);
+                        }
+                    }
+                } catch (\Throwable $e) {}
+            }
         }
+        $_variantCache[$product['id']]['discounts'] = $_perVarDiscounts;
     }
     $_hasVariants = $_variantCache[$product['id']]['has'];
     $r = $_variantCache[$product['id']]['range'];
     if ($r && $r['pmin'] > 0 && $r['pmax'] > 0) {
         $_varPriceRange = ['min' => floatval($r['pmin']), 'max' => floatval($r['pmax'])];
-        $regP = floatval($r['reg_max'] ?? $product['regular_price'] ?? 0);
-        $_varRegMax = $regP;
-        if ($regP > 0 && $regP > $_varPriceRange['min']) {
-            $discMax = round(($regP - $_varPriceRange['min']) / $regP * 100);
-            $discMin = round(($regP - $_varPriceRange['max']) / $regP * 100);
-            if ($discMax > 0) $_varDiscountRange = ['min' => max(0, $discMin), 'max' => $discMax];
+        $_varRegMax = floatval($r['reg_max'] ?? $product['regular_price'] ?? 0);
+        $_perVarDisc = $_variantCache[$product['id']]['discounts'] ?? [];
+        if (!empty($_perVarDisc)) {
+            $_varDiscountRange = ['min' => min($_perVarDisc), 'max' => max($_perVarDisc)];
         }
     }
 } catch (\Throwable $e) {}
@@ -77,7 +104,7 @@ $_productUrl = url('product/' . $product['slug']);
 $_productName = htmlspecialchars($product['name_bn'] ?: $product['name']);
 $_discountText = '';
 if ($_varDiscountRange) {
-    $_discountText = ($_varDiscountRange['min'] === $_varDiscountRange['max'] || $_varDiscountRange['min'] <= 0) ? $_varDiscountRange['max'].'%' : $_varDiscountRange['min'].'~'.$_varDiscountRange['max'].'%';
+    $_discountText = ($_varDiscountRange['min'] === $_varDiscountRange['max'] || $_varDiscountRange['min'] <= 0) ? $_varDiscountRange['max'].'%' : $_varDiscountRange['min'].'–'.$_varDiscountRange['max'].'%';
 } elseif ($isOnSale && $discount > 0) {
     $_discountText = $discount.'%';
 }
