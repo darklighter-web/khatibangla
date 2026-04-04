@@ -134,12 +134,32 @@ if ($hasVariations) {
     $regPrice = floatval($product['regular_price'] ?? 0);
 }
 
-// Calculate variation discount range
+// Calculate variation discount range (per-variant: each variant vs its own regular price)
 $varDiscountRange = null;
-if ($hasVariations && $varPriceMin !== null && $regPrice > 0 && $regPrice > $varPriceMin) {
-    $dMax = round(($regPrice - $varPriceMin) / $regPrice * 100);
-    $dMin = ($regPrice > $varPriceMax) ? round(($regPrice - $varPriceMax) / $regPrice * 100) : 0;
-    if ($dMax > 0) $varDiscountRange = ['min' => max(0, $dMin), 'max' => $dMax];
+if ($hasVariations) {
+    $discounts = [];
+    if ($isCombinationMode && !empty($comboLookupMap)) {
+        foreach ($comboLookupMap as $combo) {
+            $sp = floatval($combo['sell_price']);
+            $rp = floatval($combo['regular_price']);
+            if ($sp > 0 && $rp > $sp) {
+                $discounts[] = round(($rp - $sp) / $rp * 100);
+            }
+        }
+    } else {
+        foreach ($variants as $v) {
+            if (($v['option_type'] ?? '') !== 'variation' || !$v['is_active']) continue;
+            $vSell = floatval($v['absolute_price'] ?? 0);
+            $vReg = floatval($v['var_regular_price'] ?? 0);
+            if ($vReg <= 0) $vReg = $vSell; // no separate regular → no discount
+            if ($vSell > 0 && $vReg > $vSell) {
+                $discounts[] = round(($vReg - $vSell) / $vReg * 100);
+            }
+        }
+    }
+    if (!empty($discounts)) {
+        $varDiscountRange = ['min' => min($discounts), 'max' => max($discounts)];
+    }
 }
 
 // Only use admin-entered meta values as overrides; auto-SEO generates from product data otherwise
@@ -343,7 +363,13 @@ if ($isCombinationMode) {
                         echo ($varPriceMin == $varPriceMax) ? formatPrice($varPriceMin) : formatPrice($varPriceMin) . ' – ' . formatPrice($varPriceMax);
                     ?></span>
                     <?php if ($varDiscountRange): ?>
-                    <span id="display-regular-price" class="text-lg text-gray-400 line-through price-animate"><?= formatPrice($regPrice) ?></span>
+                    <span id="display-regular-price" class="text-lg text-gray-400 line-through price-animate"><?php
+                        if ($varRegPriceMin > 0 && $varRegPriceMax > 0 && $varRegPriceMin != $varRegPriceMax) {
+                            echo formatPrice($varRegPriceMin) . '–' . formatPrice($varRegPriceMax);
+                        } else {
+                            echo formatPrice($regPrice);
+                        }
+                    ?></span>
                     <?php if ($spShowDiscount): ?>
                     <span id="display-discount" class="sale-badge text-sm font-bold px-2.5 py-0.5 rounded-full price-animate"><?php
                         if ($varDiscountRange['min'] === $varDiscountRange['max'] || $varDiscountRange['min'] <= 0) {
@@ -1014,6 +1040,11 @@ const REGULAR_PRICE = <?= $hasVariations ? ($regPrice ?: ($product['regular_pric
 const HAS_VARIANTS = <?= !empty($variants) ? 'true' : 'false' ?>;
 const VAR_PRICE_MIN = <?= $varPriceMin ?? 0 ?>;
 const VAR_PRICE_MAX = <?= $varPriceMax ?? 0 ?>;
+const VAR_DISC_MIN = <?= $varDiscountRange ? $varDiscountRange['min'] : 0 ?>;
+const VAR_DISC_MAX = <?= $varDiscountRange ? $varDiscountRange['max'] : 0 ?>;
+const HAS_VAR_DISCOUNT = <?= $varDiscountRange ? 'true' : 'false' ?>;
+const VAR_REG_MIN = <?= $varRegPriceMin ?? 0 ?>;
+const VAR_REG_MAX = <?= $varRegPriceMax ?? 0 ?>;
 // Store original image for reverting when no variant image selected
 window._originalProductImage = document.getElementById('main-product-image')?.src || '';
 const BUNDLE_PRODUCTS = <?= json_encode(!empty($bundles)) ?>; // just true/false for existence check
@@ -1316,12 +1347,25 @@ function onVariantChange(explicit) {
     }
     
     if (showRange) {
-        // Range mode: show max discount based on price range vs max regular price
-        if (REGULAR_PRICE > VAR_PRICE_MIN) {
-            const dMax = Math.round(((REGULAR_PRICE - VAR_PRICE_MIN) / REGULAR_PRICE) * 100);
-            if (regEl) { regEl.textContent = CURRENCY + ' ' + Number(REGULAR_PRICE).toLocaleString(); regEl.classList.remove('hidden'); }
-            if (discEl && dMax > 0) { discEl.textContent = dMax + '% ছাড়'; discEl.classList.remove('hidden'); }
-            else if (discEl) discEl.classList.add('hidden');
+        // Range mode: show per-variant discount range (computed from PHP)
+        if (HAS_VAR_DISCOUNT) {
+            // Show regular price range as strikethrough
+            if (regEl) {
+                if (VAR_REG_MIN > 0 && VAR_REG_MAX > 0 && VAR_REG_MIN !== VAR_REG_MAX) {
+                    regEl.textContent = CURRENCY + ' ' + Number(VAR_REG_MIN).toLocaleString() + '–' + CURRENCY + ' ' + Number(VAR_REG_MAX).toLocaleString();
+                } else {
+                    regEl.textContent = CURRENCY + ' ' + Number(REGULAR_PRICE).toLocaleString();
+                }
+                regEl.classList.remove('hidden');
+            }
+            if (discEl) {
+                if (VAR_DISC_MIN === VAR_DISC_MAX || VAR_DISC_MIN <= 0) {
+                    discEl.textContent = VAR_DISC_MAX + '% ছাড়';
+                } else {
+                    discEl.textContent = VAR_DISC_MIN + '%-' + VAR_DISC_MAX + '% ছাড়';
+                }
+                discEl.classList.remove('hidden');
+            }
         } else {
             if (regEl) regEl.classList.add('hidden');
             if (discEl) discEl.classList.add('hidden');
